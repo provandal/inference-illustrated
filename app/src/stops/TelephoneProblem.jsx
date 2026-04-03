@@ -449,7 +449,7 @@ export default function TelephoneProblem() {
       '<strong>Stop 1: The Telephone Problem.</strong> Modern large language models — GPT, Claude, Llama — are built on an architecture called the <strong>transformer</strong>. To understand why transformers were a breakthrough, we need to see what came before them and why it broke down.';
   } else if (page.id === 'mech1') {
     narration =
-      'The hidden state is the <strong>only connection</strong> between words. Everything the model knows must be compressed into this one fixed-size vector.';
+      'Before transformers, the dominant architecture was the <strong>RNN</strong> — a model that reads one word at a time. Let\u2019s see how it works, and where it breaks down.';
   } else if (page.id === 'mech2') {
     narration =
       'h<sub>new</sub> is the <strong>same size</strong> as h<sub>old</sub>. No matter how much information accumulates, it must fit in the same number of values. Something has to give.';
