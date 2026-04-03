@@ -75,14 +75,12 @@ function SentenceRow({ step }) {
   );
 }
 
-function InfoBox({ children, className = '' }) {
-  return (
-    <div
-      className={`px-3.5 py-2.5 text-xs leading-relaxed my-2.5 rounded-md
-                  bg-[var(--color-surface-alt)] text-[var(--color-text-secondary)] ${className}`}
-      dangerouslySetInnerHTML={{ __html: children }}
-    />
-  );
+function InfoBox({ html, children, className = '' }) {
+  const base = `px-3.5 py-2.5 text-xs leading-relaxed my-2.5 rounded-md bg-[var(--color-surface-alt)] text-[var(--color-text-secondary)] ${className}`;
+  if (html) {
+    return <div className={base} dangerouslySetInnerHTML={{ __html: html }} />;
+  }
+  return <div className={base}>{children}</div>;
 }
 
 function Callout({ type, message }) {
@@ -326,6 +324,13 @@ export default function TelephoneProblem() {
 
   return (
     <div>
+      {/* Narration — always at top */}
+      <div
+        className="text-[13px] text-[var(--color-text-secondary)] leading-relaxed
+                    px-3.5 py-3 bg-[var(--color-surface-alt)] rounded-md mb-4"
+        dangerouslySetInnerHTML={{ __html: narration }}
+      />
+
       {/* Internal step nav */}
       <div className="flex items-center gap-2 mb-5 flex-wrap">
         <button
@@ -351,6 +356,13 @@ export default function TelephoneProblem() {
         </span>
       </div>
 
+      {/* Setup intro text — above sentence */}
+      {isSetup && (
+        <div className="text-sm text-[var(--color-text-secondary)] leading-relaxed mb-4">
+          <p className="mb-3">Read the following sentence:</p>
+        </div>
+      )}
+
       {/* Sentence */}
       <SentenceRow step={step} />
 
@@ -358,9 +370,8 @@ export default function TelephoneProblem() {
       <div className="min-h-[400px]">
         {/* SETUP */}
         {isSetup && (
-          <div className="max-w-[520px] mx-auto text-center text-sm text-[var(--color-text-secondary)] leading-relaxed">
-            <p className="mb-4">Read the sentence above.</p>
-            <p className="mb-4">
+          <div className="text-sm text-[var(--color-text-secondary)] leading-relaxed mt-4">
+            <p className="mb-3">
               <strong className="border-b-[2.5px] border-b-[var(--color-amber)] pb-px text-[var(--color-text)]">
                 storage controller
               </strong>{' '}
@@ -370,14 +381,14 @@ export default function TelephoneProblem() {
               </strong>{' '}
               (word 15) describes. You parse that instantly.
             </p>
-            <p>
+            <p className="mb-3">
               But what if you could only read{' '}
               <strong className="text-[var(--color-text)]">
                 one word at a time
               </strong>
               , carrying everything in a fixed-size block of memory?
             </p>
-            <p className="mt-4 text-[var(--color-text-muted)]">
+            <p className="text-[var(--color-text-muted)]">
               Press <strong className="text-[var(--color-text)]">Next</strong>{' '}
               to find out.
             </p>
@@ -459,15 +470,9 @@ export default function TelephoneProblem() {
               </div>
             </div>
 
-            <InfoBox>
-              {`The current word is first converted to an <strong>embedding</strong> — a vector that captures the word's meaning. Each word in the vocabulary has its own unique embedding, learned during training.`}
-            </InfoBox>
-            <InfoBox>
-              {`Two separate <strong>weight matrices</strong> — grids of numbers — control how information mixes:<br/>• <strong>W</strong> controls how the old hidden state is carried forward — what to remember<br/>• <strong>U</strong> controls how the new word is incorporated — what to absorb<br/><br/>They're separate because these are different jobs. W decides how much old context survives; U decides how the new word gets mixed in.`}
-            </InfoBox>
-            <InfoBox>
-              {`<strong>Where do W and U come from?</strong> They start as random numbers. During <strong>training</strong>, the model reads billions of sentences, predicts the next word, and when wrong, the error flows backward — <strong>backpropagation</strong> — nudging W and U to improve. After training, W and U encode the model's learned knowledge.<br/><br/><strong>Do they change during use?</strong> No. After training we switch to <strong>inference</strong> — W and U are frozen forever. Only the hidden state changes.`}
-            </InfoBox>
+            <InfoBox html={`The current word is first converted to an <strong>embedding</strong> — a vector that captures the word's meaning. Each word in the vocabulary has its own unique embedding, learned during training.`} />
+            <InfoBox html={`Two separate <strong>weight matrices</strong> — grids of numbers — control how information mixes:<br/>• <strong>W</strong> controls how the old hidden state is carried forward — what to remember<br/>• <strong>U</strong> controls how the new word is incorporated — what to absorb<br/><br/>They're separate because these are different jobs. W decides how much old context survives; U decides how the new word gets mixed in.`} />
+            <InfoBox html={`<strong>Where do W and U come from?</strong> They start as random numbers. During <strong>training</strong>, the model reads billions of sentences, predicts the next word, and when wrong, the error flows backward — <strong>backpropagation</strong> — nudging W and U to improve. After training, W and U encode the model's learned knowledge.<br/><br/><strong>Do they change during use?</strong> No. After training we switch to <strong>inference</strong> — W and U are frozen forever. Only the hidden state changes.`} />
           </div>
         )}
 
@@ -479,9 +484,7 @@ export default function TelephoneProblem() {
 
             {/* Honesty disclosure on first word */}
             {wordIndex === 0 && (
-              <InfoBox className="text-[11px]">
-                {`<strong>A note on what follows:</strong> The real hidden state is just numbers — no labels. What we show below is an interpretive approximation: our translation of what those numbers collectively encode. The decay pattern is real and well-documented in RNNs.`}
-              </InfoBox>
+              <InfoBox className="text-[11px]" html={`<strong>A note on what follows:</strong> The real hidden state is just numbers — no labels. What we show below is an interpretive approximation: our translation of what those numbers collectively encode. The decay pattern is real and well-documented in RNNs.`} />
             )}
 
             <div className="mt-3.5">
@@ -569,12 +572,6 @@ export default function TelephoneProblem() {
         {isAttention && <AttentionView isDark={isDark} />}
       </div>
 
-      {/* Narration */}
-      <div
-        className="text-[13px] text-[var(--color-text-secondary)] leading-relaxed
-                    px-3.5 py-3 bg-[var(--color-surface-alt)] rounded-md mt-3"
-        dangerouslySetInnerHTML={{ __html: narration }}
-      />
     </div>
   );
 }
