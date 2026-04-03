@@ -4,3 +4,7 @@ dist/
 *.log
 .env
 .claude/
+
+# Curriculum design docs (local only)
+*.md
+!README.md
