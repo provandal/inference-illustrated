@@ -80,6 +80,16 @@ export const ATTENTION_DATA = [
   ['other words', 4],
 ];
 
+// Page structure for Stop 1 — separates page-level nav from animation stepping
+export const PAGES = [
+  { id: 'setup',     label: 'Setup',           type: 'static' },
+  { id: 'mech1',     label: 'Hidden State',    type: 'static' },
+  { id: 'mech2',     label: 'Update Rule',     type: 'static' },
+  { id: 'animation', label: 'Word Processing', type: 'animation', animSteps: 15 },
+  { id: 'done',      label: 'Result',          type: 'static' },
+  { id: 'attention', label: 'Attention',       type: 'static' },
+];
+
 // Color for bar magnitude
 export function barColor(value, isDark = false) {
   if (value >= 80) return isDark ? '#FAC775' : '#EF9F27';

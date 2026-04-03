@@ -12,23 +12,19 @@ export default function TourView() {
   const nextStep = useStore((s) => s.nextStep);
   const prevStep = useStore((s) => s.prevStep);
   const setMode = useStore((s) => s.setMode);
+  const darkMode = useStore((s) => s.darkMode);
+  const toggleDarkMode = useStore((s) => s.toggleDarkMode);
+  const initDarkMode = useStore((s) => s.initDarkMode);
 
   const step = tourSteps[currentStep];
   const StopComponent = STOP_COMPONENTS[step.component];
 
-  // Keyboard navigation
+  // Initialize dark mode class on mount
   useEffect(() => {
-    function handleKey(e) {
-      const tag = e.target.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-      if (e.key === 'ArrowRight') nextStep();
-      if (e.key === 'ArrowLeft') prevStep();
-    }
-    window.addEventListener('keydown', handleKey);
-    return () => window.removeEventListener('keydown', handleKey);
-  }, [nextStep, prevStep]);
+    initDarkMode();
+  }, [initDarkMode]);
 
-  // Scroll to top on step change
+  // Scroll to top on stop change
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [currentStep]);
@@ -79,7 +75,7 @@ export default function TourView() {
             {currentStep + 1}/{tourSteps.length}
           </span>
 
-          {/* Nav buttons */}
+          {/* Stop nav buttons */}
           <div className="flex gap-1.5">
             <button
               onClick={prevStep}
@@ -88,7 +84,7 @@ export default function TourView() {
                          hover:bg-[var(--color-surface-alt)] disabled:opacity-30
                          disabled:cursor-not-allowed transition-colors cursor-pointer"
             >
-              ← Prev
+              ← Prev Stop
             </button>
             <button
               onClick={nextStep}
@@ -97,9 +93,21 @@ export default function TourView() {
                          hover:bg-[var(--color-surface-alt)] disabled:opacity-30
                          disabled:cursor-not-allowed transition-colors cursor-pointer"
             >
-              Next →
+              Next Stop →
             </button>
           </div>
+
+          {/* Dark mode toggle */}
+          <button
+            onClick={toggleDarkMode}
+            className="w-8 h-8 flex items-center justify-center rounded
+                       border border-[var(--color-border)]
+                       hover:bg-[var(--color-surface-alt)]
+                       transition-colors cursor-pointer text-sm"
+            title={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+          >
+            {darkMode ? '☀️' : '🌙'}
+          </button>
         </div>
       </header>
 
