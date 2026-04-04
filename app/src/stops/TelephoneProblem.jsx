@@ -452,7 +452,7 @@ export default function TelephoneProblem() {
       'Before transformers, the dominant architecture was the <strong>RNN</strong> — a model that reads one word at a time. Let\u2019s see how it works, and where it breaks down.';
   } else if (page.id === 'mech2') {
     narration =
-      'h<sub>new</sub> is the <strong>same size</strong> as h<sub>old</sub>. No matter how much information accumulates, it must fit in the same number of values. Something has to give.';
+      'Now that we know the RNN carries a single hidden state vector, let\u2019s see <strong>how it updates</strong> at each word — and why that fixed size becomes a problem.';
   } else if (page.id === 'animation') {
     narration = `<strong>"${WORDS[animStep]}"</strong> — ${WORD_NARRATIONS[animStep]}`;
   } else if (page.id === 'done') {
