@@ -457,10 +457,10 @@ export default function TelephoneProblem() {
     narration = `<strong>"${WORDS[animStep]}"</strong> — ${WORD_NARRATIONS[animStep]}`;
   } else if (page.id === 'done') {
     narration =
-      'All 15 words processed. The fixed-size hidden state couldn\'t hold the critical concept.';
+      'The RNN processed all 15 words, rewriting its hidden state at every step. <strong>"storage controller"</strong> entered at 100% strength — but by the time <strong>"faulty"</strong> needed it, only <strong>6%</strong> remained.';
   } else if (page.id === 'attention') {
     narration =
-      '<strong>Attention eliminates the distance problem.</strong> But for every word to be lookupable, the model stores Key and Value vectors for each one. That storage is the <strong>KV cache</strong>, and its growth with sequence length is the central challenge of this course.';
+      'What if <strong>"faulty"</strong> could look directly at every word in the sentence — no chain, no decay? That\u2019s the idea behind <strong>attention</strong>, and it\u2019s the reason transformers replaced RNNs.';
   }
 
   // Page navigation
