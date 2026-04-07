@@ -409,7 +409,12 @@ function ThreePhasesPage() {
 
       <Callout
         type="note"
-        message='<strong>Why three phases?</strong> Pre-training alone produces a model that can predict language but is not helpful or safe. It has absorbed the patterns of the internet — including contradictions, harmful content, and unhelpful formats. Post-training steers the model toward being a useful assistant. Inference is where that finished model meets the world.'
+        message='<strong>Why three phases?</strong> Pre-training alone produces a model that can predict language but is not helpful or safe. It has absorbed the patterns of the internet — including contradictions, harmful content, and unhelpful formats. Post-training steers the model toward being a useful assistant. Inference is where that finished model meets the world. For a deeper dive into post-training techniques, see the <a href="https://provandal.github.io/post-training-explorer/" target="_blank" rel="noopener noreferrer" style="color: var(--color-primary); text-decoration: underline;">Post-Training Explorer</a>.'
+      />
+
+      <Callout
+        type="note"
+        message={'<strong>"Does the model learn from my conversation?"</strong> This question has three layers, and honesty requires addressing all of them.<br/><br/><strong>1. Does the model update its weights in real time?</strong> No. During inference (Phase 3), every weight matrix is frozen. Your conversation cannot change W<sub>Q</sub>, W<sub>K</sub>, W<sub>V</sub>, or any other parameter. The model that processes your first message is bit-for-bit identical to the one that processes your last.<br/><br/><strong>2. Could my conversation become training data for a future model?</strong> That depends entirely on the vendor\u2019s data retention policies. Some providers (particularly via API access) explicitly commit to not training on your data. Others may use conversation data for future training unless you opt out. These policies vary by provider and by product tier — read the terms of service.<br/><br/><strong>3. Are vendors extracting value from conversations?</strong> Even without training on them, conversation data may be used for safety monitoring, abuse detection, product evaluation, or research. The degree of human review varies by provider.<br/><br/>The technical answer (weights are frozen) is clear. The data-handling answer depends on who you\u2019re talking to and under what terms.'}
       />
     </div>
   );
@@ -433,8 +438,9 @@ function FrozenVsWorkingPage() {
           <div className="p-4 text-[13px] leading-relaxed text-[var(--color-text-secondary)] space-y-2">
             <p>
               <strong className="text-[var(--color-text)]">
-                W<sub>Q</sub>, W<sub>K</sub>, W<sub>V</sub>, FFN, and all other
-                weight matrices
+                W<sub>Q</sub>, W<sub>K</sub>, W<sub>V</sub>, W<sub>O</sub>{' '}
+                (output projection), and FFN matrices (W<sub>1</sub>,{' '}
+                W<sub>2</sub>)
               </strong>
             </p>
             <ul className="list-disc ml-5 space-y-1">
@@ -569,7 +575,7 @@ function getNarration(pageId) {
     case 'history':
       return 'None of the ideas behind training are new. <strong>Gradient descent</strong> dates to the 1840s. <strong>Backpropagation</strong> was popularized in 1986. What changed in 2017 was the <strong>architecture</strong> — the transformer\'s self-attention mechanism made it possible to parallelize training and scale to billions of parameters.';
     case 'three-phases':
-      return 'A model passes through <strong>three life phases</strong>, each with a different relationship to the weight matrices. Understanding these phases clarifies a question that comes up constantly: does the model learn from my conversation? The short answer is no — and the reason is the phase system below.';
+      return 'A model passes through <strong>three life phases</strong>, each with a different relationship to the weight matrices. Understanding these phases is essential for understanding both how models are built and what happens to your data when you use one.';
     case 'frozen-vs-working':
       return 'Here is the key distinction for everything that follows about inference costs. The <strong>model weights</strong> are loaded once and shared across all users — a fixed cost. The <strong>KV cache</strong> is created fresh for every conversation and grows with every token — a variable cost that scales with usage. Below, we put concrete numbers on both.';
     case 'bridge':

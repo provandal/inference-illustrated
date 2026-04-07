@@ -64,65 +64,57 @@ function WhatIsDotPage() {
       <Panel>
         <PanelHeader>What the dot product computes</PanelHeader>
         <InfoBox>
-          The dot product takes two vectors of the same length, multiplies them element by element,
-          and sums the results into a single number. Two steps, nothing more.
+          The dot product takes two vectors of the same length, multiplies them
+          element by element, and sums the results into a single number. That is
+          all it does — two steps, nothing more. But what does that number{' '}
+          <em>mean</em>?
         </InfoBox>
         <InfoBox>
-          Think of Q and K as <strong>arrows in a high-dimensional space</strong>. The dot product
-          asks: how much do these arrows point in the same direction? When they align, the products
-          are consistently positive, and the sum is large. When they oppose, the products are
-          consistently negative. When they are unrelated, positive and negative products cancel
-          out toward zero.
+          Each vector is a list of numbers that together describe something —
+          what a word is looking for (Query) or what a word contains (Key). When
+          corresponding elements are both positive, or both negative, their
+          product is positive — it adds to the score. When one is positive and
+          the other negative, the product is negative — it subtracts from the
+          score. The final sum captures how consistently the two vectors agree
+          across all their dimensions.
         </InfoBox>
       </Panel>
 
-      <div className="my-4 grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Panel>
-          <PanelHeader>Same direction</PanelHeader>
-          <div className="px-4 py-3 text-[13px] leading-relaxed text-[var(--color-text-secondary)]">
-            Both vectors positive in the same positions, both negative in the same positions.
-            Every product is positive. The sum is <strong className="text-[var(--color-teal-text)]">large and positive</strong>.
-            <div className="mt-2 text-[12px] font-mono text-[var(--color-text-muted)]">
-              (+)(+) = + &nbsp; (&#x2212;)(&#x2212;) = + &nbsp; &rarr; high score
-            </div>
-          </div>
-        </Panel>
-        <Panel>
-          <PanelHeader>Perpendicular</PanelHeader>
-          <div className="px-4 py-3 text-[13px] leading-relaxed text-[var(--color-text-secondary)]">
-            No pattern — some products positive, some negative, roughly balanced.
-            They cancel out. The sum is <strong>near zero</strong>.
-            <div className="mt-2 text-[12px] font-mono text-[var(--color-text-muted)]">
-              (+)(+) and (+)(&#x2212;) cancel &rarr; &asymp; 0
-            </div>
-          </div>
-        </Panel>
-        <Panel>
-          <PanelHeader>Opposite direction</PanelHeader>
-          <div className="px-4 py-3 text-[13px] leading-relaxed text-[var(--color-text-secondary)]">
-            Q is positive where K is negative and vice versa. Every product
-            is negative. The sum is <strong className="text-[var(--color-red-text)]">large and negative</strong>.
-            <div className="mt-2 text-[12px] font-mono text-[var(--color-text-muted)]">
-              (+)(&#x2212;) = &#x2212; &nbsp; (&#x2212;)(+) = &#x2212; &nbsp; &rarr; low score
-            </div>
-          </div>
-        </Panel>
-      </div>
-
-      <Panel>
-        <PanelHeader>Grounding it in our sentence</PanelHeader>
+      <Panel className="mt-4">
+        <PanelHeader>What this means for our sentence</PanelHeader>
         <InfoBox>
-          <strong>Q<sub>faulty</sub></strong> points in a direction meaning{' '}
-          <em>"looking for the hardware component I describe."</em>{' '}
-          <strong>K<sub>controller</sub></strong> points in a direction meaning{' '}
-          <em>"I am a describable hardware component."</em>{' '}
-          These directions <strong>align</strong> — the dot product will be high.
+          <strong>Q<sub>faulty</sub></strong> was shaped by training to point in a
+          direction meaning{' '}
+          <em>&ldquo;looking for the hardware component I describe.&rdquo;</em>{' '}
+          <strong>K<sub>controller</sub></strong> was shaped to point in a direction
+          meaning{' '}
+          <em>&ldquo;I am a describable hardware component.&rdquo;</em>{' '}
+          These directions <strong>align</strong> — their elements are
+          consistently positive in the same positions and negative in the same
+          positions. The dot product will be{' '}
+          <strong className="text-[var(--color-teal-text)]">
+            large and positive
+          </strong>
+          : a strong match.
         </InfoBox>
         <InfoBox>
-          <strong>K<sub>last</sub></strong> points in a direction meaning{' '}
-          <em>"I carry temporal information."</em>{' '}
-          That direction is unrelated to — even opposing — what "faulty" is looking for.
-          The dot product will be low or negative.
+          <strong>K<sub>last</sub></strong> was shaped to point in a direction
+          meaning <em>&ldquo;I carry temporal information.&rdquo;</em>{' '}
+          That direction is unrelated to — even opposing — what
+          &ldquo;faulty&rdquo; is looking for. Where Q<sub>faulty</sub> is
+          positive, K<sub>last</sub> tends to be negative, and vice versa. The
+          dot product will be{' '}
+          <strong className="text-[var(--color-red-text)]">
+            negative
+          </strong>
+          : no match.
+        </InfoBox>
+        <InfoBox>
+          <strong>K<sub>crashed</sub></strong> partially aligns — both words
+          relate to hardware failure — but not as strongly as
+          K<sub>controller</sub>. The dot product will be{' '}
+          <strong>moderate and positive</strong>: some relevance, but not the
+          primary match.
         </InfoBox>
       </Panel>
     </div>
@@ -238,7 +230,7 @@ function WorkedExamplePage() {
 
       <Callout
         type="note"
-        message='<strong>4 dimensions for clarity, 128 in practice.</strong> The computation is identical — multiply corresponding elements, sum the results. More dimensions means more signal for the model to encode subtle distinctions, but the operation itself does not change.'
+        message='<strong>4 dimensions for clarity; real models use many more.</strong> Llama-3 uses 128 dimensions per head; other models may use 64, 96, or different values. The computation is identical regardless — multiply corresponding elements, sum the results. More dimensions means more signal for the model to encode subtle distinctions, but the operation itself does not change.'
       />
     </div>
   );
@@ -461,7 +453,7 @@ function BridgePage() {
                   </span>
                   <span className="min-w-[10px] text-[var(--color-text-muted)]">&rarr;</span>
                   <span className="min-w-[70px] text-right font-bold" style={{ color }}>
-                    {(item.weight * 100).toFixed(0)}%
+                    {(item.weight * 100).toFixed(1)}%
                   </span>
                   <div className="flex-1 h-4 bg-[var(--color-surface-muted)] rounded overflow-hidden">
                     <div
@@ -493,7 +485,7 @@ function BridgePage() {
 
       <Callout
         type="good"
-        message={`<strong>"controller" gets the most attention — but not all of it.</strong> The ranking from the dot product is preserved: "controller" (${(weights[0] * 100).toFixed(0)}%) > "crashed" (${(weights[1] * 100).toFixed(0)}%) > "last" (${(weights[2] * 100).toFixed(0)}%). Softmax spreads the weight so the model can draw information from multiple words when useful. How softmax achieves this — and what controls how peaked or spread the distribution is — is Stop 6.`}
+        message={`<strong>"controller" gets the most attention — but not all of it.</strong> The ranking from the dot product is preserved: "controller" (${(weights[0] * 100).toFixed(1)}%) > "crashed" (${(weights[1] * 100).toFixed(1)}%) > "last" (${(weights[2] * 100).toFixed(1)}%). Softmax spreads the weight so the model can draw information from multiple words when useful. How softmax achieves this — and what controls how peaked or spread the distribution is — is Stop 6.`}
       />
     </div>
   );
