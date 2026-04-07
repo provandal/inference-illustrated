@@ -22,7 +22,7 @@ function SentenceRow({ highlightQ, highlightK }) {
         if (highlightQ && i === 14) {
           cls +=
             'bg-[var(--color-primary-bg)] border-[var(--color-primary)] text-[var(--color-primary-text)] font-medium ';
-        } else if (highlightK && (i === 5 || i === 6)) {
+        } else if (highlightK && i === 6) {
           cls +=
             'bg-[var(--color-teal-bg)] border-[var(--color-teal)] text-[var(--color-teal-text)] font-medium ';
         } else {
