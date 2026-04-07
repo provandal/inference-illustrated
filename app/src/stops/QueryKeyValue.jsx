@@ -282,26 +282,47 @@ function WhyThreePage() {
   return (
     <div>
       <Panel>
-        <PanelHeader>Why three separate representations?</PanelHeader>
+        <PanelHeader>Why not fewer?</PanelHeader>
         <InfoBox>
-          Why not just one vector per word? If the same vector had to serve as
-          the search term <strong>and</strong> the thing being searched{' '}
-          <strong>and</strong> the information delivered, these conflicting demands
-          would compromise all three functions.
+          <strong>Why not one vector?</strong> If a single vector had to serve as
+          the search term, the thing being searched, and the information delivered,
+          these conflicting demands would compromise all three functions. The Query
+          for &ldquo;faulty&rdquo; needs to encode &ldquo;what property am I
+          describing?&rdquo; &mdash; but the Value for &ldquo;faulty&rdquo; needs to
+          carry the information &ldquo;I mean defective/broken.&rdquo; These are
+          different things, and one vector can&rsquo;t optimize for both.
         </InfoBox>
-        <InfoBox html={`Consider what each role optimizes for:<br/><br/>
-          <strong>Query</strong> needs to encode <em>what's missing</em> — what this word needs from context.<br/><br/>
-          <strong>Key</strong> needs to encode <em>what's available</em> — what this word offers to others.<br/><br/>
-          <strong>Value</strong> needs to encode <em>rich content</em> — the full information payload.<br/><br/>
-          These are three different optimization targets. A single vector forced to serve all three roles would be a mediocre compromise at each one.`}
-        />
         <InfoBox>
-          Three is the minimum for clean separation of concerns. You need a way
-          to search (Query), a way to be found (Key), and a way to deliver
-          information (Value). Fewer than three, and at least two of these jobs
-          collide. This isn&rsquo;t an arbitrary design choice &mdash; it&rsquo;s
-          the minimum architecture that lets searching, matching, and
-          information transfer each be optimized independently.
+          <strong>Why not two?</strong> You might think: one vector for
+          searching/matching (combining Q and K) and one for carrying information
+          (V). But the search has two sides &mdash; what you&rsquo;re looking for
+          and what you&rsquo;re advertising are fundamentally asymmetric.
+          &ldquo;faulty&rdquo; asks &ldquo;what am I describing?&rdquo; while
+          &ldquo;controller&rdquo; answers &ldquo;I&rsquo;m something that can be
+          described.&rdquo; These aren&rsquo;t the same question, so they need
+          separate vectors.
+        </InfoBox>
+      </Panel>
+
+      <Panel className="mt-4">
+        <PanelHeader>Why not more?</PanelHeader>
+        <InfoBox>
+          <strong>Why not four or five?</strong> You could imagine splitting the
+          Value into &ldquo;semantic content&rdquo; and &ldquo;syntactic
+          role&rdquo; &mdash; two separate payloads. Or adding a &ldquo;position&rdquo;
+          vector separate from the Key. In principle, more specialization could
+          help. But each additional vector multiplies the weight matrices needed,
+          the computation per token, and &mdash; critically &mdash; the cache
+          storage. Two of these three vectors (K and V) must be stored for every
+          token, at every layer. Adding a fourth cached vector would increase
+          memory by 50%.
+        </InfoBox>
+        <InfoBox>
+          Three turns out to be the sweet spot: the minimum number that cleanly
+          separates searching (Query), being found (Key), and delivering
+          information (Value) &mdash; without incurring unnecessary memory cost.
+          This isn&rsquo;t an arbitrary choice. It&rsquo;s the simplest
+          architecture where each function can be optimized independently.
         </InfoBox>
       </Panel>
     </div>
