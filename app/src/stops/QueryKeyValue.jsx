@@ -314,8 +314,8 @@ function WhyThreePage() {
           help. But each additional vector multiplies the weight matrices needed,
           the computation per token, and &mdash; critically &mdash; the cache
           storage. Two of these three vectors (K and V) must be stored for every
-          token, at every layer. Adding a fourth cached vector would increase
-          memory by 50%.
+          token, at every layer. Adding a fourth vector &mdash; a third cached
+          vector alongside K and V &mdash; would increase cache memory by 50%.
         </InfoBox>
         <InfoBox>
           Three turns out to be the sweet spot: the minimum number that cleanly
