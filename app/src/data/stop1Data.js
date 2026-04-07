@@ -50,24 +50,24 @@ export const CALLOUTS = {
 };
 
 // Per-word narration during RNN processing
-// Each narration must reference: (a) the mechanical action (W, U combining),
-// (b) what changed in the hidden state, (c) why it matters for the story.
+// Written as natural storytelling prose — the visuals (update pill, chain, bars)
+// show the mechanics; the narration helps the reader understand what they're seeing.
 export const WORD_NARRATIONS = [
-  'W and U combine the zero vector with "The" to produce h\u2081. The hidden state is fresh — "expecting a noun" at 95%. The model knows a specific thing is coming, but has no content yet.',
-  'W carries h\u2081 forward while U absorbs "server." The hidden state now holds "the server" at full strength: 100%. This is the subject of our sentence.',
-  'W and U rewrite the state again: "server crash event" enters at 95%, but "the server" drops from 100% to 80%. The state must hold both the subject AND the event — space is already getting tight.',
-  'W carries the prior state forward while U mixes in "because." The sentence pivots toward explanation. "Causal explanation" enters at 90%, but "the server" drops further to 60% — it\u2019s fading to make room.',
-  'W and U process the second "the," starting a new noun phrase. "The server" is now at 40% — half gone after just two words. Every new word forces the fixed-size state to compress what came before.',
-  'W carries the decaying state forward while U absorbs "storage." A new hardware entity begins forming at 95%. "The server" drops to 28%. The old subject is being overwritten by the new one.',
-  'W and U produce h\u2087: "storage controller" enters at 100% — this is the critical phrase that "faulty" will need 8 words from now. But "the server" is already down to 20%. Watch what happens next.',
-  'W carries h\u2087 forward while U absorbs "that," opening a relative clause at 90%. "Storage controller" drops to 78% — it lost over a fifth of its strength in a single step.',
-  'Another "the" — W and U rewrite the state again. "Storage controller" falls to 58%. It\u2019s lost nearly half its strength in just two words since its peak.',
-  'W and U absorb "technician" — a new actor enters at 95%, pushing everything else down. "Storage controller" drops to 40%. The new concept is crowding out the old one because the state has a fixed capacity.',
-  'W carries forward while U absorbs "replaced." The replacement action enters at 90%, but "storage controller" falls below 28%. It\u2019s now less than a third of what it was at its peak.',
-  'W and U process "last" — a temporal modifier at 85%. "Storage controller" drops to 20%. Each new word forces W to compress the existing state further to make room.',
-  'W and U produce h\u2081\u2083: "last week" completes at 90%. "Storage controller" is at 14% — down from 100% just six words ago. The fixed-size state simply cannot preserve information across this distance.',
-  'W carries forward while U absorbs "was" — a linking verb. "Storage controller" drops to 9%. It\u2019s nearly gone, buried under layers of more recent information.',
-  'The critical moment. W and U produce h\u2081\u2085: "faulty" enters at 95%. But what is faulty? "Storage controller" sits at just 6% — the weakest signal in the entire state. This is the telephone problem.',
+  'The first word enters the model. The RNN combines its blank starting state with the embedding for "The" to produce a new hidden state. Right now, that state mostly encodes one thing: a noun is coming next.',
+  '"server" arrives and the RNN rewrites the hidden state. The dominant concept is now "the server" at full strength. The model has identified a hardware entity \u2014 the subject of whatever comes next.',
+  'The hidden state absorbs "crashed" and now holds two things: a server crash event (the new information) and "the server" as its subject. But "the server" has already dropped from 100% to 80% \u2014 the state had to make room for the event.',
+  '"because" signals that an explanation is coming. The state shifts to hold this causal framing, and "the server" drops further to 60%. Every new word forces older information to compress.',
+  'A second "the" begins a new noun phrase. "The server" \u2014 the original subject from just three words ago \u2014 is now at 40%. Half its original strength, gone in three steps.',
+  'A new hardware concept starts forming. "storage" enters strongly at 95%, and "the server" drops to 28%. The old subject is being steadily overwritten by the new one.',
+  'The phrase completes: "storage controller" enters the hidden state at 100%. This is the concept that "faulty" will need to find, eight words from now. But "the server" is already down to 20%. Watch what happens to "storage controller" from here.',
+  '"that" opens a relative clause. It seems harmless \u2014 just a grammatical connector \u2014 but "storage controller" has already dropped to 78%. It lost over a fifth of its strength in a single step.',
+  'Another "the." "Storage controller" falls to 58% \u2014 nearly half its peak strength, gone in just two words.',
+  'A new actor enters the scene: "the technician" arrives at 95%. This pushes "storage controller" down to 40%. The fixed-size state can only hold so much, and the new concept is crowding out the old one.',
+  'The action verb "replaced" brings new information about what the technician did. "Storage controller" drops below 28% \u2014 less than a third of its peak.',
+  'A temporal modifier. Each new word forces the state to compress further. "Storage controller" is at 20%, down from 100% just six words ago.',
+  '"last week" completes as a time reference. "Storage controller" is now at 14%. The fixed-size state simply cannot preserve information across this many steps.',
+  'A linking verb \u2014 the sentence is about to deliver its conclusion. "Storage controller" drops to 9%. It\u2019s nearly gone, buried under layers of more recent information.',
+  'This is the critical moment. "faulty" enters the hidden state \u2014 but faulty what? The model needs to connect this word back to "storage controller." After eight words of intervening text, "storage controller" has decayed to just 6% \u2014 the weakest signal in the entire state. The correct answer is barely a whisper. This is the telephone problem.',
 ];
 
 // Attention weights from "faulty" for the reveal
