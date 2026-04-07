@@ -218,10 +218,11 @@ function KeyPage() {
       <Panel>
         <PanelHeader>Key: &ldquo;What do I contain?&rdquo;</PanelHeader>
         <InfoBox>
-          The Key vector is created by multiplying the embedding by{' '}
-          <strong>W<sub>K</sub></strong>. It encodes what information this word
-          &ldquo;advertises&rdquo; to other words &mdash; a summary of what it
-          offers to any word that might be looking for it.
+          The Key vector is created by multiplying the embedding for
+          &ldquo;controller&rdquo; by{' '}
+          <strong>W<sub>K</sub></strong>. It encodes what information the word
+          &ldquo;controller&rdquo; &ldquo;advertises&rdquo; to other words &mdash;
+          a summary of what it offers to any word that might be looking for it.
         </InfoBox>
         <InfoBox>
           The Key for &ldquo;controller&rdquo; would advertise something
