@@ -159,10 +159,10 @@ function ThreeRolesPage() {
           relevant books, then read their contents.
         </InfoBox>
         <InfoBox>
-          Every word simultaneously plays all three roles. &ldquo;Storage
-          controller&rdquo; has its own Query (for when it needs information from
-          other words), its own Key (so other words can find it), and its own
-          Value (the information it delivers when found).
+          Every word simultaneously plays all three roles. &ldquo;faulty&rdquo;
+          has its own Query (for when it needs information from other words),
+          its own Key (so other words can find it), and its own Value (the
+          information it delivers when found).
         </InfoBox>
       </Panel>
     </div>
