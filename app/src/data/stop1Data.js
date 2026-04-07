@@ -50,22 +50,24 @@ export const CALLOUTS = {
 };
 
 // Per-word narration during RNN processing
+// Each narration must reference: (a) the mechanical action (W, U combining),
+// (b) what changed in the hidden state, (c) why it matters for the story.
 export const WORD_NARRATIONS = [
-  'The hidden state is fresh. "Expecting a noun" — the model knows a specific thing is coming.',
-  'The RNN reads "server" and combines it with h\u2081 via W and U. "The server" at full strength: 100%.',
-  'The RNN reads "crashed." "The server" drops 100%→80%. State must hold subject AND event.',
-  '"because" pivots toward explanation. "The server" at 60%.',
-  'Second "the" starts a new noun phrase. "The server" at 40% — half gone.',
-  'New hardware entity forming. "The server" at 28%.',
-  'Phrase complete: "storage controller" at 100%. "The server" down to 20%.',
-  'Relative clause opens. "Storage controller" drops to 78% — one word later.',
-  '"the" again. "Storage controller" at 58%. Nearly half gone in two words.',
-  'New actor enters at 95%. "Storage controller" drops to 40%.',
-  'Action verb. "Storage controller" below 30%.',
-  'Time modifier. "Storage controller" at 20%.',
-  'Time complete. "Storage controller" at 14%. From 100% in six words.',
-  'Linking verb. "Storage controller" at 9%. Nearly gone.',
-  'The critical moment. "Storage controller" at 6%. This is the telephone problem.',
+  'W and U combine the zero vector with "The" to produce h\u2081. The hidden state is fresh — "expecting a noun" at 95%. The model knows a specific thing is coming, but has no content yet.',
+  'W carries h\u2081 forward while U absorbs "server." The hidden state now holds "the server" at full strength: 100%. This is the subject of our sentence.',
+  'W and U rewrite the state again: "server crash event" enters at 95%, but "the server" drops from 100% to 80%. The state must hold both the subject AND the event — space is already getting tight.',
+  'W carries the prior state forward while U mixes in "because." The sentence pivots toward explanation. "Causal explanation" enters at 90%, but "the server" drops further to 60% — it\u2019s fading to make room.',
+  'W and U process the second "the," starting a new noun phrase. "The server" is now at 40% — half gone after just two words. Every new word forces the fixed-size state to compress what came before.',
+  'W carries the decaying state forward while U absorbs "storage." A new hardware entity begins forming at 95%. "The server" drops to 28%. The old subject is being overwritten by the new one.',
+  'W and U produce h\u2087: "storage controller" enters at 100% — this is the critical phrase that "faulty" will need 8 words from now. But "the server" is already down to 20%. Watch what happens next.',
+  'W carries h\u2087 forward while U absorbs "that," opening a relative clause at 90%. "Storage controller" drops to 78% — it lost over a fifth of its strength in a single step.',
+  'Another "the" — W and U rewrite the state again. "Storage controller" falls to 58%. It\u2019s lost nearly half its strength in just two words since its peak.',
+  'W and U absorb "technician" — a new actor enters at 95%, pushing everything else down. "Storage controller" drops to 40%. The new concept is crowding out the old one because the state has a fixed capacity.',
+  'W carries forward while U absorbs "replaced." The replacement action enters at 90%, but "storage controller" falls below 28%. It\u2019s now less than a third of what it was at its peak.',
+  'W and U process "last" — a temporal modifier at 85%. "Storage controller" drops to 20%. Each new word forces W to compress the existing state further to make room.',
+  'W and U produce h\u2081\u2083: "last week" completes at 90%. "Storage controller" is at 14% — down from 100% just six words ago. The fixed-size state simply cannot preserve information across this distance.',
+  'W carries forward while U absorbs "was" — a linking verb. "Storage controller" drops to 9%. It\u2019s nearly gone, buried under layers of more recent information.',
+  'The critical moment. W and U produce h\u2081\u2085: "faulty" enters at 95%. But what is faulty? "Storage controller" sits at just 6% — the weakest signal in the entire state. This is the telephone problem.',
 ];
 
 // Attention weights from "faulty" for the reveal

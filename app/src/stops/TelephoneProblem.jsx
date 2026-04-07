@@ -270,7 +270,8 @@ function SetupPage() {
       <p>
         But what if you could only read{' '}
         <strong className="text-[var(--color-text)]">one word at a time</strong>,
-        carrying everything in a fixed-size block of memory?
+        carrying everything in a fixed-size block of memory? Like a game of
+        telephone, the message degrades as it passes through each step.
       </p>
     </div>
   );
@@ -308,44 +309,56 @@ function Mech1Page() {
 
 function Mech2Page() {
   return (
-    <div>
-      <Panel className="mb-4">
-        <PanelHeader>The update rule</PanelHeader>
-        <div className="p-4">
-          <div className="font-mono text-[13px] px-3.5 py-2.5 bg-[var(--color-surface-muted)] rounded-md text-[var(--color-text)] text-center">
-            h<sub>new</sub> = f( <strong>W</strong> × h<sub>old</sub> +{' '}
-            <strong>U</strong> × word )
+    <Panel>
+      <PanelHeader>The Update Rule</PanelHeader>
+
+      {/* 1. Explain the two inputs first */}
+      <InfoBox html={`At each step, the RNN takes <strong>two inputs</strong> and combines them:<br/><br/><strong>h<sub>old</sub></strong> — the previous hidden state (what the model remembers so far)<br/><br/><strong>word</strong> — the current word, represented as an <strong>embedding</strong> — a vector that captures the word's meaning. Each word in the vocabulary has its own unique embedding, learned during training.`} />
+
+      {/* 2. Explain weight matrices with WHY + consequence */}
+      <InfoBox html={`These two inputs are transformed by two separate <strong>weight matrices</strong> — grids of numbers that control how information is mixed:<br/><br/>• <strong>W</strong> controls how the old hidden state is carried forward — what to remember<br/>• <strong>U</strong> controls how the new word is incorporated — what to absorb<br/><br/>They're separate because these are fundamentally different jobs. W decides how much of the old context survives; U decides how the new word gets mixed in. If you used one matrix for both, the model couldn't independently balance remembering vs. reading.`} />
+
+      {/* 3. Formula — NOW a summary the user can parse */}
+      <div className="px-4 py-4 border-b border-[var(--color-border-light)]">
+        <div className="text-xs text-[var(--color-text-muted)] mb-2">Putting it together as a formula:</div>
+        <div className="font-mono text-[14px] px-4 py-3 bg-[var(--color-surface-muted)] rounded-md text-[var(--color-text)] text-center">
+          h<sub>new</sub> = f( <strong>W</strong> × h<sub>old</sub> +{' '}
+          <strong>U</strong> × word )
+        </div>
+      </div>
+
+      {/* 4. Visual diagram — reinforcement, not introduction */}
+      <div className="px-4 py-4 border-b border-[var(--color-border-light)]">
+        <div className="text-xs text-[var(--color-text-muted)] mb-2">Visually, for the first word "The":</div>
+        <div className="flex items-center justify-center gap-2 flex-wrap">
+          <div className="px-2.5 py-1.5 rounded-md text-xs text-center leading-snug bg-[var(--color-surface-muted)] border border-[var(--color-border-light)] text-[var(--color-text-secondary)] min-w-[80px]">
+            <div>h<sub>old</sub></div>
+            <div className="text-[10px] text-[var(--color-text-muted)] mt-0.5">previous state<br />(zeros — first word)</div>
           </div>
-          <div className="flex items-center justify-center gap-2 my-4 flex-wrap">
-            <div className="px-2.5 py-1.5 rounded-md text-xs text-center leading-snug bg-[var(--color-surface-muted)] border border-[var(--color-border-light)] text-[var(--color-text-secondary)] min-w-[80px]">
-              <div>h<sub>old</sub></div>
-              <div className="text-[10px] text-[var(--color-text-muted)] mt-0.5">previous state<br />(zeros — first word)</div>
-            </div>
-            <span className="text-sm text-[var(--color-text-muted)]">+</span>
-            <div className="px-2.5 py-1.5 rounded-md text-xs text-center leading-snug bg-[var(--color-primary-bg)] border border-[var(--color-primary)] text-[var(--color-primary-text)] min-w-[80px]">
-              <div>"The"</div>
-              <div className="text-[10px] mt-0.5 opacity-70">current word<br />(as an embedding)</div>
-            </div>
-            <span className="text-sm text-[var(--color-text-muted)]">→</span>
-            <div className="px-2.5 py-1.5 rounded-md text-xs text-center leading-snug bg-[var(--color-surface)] border-[1.5px] border-[var(--color-border)] text-[var(--color-text)] font-medium min-w-[90px]">
-              <div>W, U</div>
-              <div className="text-[10px] text-[var(--color-text-muted)] mt-0.5 font-normal">weight matrices</div>
-            </div>
-            <span className="text-sm text-[var(--color-text-muted)]">→</span>
-            <div className="px-2.5 py-1.5 rounded-md text-xs text-center leading-snug bg-[var(--color-teal-bg)] border border-[var(--color-teal)] text-[var(--color-teal-text)] min-w-[80px]">
-              <div>h<sub>1</sub></div>
-              <div className="text-[10px] mt-0.5 opacity-70">new hidden state</div>
-            </div>
+          <span className="text-sm text-[var(--color-text-muted)]">+</span>
+          <div className="px-2.5 py-1.5 rounded-md text-xs text-center leading-snug bg-[var(--color-primary-bg)] border border-[var(--color-primary)] text-[var(--color-primary-text)] min-w-[80px]">
+            <div>"The"</div>
+            <div className="text-[10px] mt-0.5 opacity-70">current word<br />(as an embedding)</div>
+          </div>
+          <span className="text-sm text-[var(--color-text-muted)]">→</span>
+          <div className="px-2.5 py-1.5 rounded-md text-xs text-center leading-snug bg-[var(--color-surface)] border-[1.5px] border-[var(--color-border)] text-[var(--color-text)] font-medium min-w-[90px]">
+            <div>W, U</div>
+            <div className="text-[10px] text-[var(--color-text-muted)] mt-0.5 font-normal">weight matrices</div>
+          </div>
+          <span className="text-sm text-[var(--color-text-muted)]">→</span>
+          <div className="px-2.5 py-1.5 rounded-md text-xs text-center leading-snug bg-[var(--color-teal-bg)] border border-[var(--color-teal)] text-[var(--color-teal-text)] min-w-[80px]">
+            <div>h<sub>1</sub></div>
+            <div className="text-[10px] mt-0.5 opacity-70">new hidden state</div>
           </div>
         </div>
-      </Panel>
-      <Panel>
-        <PanelHeader>Key concepts</PanelHeader>
-        <InfoBox html={`The current word is first converted to an <strong>embedding</strong> — a vector that captures the word's meaning. Each word in the vocabulary has its own unique embedding, learned during training.`} />
-        <InfoBox html={`Two separate <strong>weight matrices</strong> — grids of numbers — control how information mixes:<br/>• <strong>W</strong> controls how the old hidden state is carried forward — what to remember<br/>• <strong>U</strong> controls how the new word is incorporated — what to absorb<br/><br/>They're separate because these are different jobs. W decides how much old context survives; U decides how the new word gets mixed in.`} />
-        <InfoBox html={`<strong>Where do W and U come from?</strong> They start as random numbers. During <strong>training</strong>, the model reads billions of sentences, predicts the next word, and when wrong, the error flows backward — <strong>backpropagation</strong> — nudging W and U to improve. After training, W and U encode the model's learned knowledge.<br/><br/><strong>Do they change during use?</strong> No. After training we switch to <strong>inference</strong> — W and U are frozen forever. Only the hidden state changes.`} />
-      </Panel>
-    </div>
+      </div>
+
+      {/* 5. Training & inference lifecycle */}
+      <InfoBox html={`<strong>Where do W and U come from?</strong> They start as random numbers before training begins. During <strong>training</strong>, the model reads billions of sentences, tries to predict the next word, and every time it's wrong, the error signal flows backward through the network — a process called <strong>backpropagation</strong> — nudging W and U slightly to make better predictions. After billions of these adjustments, W and U encode the model's learned knowledge of language.<br/><br/><strong>Do W and U change when we use the model?</strong> No. After training, we switch to <strong>inference</strong> — using the model to process new text. During inference, W and U are frozen forever. The same W and U process every sentence. Only the hidden state changes as words flow through.`} />
+
+      {/* 6. The constraint — closing */}
+      <InfoBox html={`<strong>The critical constraint:</strong> h<sub>new</sub> is the <strong>same size</strong> as h<sub>old</sub>. No matter how much information accumulates — subjects, verbs, relationships, context — it must all fit in the same fixed number of values. When new information enters, something old must be compressed or lost. This is the bottleneck we're about to watch in action.`} />
+    </Panel>
   );
 }
 
@@ -360,7 +373,7 @@ function AnimationPage({ animStep, isDark }) {
       {wordIndex === 0 && (
         <Callout
           type="note"
-          message={`<strong>A note on what follows:</strong> The real hidden state is just numbers — no labels. What we show below is an interpretive approximation: our translation of what those numbers collectively encode. The decay pattern is real and well-documented in RNNs.`}
+          message={`<strong>A note about what you're seeing:</strong> The real hidden state is just numbers — no labels, no compartments. What we're showing is an interpretive approximation: our best translation of what those numbers collectively encode. Think of it like an fMRI scan — useful for intuition, but the actual encoding is distributed. The decay pattern, however, is real and well-documented.`}
         />
       )}
 
