@@ -333,7 +333,7 @@ function CacheRevealPage() {
   return (
     <div>
       <Panel>
-        <PanelHeader>The insight that drives the rest of this course</PanelHeader>
+        <PanelHeader>Q is ephemeral. K and V are persistent.</PanelHeader>
         <InfoBox>
           <strong>Query vectors are ephemeral.</strong> Each word computes its Q,
           uses it once for matching against every existing Key (including its
@@ -347,16 +347,14 @@ function CacheRevealPage() {
           against them and retrieve their information. When the model processes
           word 15 (&ldquo;faulty&rdquo;), it needs the Key and Value vectors for{' '}
           <strong>all 14 previous words</strong> to compute attention. Those K and
-          V vectors must be stored somewhere.
-        </InfoBox>
-        <InfoBox>
-          That storage is the <strong>KV cache</strong>.
+          V vectors must be stored somewhere. That storage is the{' '}
+          <strong>KV cache</strong>.
         </InfoBox>
       </Panel>
 
       <Callout
         type="note"
-        message={`<strong>This is why it's called the KV cache — not QKV cache.</strong> Q is computed fresh for each new word and then thrown away. K and V are computed once and cached, because every subsequent word will need them. The asymmetry between Q (ephemeral) and K/V (persistent) is the entire reason the cache exists — and the entire reason it grows with every word the model processes.`}
+        message={`<strong>This is why it's called the KV cache — not QKV cache.</strong> Q is computed fresh for each new word and then thrown away. K and V are computed once and cached, because every subsequent word will need them.`}
       />
 
       <Panel className="mt-4">
@@ -379,12 +377,32 @@ function CacheRevealPage() {
               </div>
             ))}
           </div>
-          <div className="mt-3 text-xs text-[var(--color-text-secondary)]">
-            Every word&rsquo;s Key and Value vectors are stored in the cache. When
-            a new word arrives, it computes a fresh Query and matches it against
-            all cached Keys to find relevant words, then retrieves their Values.
-          </div>
         </div>
+      </Panel>
+
+      <Panel className="mt-4">
+        <PanelHeader>Why this matters at scale</PanelHeader>
+        <InfoBox>
+          Our 15-word sentence stores 15 pairs of K and V vectors &mdash; trivial.
+          But a real conversation might be 8,000 tokens, and the model has not one
+          but <strong>80 layers</strong>, each with its own set of K and V for every
+          token. The cache grows linearly with conversation length: the longer you
+          talk, the more memory it consumes.
+        </InfoBox>
+        <InfoBox>
+          And every concurrent user needs their own, separate KV cache. The
+          model&rsquo;s weight matrices (W<sub>Q</sub>, W<sub>K</sub>,
+          W<sub>V</sub>) are shared across all users &mdash; they&rsquo;re the
+          same frozen knowledge. But the KV cache is <strong>per-conversation
+          state</strong>. Ten users chatting simultaneously means ten separate
+          caches growing in GPU memory.
+        </InfoBox>
+        <InfoBox>
+          This is the central tension of LLM inference: the KV cache is what makes
+          generation fast (avoiding recomputation), but it&rsquo;s also what makes
+          serving expensive (consuming scarce GPU memory). The rest of this course
+          explores both sides of that tradeoff.
+        </InfoBox>
       </Panel>
     </div>
   );
