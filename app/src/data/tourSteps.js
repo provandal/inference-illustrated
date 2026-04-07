@@ -69,5 +69,34 @@ export const tourSteps = [
     act: 1,
     stopNumber: 7,
   },
-  // Stops 8-10 will be added as they're built
+  {
+    id: 'multiple-heads',
+    shortTitle: 'Multiple Heads',
+    title: 'Stop 8: Why Multiple Heads?',
+    narration:
+      'One attention head learns one pattern. Language has many simultaneous relationships \u2014 so we run many heads in parallel.',
+    component: 'MultipleHeads',
+    act: 1,
+    stopNumber: 8,
+  },
+  {
+    id: 'layers-on-layers',
+    shortTitle: 'Layers on Layers',
+    title: 'Stop 9: The Stack \u2014 Layers on Layers',
+    narration:
+      'Each layer refines the representation further. 80 layers deep, with the KV cache growing at every one.',
+    component: 'LayersOnLayers',
+    act: 1,
+    stopNumber: 9,
+  },
+  {
+    id: 'the-bridge',
+    shortTitle: 'The Bridge',
+    title: 'Stop 10: And Now, The Cache \u2014 The Bridge',
+    narration:
+      'The KV cache makes inference possible. But it\u2019s also what makes inference expensive at scale.',
+    component: 'TheBridge',
+    act: 1,
+    stopNumber: 10,
+  },
 ];

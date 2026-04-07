@@ -252,7 +252,7 @@ function ExplorePage({ isDark }) {
         </PanelHeader>
         <InteractiveSentence selectedWord={selectedWord} onSelect={setSelectedWord} />
 
-        {selectedWord !== null && <AttentionLines selectedWord={selectedWord} />}
+        {/* SVG lines removed — bar chart + narration below are clearer */}
       </Panel>
 
       {data && (

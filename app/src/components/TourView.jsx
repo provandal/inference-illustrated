@@ -8,6 +8,9 @@ import LearningAttention from '../stops/LearningAttention';
 import DotProduct from '../stops/DotProduct';
 import SoftmaxScaling from '../stops/SoftmaxScaling';
 import BlendingValues from '../stops/BlendingValues';
+import MultipleHeads from '../stops/MultipleHeads';
+import LayersOnLayers from '../stops/LayersOnLayers';
+import TheBridge from '../stops/TheBridge';
 
 const STOP_COMPONENTS = {
   TelephoneProblem,
@@ -17,6 +20,9 @@ const STOP_COMPONENTS = {
   DotProduct,
   SoftmaxScaling,
   BlendingValues,
+  MultipleHeads,
+  LayersOnLayers,
+  TheBridge,
 };
 
 export default function TourView() {
