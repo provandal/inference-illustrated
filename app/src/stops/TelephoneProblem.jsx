@@ -265,13 +265,13 @@ function SetupPage() {
         <strong className="border-b-[2.5px] border-b-[var(--color-primary)] pb-px text-[var(--color-text)]">
           faulty
         </strong>{' '}
-        (word 15) describes. You can parse this instantly.
+        (word 15) describes. As humans, we can parse this instantly.
       </p>
       <p>
         But what if you could only read{' '}
-        <strong className="text-[var(--color-text)]">one word at a time</strong>,
-        carrying everything in a fixed-size block of memory? Like a game of
-        telephone, the message degrades as it passes through each step.
+        <strong className="text-[var(--color-text)]">one word at a time</strong>{' '}
+        and had to carry everything in a single fixed-size block of memory? Like
+        a game of telephone, the message degrades as it passes through each step.
       </p>
     </div>
   );
@@ -283,14 +283,9 @@ function Mech1Page() {
       <PanelHeader>How the RNN works</PanelHeader>
       <InfoBox>
         The first word, <strong>"The"</strong>, is about to enter the model.
-        Before we process it, let's understand the machinery.
-      </InfoBox>
-      <InfoBox>
-        We're going to process this sentence using an{' '}
-        <strong>RNN (Recurrent Neural Network)</strong> — the dominant
-        architecture before transformers. An RNN reads text one word at a time,
-        left to right, and carries its understanding forward through a{' '}
-        <strong>hidden state</strong>.
+        Before we process it, let's understand the machinery. The RNN reads
+        text one word at a time, left to right, and carries its understanding
+        forward through a <strong>hidden state</strong>.
       </InfoBox>
       <InfoBox>
         The hidden state is a <strong>vector</strong> — an ordered list of
