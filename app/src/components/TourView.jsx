@@ -2,9 +2,15 @@ import { useEffect } from 'react';
 import { useStore } from '../store';
 import { tourSteps } from '../data/tourSteps';
 import TelephoneProblem from '../stops/TelephoneProblem';
+import EveryTokenLooks from '../stops/EveryTokenLooks';
+import QueryKeyValue from '../stops/QueryKeyValue';
+import LearningAttention from '../stops/LearningAttention';
 
 const STOP_COMPONENTS = {
   TelephoneProblem,
+  EveryTokenLooks,
+  QueryKeyValue,
+  LearningAttention,
 };
 
 export default function TourView() {
