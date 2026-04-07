@@ -54,7 +54,7 @@ export const CALLOUTS = {
 // show the mechanics; the narration helps the reader understand what they're seeing.
 export const WORD_NARRATIONS = [
   'The first word enters the model. The RNN combines its blank starting state with the embedding for "The" to produce a new hidden state. Right now, that state mostly encodes one thing: a noun is coming next.',
-  '"server" arrives and the RNN rewrites the hidden state. The dominant concept is now "the server" at full strength. The model has identified a hardware entity \u2014 the subject of whatever comes next.',
+  '"server" arrives and the RNN rewrites the hidden state. As shown in the hidden state bar graph below, the dominant concept is now "the server" at full strength. The model has identified a hardware entity \u2014 the subject of whatever comes next.',
   'The hidden state absorbs "crashed" and now holds two things: a server crash event (the new information) and "the server" as its subject. But "the server" has already dropped from 100% to 80% \u2014 the state had to make room for the event.',
   '"because" signals that an explanation is coming. The state shifts to hold this causal framing, and "the server" drops further to 60%. Every new word forces older information to compress.',
   'A second "the" begins a new noun phrase. "The server" \u2014 the original subject from just three words ago \u2014 is now at 40%. Half its original strength, gone in three steps.',

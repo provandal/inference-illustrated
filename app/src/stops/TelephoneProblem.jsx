@@ -368,7 +368,7 @@ function AnimationPage({ animStep, isDark }) {
       {wordIndex === 0 && (
         <Callout
           type="note"
-          message={`<strong>A note about what you're seeing:</strong> The real hidden state is just numbers — no labels, no compartments. What we're showing is an interpretive approximation: our best translation of what those numbers collectively encode. Think of it like an fMRI scan — useful for intuition, but the actual encoding is distributed. The decay pattern, however, is real and well-documented.`}
+          message={`<strong>A note about what you're seeing below:</strong> The real hidden state is just numbers — no labels, no compartments. What we're showing is an interpretive approximation: our best translation of what those numbers collectively encode. Think of it like an fMRI scan — useful for intuition, but the actual encoding is distributed. The decay pattern, however, is real and well-documented.`}
         />
       )}
 
