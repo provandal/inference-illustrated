@@ -245,7 +245,7 @@ function AttentionView({ isDark }) {
       </Panel>
       <Callout
         type="good"
-        message={`<strong>"storage controller" gets 48%.</strong> The model computes a <strong>Query</strong> vector for "faulty" (what am I looking for?) and compares it against a <strong>Key</strong> vector stored for every word (what do I contain?). The information comes from each word's <strong>Value</strong> vector (what do I carry?). Those Key and Value vectors must be <strong>stored</strong> for every word — that storage is the <strong>KV cache</strong>. How Q, K, V work is our next stop.`}
+        message={`<strong>"storage controller" gets 48%.</strong> The model does this by computing a <strong>Query</strong> vector for "faulty" (what am I looking for?) and compares it against a <strong>Key</strong> vector stored for every word (what do I contain?). The information comes from each word's <strong>Value</strong> vector (what do I carry?). Those Key and Value vectors must be <strong>stored</strong> for every word — that storage is the <strong>KV cache</strong>. How Q, K, V work is our next stop.`}
       />
     </div>
   );
