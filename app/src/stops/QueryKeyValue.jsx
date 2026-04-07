@@ -116,7 +116,8 @@ function ThreeRolesPage() {
       <div className="text-sm text-[var(--color-text-secondary)] leading-relaxed space-y-3 mt-4 mb-5">
         <p>
           Each word gets <strong className="text-[var(--color-text)]">three separate vector
-          representations</strong>, created by multiplying its embedding by three
+          representations</strong>, created by multiplying its <strong className="text-[var(--color-text)]">embedding</strong> — the
+          vector that captures the word's meaning, from Stop 1 — by three
           different weight matrices. Each representation serves a distinct role:
         </p>
       </div>
