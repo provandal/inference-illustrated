@@ -465,10 +465,10 @@ export default function TelephoneProblem() {
     narration = `<strong>"${WORDS[animStep]}"</strong> — ${WORD_NARRATIONS[animStep]}`;
   } else if (page.id === 'done') {
     narration =
-      'The RNN processed all 15 words, rewriting its hidden state at every step. <strong>"storage controller"</strong> entered at 100% strength — but by the time <strong>"faulty"</strong> needed it, only <strong>6%</strong> remained.';
+      'The RNN processed all 15 words, rewriting its hidden state at every step. <strong>"storage controller"</strong> entered at 100% strength — but by the time <strong>"faulty"</strong> needed it, only <strong>6%</strong> remained. If the model had to answer "faulty <em>what</em>?" right now, the strongest candidate in the hidden state is "the technician" at 15% — not "storage controller." The chain of compressions didn\u2019t just weaken the right answer; it made the wrong answer more likely.';
   } else if (page.id === 'attention') {
     narration =
-      'What if <strong>"faulty"</strong> could look directly at every word in the sentence — no chain, no decay? That\u2019s the idea behind <strong>attention</strong>, and it\u2019s the reason transformers replaced RNNs.';
+      'The RNN\u2019s problem is structural: information must flow through every intermediate step, decaying at each one. What if there were a different approach — one where "faulty" could skip the chain entirely and check every word in the sentence directly? Instead of relying on whatever survived the hidden state, each word could ask: "which other words in this sentence are most relevant to me?" and retrieve their information at full strength. This is the core idea behind <strong>attention</strong>, and it\u2019s the reason transformers replaced RNNs.';
   }
 
   // Page navigation
