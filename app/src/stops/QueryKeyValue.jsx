@@ -208,7 +208,7 @@ function KeyPage() {
   return (
     <div>
       <MatrixDiagram
-        inputLabel={'"storage controller"'}
+        inputLabel={'"controller"'}
         matrixLabel={<>W<sub>K</sub></>}
         outputLabel="K"
         matrixColor="border-[var(--color-teal)] bg-[var(--color-teal-bg)] text-[var(--color-teal-text)]"
@@ -224,7 +224,7 @@ function KeyPage() {
           offers to any word that might be looking for it.
         </InfoBox>
         <InfoBox>
-          The Key for &ldquo;storage controller&rdquo; would advertise something
+          The Key for &ldquo;controller&rdquo; would advertise something
           like: <em>&ldquo;I am a hardware component that could have properties
           like working, broken, or faulty.&rdquo;</em> It&rsquo;s not the full
           information &mdash; just enough to be found by the right Query.
@@ -244,7 +244,7 @@ function ValuePage() {
   return (
     <div>
       <MatrixDiagram
-        inputLabel={'"storage controller"'}
+        inputLabel={'"controller"'}
         matrixLabel={<>W<sub>V</sub></>}
         outputLabel="V"
         matrixColor="border-[var(--color-amber)] bg-[var(--color-surface-muted)] text-[var(--color-text)]"
@@ -260,12 +260,11 @@ function ValuePage() {
         </InfoBox>
         <InfoBox>
           The Value is the payload &mdash; the content inside the book. Once
-          &ldquo;faulty&rdquo;&rsquo;s Query matches &ldquo;storage
-          controller&rdquo;&rsquo;s Key, the model retrieves &ldquo;storage
-          controller&rdquo;&rsquo;s <strong>Value</strong> vector. That Value
-          carries the rich semantic information: what a storage controller is,
-          that it&rsquo;s a hardware component, that it&rsquo;s the subject
-          being described.
+          &ldquo;faulty&rdquo;&rsquo;s Query matches &ldquo;controller&rdquo;&rsquo;s
+          Key, the model retrieves &ldquo;controller&rdquo;&rsquo;s{' '}
+          <strong>Value</strong> vector. That Value carries the rich semantic
+          information: what a controller is, that it&rsquo;s a hardware component,
+          that it&rsquo;s the subject being described.
         </InfoBox>
         <InfoBox>
           Notice the separation of concerns: the Key helped <em>find</em> this
@@ -407,7 +406,7 @@ const NARRATIONS = {
     'The <strong>Query</strong> vector encodes what a word is looking for. When "faulty" needs to figure out <em>what</em> is faulty, its Query captures that search intent \u2014 and it will be compared against every other word\u2019s Key to find the answer.',
 
   key:
-    'The <strong>Key</strong> vector encodes what a word advertises to other words. "Storage controller" needs a Key that says "I\u2019m a component that could have properties" \u2014 so that when "faulty"\u2019s Query comes looking, it gets a strong match.',
+    'The <strong>Key</strong> vector encodes what a word advertises to other words. "controller" needs a Key that says "I\u2019m a component that could have properties" \u2014 so that when "faulty"\u2019s Query comes looking, it gets a strong match.',
 
   value:
     'The <strong>Value</strong> vector carries the actual information payload. Once a Query matches a Key, the corresponding Value is what gets delivered. The Key gets you found; the Value is what you deliver.',
