@@ -521,16 +521,6 @@ export default function TelephoneProblem() {
         <SentenceRow pageId={page.id} animStep={animStep} />
       </Panel>
 
-      {/* Animation controls — only on animation page */}
-      {isAnimation && (
-        <AnimationControls
-          currentStep={animStep}
-          totalSteps={15}
-          onStepChange={setAnimStep}
-          stepLabel={`word ${animStep + 1} of 15: "${WORDS[animStep]}"`}
-        />
-      )}
-
       {/* Page content */}
       <div className="min-h-[200px]">
         {page.id === 'setup' && <SetupPage />}
@@ -540,6 +530,16 @@ export default function TelephoneProblem() {
         {page.id === 'done' && <DonePage isDark={isDark} />}
         {page.id === 'attention' && <AttentionView isDark={isDark} />}
       </div>
+
+      {/* Animation controls — below content, only on animation page */}
+      {isAnimation && (
+        <AnimationControls
+          currentStep={animStep}
+          totalSteps={15}
+          onStepChange={setAnimStep}
+          stepLabel={`word ${animStep + 1} of 15: "${WORDS[animStep]}"`}
+        />
+      )}
 
       {/* Page navigation — always at bottom */}
       <PageNav
