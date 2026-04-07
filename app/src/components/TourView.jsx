@@ -5,12 +5,18 @@ import TelephoneProblem from '../stops/TelephoneProblem';
 import EveryTokenLooks from '../stops/EveryTokenLooks';
 import QueryKeyValue from '../stops/QueryKeyValue';
 import LearningAttention from '../stops/LearningAttention';
+import DotProduct from '../stops/DotProduct';
+import SoftmaxScaling from '../stops/SoftmaxScaling';
+import BlendingValues from '../stops/BlendingValues';
 
 const STOP_COMPONENTS = {
   TelephoneProblem,
   EveryTokenLooks,
   QueryKeyValue,
   LearningAttention,
+  DotProduct,
+  SoftmaxScaling,
+  BlendingValues,
 };
 
 export default function TourView() {
