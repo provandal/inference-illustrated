@@ -336,9 +336,10 @@ function CacheRevealPage() {
         <PanelHeader>The insight that drives the rest of this course</PanelHeader>
         <InfoBox>
           <strong>Query vectors are ephemeral.</strong> Each word computes its Q,
-          uses it once for matching against every Key, and discards it. The Query
-          has done its job &mdash; it found the relevant words. There&rsquo;s no
-          reason to keep it around.
+          uses it once for matching against every existing Key (including its
+          own), and discards it. The Query has done its job &mdash; it found the
+          relevant words that came before. There&rsquo;s no reason to keep it
+          around.
         </InfoBox>
         <InfoBox>
           <strong>Key and Value vectors are persistent.</strong> Once computed,
