@@ -174,7 +174,7 @@ function QueryPage() {
     <div>
       <MatrixDiagram
         inputLabel={'"faulty"'}
-        matrixLabel="W_Q"
+        matrixLabel={<>W<sub>Q</sub></>}
         outputLabel="Q"
         matrixColor="border-[var(--color-primary)] bg-[var(--color-primary-bg)] text-[var(--color-primary-text)]"
         outputColor="border-[var(--color-primary)] bg-[var(--color-primary-bg)] text-[var(--color-primary-text)]"
@@ -209,7 +209,7 @@ function KeyPage() {
     <div>
       <MatrixDiagram
         inputLabel={'"storage controller"'}
-        matrixLabel="W_K"
+        matrixLabel={<>W<sub>K</sub></>}
         outputLabel="K"
         matrixColor="border-[var(--color-teal)] bg-[var(--color-teal-bg)] text-[var(--color-teal-text)]"
         outputColor="border-[var(--color-teal)] bg-[var(--color-teal-bg)] text-[var(--color-teal-text)]"
@@ -245,7 +245,7 @@ function ValuePage() {
     <div>
       <MatrixDiagram
         inputLabel={'"storage controller"'}
-        matrixLabel="W_V"
+        matrixLabel={<>W<sub>V</sub></>}
         outputLabel="V"
         matrixColor="border-[var(--color-amber)] bg-[var(--color-surface-muted)] text-[var(--color-text)]"
         outputColor="border-[var(--color-amber)] bg-[var(--color-surface-muted)] text-[var(--color-text)]"
