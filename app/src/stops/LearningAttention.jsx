@@ -9,16 +9,20 @@ import { useStore } from '../store';
 function IntroPage() {
   return (
     <Panel>
-      <PanelHeader>Where do the weight matrices come from?</PanelHeader>
+      <PanelHeader>The scale of the problem</PanelHeader>
       <InfoBox>
-        In Stop 3, we saw that every word gets three representations — <strong>Query</strong>,{' '}
-        <strong>Key</strong>, and <strong>Value</strong> — each created by multiplying the embedding
-        by a weight matrix. But where do those weight matrices come from?
+        For Llama-3 70B, W<sub>Q</sub> alone contains over <strong>67 million
+        numbers</strong>. W<sub>K</sub> and W<sub>V</sub> have millions more.
+        Across all layers and all matrices, the model has roughly{' '}
+        <strong>70 billion parameters</strong> &mdash; that&rsquo;s what the
+        &ldquo;70B&rdquo; in the name means.
       </InfoBox>
       <InfoBox>
-        W<sub>Q</sub> has millions of numbers. W<sub>K</sub> has millions more. W<sub>V</sub>{' '}
-        likewise. Who chose them? How did anyone decide that <em>this</em> particular grid of
-        numbers would make the model understand language?
+        No human chose these numbers. No human could. Instead, every weight
+        matrix starts as random noise and is shaped, over billions of training
+        examples, into the structured knowledge that makes the model work. This
+        stop traces that journey: from random initialization, through the
+        training loop, to the frozen weights that run during inference.
       </InfoBox>
     </Panel>
   );
