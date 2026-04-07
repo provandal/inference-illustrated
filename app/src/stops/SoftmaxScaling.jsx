@@ -41,26 +41,65 @@ function IntroPage() {
   return (
     <div>
       <Panel>
-        <PanelHeader>From raw scores to attention weights</PanelHeader>
+        <PanelHeader>Why raw scores cannot be attention weights</PanelHeader>
         <InfoBox>
-          In Stop 5, we computed dot-product scores between Query and Key vectors —
-          numbers measuring how relevant each word is to the current word. But these raw
-          scores can be any number, positive or negative. Before they can guide attention,
-          we need to convert them into something more useful: a set of weights that are all
-          non-negative and sum to 1. That's the job of <strong>softmax</strong>.
+          In Stop 5, we computed dot-product scores measuring how strongly
+          "faulty" matches each word. Here are the scores for five key words:
         </InfoBox>
+
+        {/* Show the actual raw scores */}
+        <div className="px-4 pb-2">
+          <div className="font-mono text-[13px] space-y-1 px-3 py-3 bg-[var(--color-surface-muted)] rounded-md">
+            <div className="flex items-center gap-2">
+              <span className="min-w-[80px] text-right text-[var(--color-text-secondary)]">controller</span>
+              <span className="font-medium text-[var(--color-text)]">1.26</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="min-w-[80px] text-right text-[var(--color-text-secondary)]">crashed</span>
+              <span className="text-[var(--color-text)]">0.83</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="min-w-[80px] text-right text-[var(--color-text-secondary)]">server</span>
+              <span className="text-[var(--color-text)]">0.52</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="min-w-[80px] text-right text-[var(--color-text-secondary)]">was</span>
+              <span className="text-[var(--color-text)]">0.15</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="min-w-[80px] text-right text-[var(--color-text-secondary)]">last</span>
+              <span className="text-[var(--color-text)]" style={{ color: 'var(--color-amber)' }}>&minus;0.45</span>
+            </div>
+          </div>
+        </div>
+
         <InfoBox>
-          Think of the raw scores as rough rankings — "controller scored 1.26, crashed
-          scored 0.83, last scored &minus;0.45." These numbers tell us the relative
-          ordering, but they aren't probabilities. We can't directly use them to blend
-          Value vectors, because we need weights that behave like percentages: all positive,
-          summing to 100%.
+          We cannot use these numbers directly as attention weights. Two problems
+          make that impossible:
         </InfoBox>
+
         <InfoBox>
-          Softmax is the standard function that converts any list of real numbers into a
-          valid probability distribution. It's used in virtually every transformer model,
-          and understanding it is essential for understanding how attention weights are
-          formed.
+          <strong>Problem 1: Negative values.</strong> The score for "last"
+          is &minus;0.45. A negative weight would mean "subtract information
+          from 'last'" — remove its contribution from the output. That does not
+          make sense. Attention weights need to say "use this much," not "undo
+          this much." Every weight must be zero or positive.
+        </InfoBox>
+
+        <InfoBox>
+          <strong>Problem 2: They do not sum to 1.</strong> These five scores
+          add up to 1.26 + 0.83 + 0.52 + 0.15 + (&minus;0.45)
+          = <strong>2.31</strong>. We need proportions that sum to 100% — a
+          proper probability distribution — so the weighted blend of Value
+          vectors (the information payloads computed back in Stop 3) produces
+          a meaningful average, not an inflated or deflated result.
+        </InfoBox>
+
+        <InfoBox>
+          We need a function that takes any list of numbers — positive, negative,
+          large, small — and converts them into valid probabilities: all positive,
+          summing to exactly 1. That function is <strong>softmax</strong>, and it
+          appears in every transformer model ever built.
         </InfoBox>
       </Panel>
     </div>
@@ -71,64 +110,92 @@ function WhySoftmaxPage() {
   return (
     <div>
       <Panel>
-        <PanelHeader>Why the exponential function?</PanelHeader>
+        <PanelHeader>The naive approach fails</PanelHeader>
         <InfoBox>
-          You might wonder: why not just divide each score by the sum of all scores? Because
-          raw scores can be negative, and dividing by a sum that might be near zero is
-          numerically unstable. The exponential function solves both problems at once.
+          The simplest idea is to divide each score by the sum of all scores.
+          But our sum is 2.31, and "last" has a score of &minus;0.45.
+          Dividing: &minus;0.45 / 2.31 = &minus;0.19. That is still negative —
+          Problem 1 is unsolved. And if some scores were larger negatives, the sum
+          could land near zero, making the division explode. We need something
+          fundamentally different.
         </InfoBox>
         <InfoBox>
-          The exponential function e<sup>x</sup> has several properties that make it the
-          right choice for converting scores into weights:
+          The solution is to pass every score through the <strong>exponential
+          function</strong> e<sup>x</sup> before dividing. This single change
+          solves both problems at once, and it gives attention a useful property
+          that simple normalization cannot.
         </InfoBox>
       </Panel>
 
-      <div className="my-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="my-4 grid grid-cols-1 md:grid-cols-3 gap-4">
         <Panel>
           <PanelHeader>Always positive</PanelHeader>
           <div className="p-4 text-[13px] leading-relaxed text-[var(--color-text-secondary)]">
-            No matter what the input is — positive, negative, or zero — e<sup>x</sup> is
-            always greater than zero. This guarantees no negative weights. Even a score
-            of &minus;10 produces a tiny positive number (e<sup>&minus;10</sup> &asymp; 0.00005),
-            never a negative one.
+            <p>
+              No matter the input — positive, negative, or zero —
+              e<sup>x</sup> always produces a number greater than zero.
+            </p>
+            <p className="mt-2">
+              Our most problematic score is "last" at &minus;0.45.
+              After exponentiation:
+            </p>
+            <p className="mt-1 font-mono text-[var(--color-text)]">
+              e<sup>&minus;0.45</sup> = 0.64
+            </p>
+            <p className="mt-2">
+              The negative score becomes a small positive number. "last"
+              will contribute a little to the output rather than subtracting
+              from it. Problem 1 is solved.
+            </p>
           </div>
         </Panel>
 
         <Panel>
           <PanelHeader>Amplifies differences</PanelHeader>
           <div className="p-4 text-[13px] leading-relaxed text-[var(--color-text-secondary)]">
-            The exponential function grows faster than any polynomial. A score of 2.0
-            doesn't just get <em>twice</em> the weight of a score of 1.0 — it gets{' '}
-            <em>e</em> times as much (&asymp; 2.7&times;). The highest score gets
-            disproportionately more weight, which is exactly what attention needs: a clear
-            winner that stands out from the crowd.
+            <p>
+              The exponential grows faster than any linear function, which
+              means it widens gaps between scores:
+            </p>
+            <div className="mt-2 font-mono text-[var(--color-text)] space-y-1">
+              <div>e<sup>1.26</sup> = 3.53 &nbsp;(controller)</div>
+              <div>e<sup>0.83</sup> = 2.29 &nbsp;(crashed)</div>
+            </div>
+            <p className="mt-2">
+              The raw difference between "controller" and "crashed" was only
+              1.26 &minus; 0.83 = 0.43. After exponentiation, "controller"
+              is 3.53 / 2.29 = <strong>1.54&times;</strong> larger than
+              "crashed." The exponential amplifies the winner's lead,
+              giving attention a useful "winner-take-more" shape: the
+              highest-scoring word gets disproportionately more weight.
+            </p>
           </div>
         </Panel>
 
         <Panel>
-          <PanelHeader>Smooth and differentiable</PanelHeader>
+          <PanelHeader>Smooth gradients</PanelHeader>
           <div className="p-4 text-[13px] leading-relaxed text-[var(--color-text-secondary)]">
-            The exponential function has no sharp corners or discontinuities. This is
-            essential for training via backpropagation — the gradient flows smoothly
-            through softmax, which means the model can learn to adjust its scores
-            incrementally during training.
-          </div>
-        </Panel>
-
-        <Panel>
-          <PanelHeader>Clean gradients</PanelHeader>
-          <div className="p-4 text-[13px] leading-relaxed text-[var(--color-text-secondary)]">
-            The derivative of e<sup>x</sup> is itself: e<sup>x</sup>. This mathematical
-            elegance makes gradient computation through softmax efficient and numerically
-            stable — important when training models with billions of parameters over
-            trillions of tokens.
+            <p>
+              The derivative of e<sup>x</sup> is itself: d/dx e<sup>x</sup> =
+              e<sup>x</sup>. This mathematical elegance means the gradient of
+              softmax has a clean closed-form expression, making{' '}
+              <strong>backpropagation</strong> — the process that flows error
+              signals backward to adjust the weight matrices during
+              training — computationally efficient through the softmax layer.
+            </p>
+            <p className="mt-2">
+              Other positive-valued functions could work in principle (like
+              x<sup>2</sup> or |x|), but their gradient properties make
+              training less stable. The exponential is both mathematically
+              elegant and practically essential.
+            </p>
           </div>
         </Panel>
       </div>
 
       <Callout
         type="note"
-        message="<strong>Softmax isn't the only option — but it's the best tradeoff.</strong> Alternatives like sparsemax or entmax exist, but softmax's combination of simplicity, differentiability, and numerical stability has made it the universal default in transformer architectures."
+        message="<strong>Softmax is not the only option, but it is the best tradeoff.</strong> Alternatives like sparsemax and entmax exist, but softmax's combination of guaranteed positivity, amplification, differentiability, and numerical stability has made it the universal default in transformer architectures."
       />
     </div>
   );
@@ -141,7 +208,12 @@ function WalkthroughPage() {
     <div>
       <Panel>
         <PanelHeader>Step 1: Exponentiate each score</PanelHeader>
-        <div className="p-4">
+        <InfoBox>
+          We take each raw score from "faulty" attending to these five words and
+          pass it through e<sup>x</sup>. Every output is positive, regardless of
+          whether the input was negative.
+        </InfoBox>
+        <div className="px-4 pb-4">
           <div className="space-y-2">
             {labels.map((label, i) => (
               <div key={label} className="flex items-center gap-3 text-[13px]">
@@ -155,6 +227,11 @@ function WalkthroughPage() {
                 <span className="font-mono font-medium text-[var(--color-text)]">
                   {exponentials[i].toFixed(2)}
                 </span>
+                {rawScores[i] < 0 && (
+                  <span className="text-[11px] text-[var(--color-text-muted)] italic">
+                    negative in, positive out
+                  </span>
+                )}
               </div>
             ))}
           </div>
@@ -163,7 +240,11 @@ function WalkthroughPage() {
 
       <Panel className="mt-4">
         <PanelHeader>Step 2: Sum all exponentials</PanelHeader>
-        <div className="p-4 text-[13px]">
+        <InfoBox>
+          Add up all the exponentiated values. This sum becomes the denominator
+          that will turn raw exponentials into fractions summing to exactly 1.
+        </InfoBox>
+        <div className="px-4 pb-4 text-[13px]">
           <div className="font-mono text-[var(--color-text-secondary)]">
             {exponentials.map((e) => e.toFixed(2)).join(' + ')}{' '}
             <span className="text-[var(--color-text-muted)]">=</span>{' '}
@@ -174,7 +255,12 @@ function WalkthroughPage() {
 
       <Panel className="mt-4">
         <PanelHeader>Step 3: Divide each by the sum</PanelHeader>
-        <div className="p-4">
+        <InfoBox>
+          Each exponentiated value divided by the total gives that word's share
+          of attention — a percentage that says "draw this much of your
+          information from this word's Value vector."
+        </InfoBox>
+        <div className="px-4 pb-4">
           <div className="space-y-2">
             {labels.map((label, i) => (
               <div key={label} className="flex items-center gap-3 text-[13px]">
@@ -195,7 +281,7 @@ function WalkthroughPage() {
       </Panel>
 
       <Panel className="mt-4">
-        <PanelHeader>Result: Attention weights</PanelHeader>
+        <PanelHeader>Result: Attention weights for "faulty"</PanelHeader>
         <div className="p-4">
           {labels.map((label, i) => (
             <WeightBar
@@ -208,9 +294,31 @@ function WalkthroughPage() {
         </div>
       </Panel>
 
+      <Panel className="mt-4">
+        <PanelHeader>What these weights mean</PanelHeader>
+        <InfoBox>
+          "controller" gets <strong>37.9%</strong> — the model will draw about
+          38% of its information from "controller" when processing "faulty." It
+          had the highest raw score (1.26), and the exponential amplified that
+          lead into the largest share.
+        </InfoBox>
+        <InfoBox>
+          "crashed" gets <strong>24.7%</strong> — the second-highest relevance.
+          The failure event is important context for understanding what "faulty"
+          describes.
+        </InfoBox>
+        <InfoBox>
+          Even "last" gets <strong>6.9%</strong>. Its raw score was
+          negative (&minus;0.45), but softmax converted it to a small positive
+          weight. Softmax never completely zeros out any word — every word in
+          the sequence contributes at least a trace. This is a deliberate feature:
+          the model keeps a faint channel open to every word, just in case.
+        </InfoBox>
+      </Panel>
+
       <Callout
-        type="good"
-        message='<strong>"controller" gets the highest weight at 37.9%.</strong> It had the highest raw score (1.26), and the exponential function amplified that lead. "last" had a negative score (&minus;0.45), but softmax still gives it a small positive weight (6.9%) — it contributes a little, rather than being harshly cut off.'
+        type="note"
+        message='<strong>A note on precision.</strong> Mathematically, these weights sum to exactly 1.0. In practice, computer arithmetic may produce 0.99999998 or 1.00000001 due to floating-point precision. This is negligible and has no effect on the model&rsquo;s behavior — neural network math is approximate by nature, unlike storage protocols where bit-level precision matters.'
       />
     </div>
   );
@@ -223,19 +331,31 @@ function TemperaturePage() {
   return (
     <div>
       <Panel>
-        <PanelHeader>What is temperature?</PanelHeader>
+        <PanelHeader>Temperature: the focus dial</PanelHeader>
         <InfoBox>
-          If you've used ChatGPT or Claude's API, you may have seen a "temperature"
-          parameter. Temperature divides the scores <strong>before</strong> softmax is
-          applied. Low temperature (like 0.1) makes the model more focused — the
-          highest-scoring word dominates. High temperature (like 3.0) makes the model
-          more exploratory — weights spread more evenly.
+          When you use ChatGPT or Claude's API, you may have seen a
+          "temperature" parameter. Temperature controls exactly the distribution
+          we just computed — not in the attention layer specifically, but in the
+          final token-prediction step, which uses the same softmax function. The
+          principle is identical: temperature controls the tradeoff between
+          focus and exploration.
         </InfoBox>
         <InfoBox>
           Mathematically, instead of computing softmax(scores), we compute
-          softmax(scores / T) where T is the temperature. When T is small, the
-          differences between scores are magnified. When T is large, the differences
-          are compressed.
+          softmax(scores / T) where T is the temperature. When T is small,
+          dividing by it <em>magnifies</em> the differences between scores —
+          the highest score pulls further ahead. When T is large, dividing
+          by it <em>compresses</em> the differences — scores become more
+          similar, and attention spreads more evenly.
+        </InfoBox>
+        <InfoBox>
+          Let's see this with our actual scores. At T = 0.1,
+          "controller's" score becomes 1.26 / 0.1 = 12.6 while "last"
+          becomes &minus;0.45 / 0.1 = &minus;4.5. The gap explodes from 1.71
+          to 17.1, and the exponential amplifies it even further. At T = 3.0,
+          the scores become 1.26 / 3.0 = 0.42 and &minus;0.45 / 3.0
+          = &minus;0.15 — a gap of just 0.57, barely noticeable after
+          exponentiation.
         </InfoBox>
       </Panel>
 
@@ -311,9 +431,33 @@ function TemperaturePage() {
         ))}
       </div>
 
+      <Panel className="mt-4">
+        <PanelHeader>The practical effect</PanelHeader>
+        <InfoBox>
+          <strong>T = 0.1 (focused):</strong> "controller" gets 98.6% of the
+          attention — the model draws almost all of its information from this
+          single word. It is extremely confident about which word matters, but
+          if it is wrong, there is no fallback. This produces sharp, decisive
+          outputs at the cost of flexibility.
+        </InfoBox>
+        <InfoBox>
+          <strong>T = 1.0 (default):</strong> "controller" leads at 37.9%, but
+          "crashed" (24.7%), "server" (18.1%), and "was" (12.5%) all
+          contribute meaningfully. The model is confident about the winner
+          while still drawing context from supporting words.
+        </InfoBox>
+        <InfoBox>
+          <strong>T = 3.0 (exploratory):</strong> The distribution flattens —
+          "controller" gets only 25.6% while "last" rises from 6.9% to 14.5%.
+          The model hedges, drawing more evenly from multiple words. This
+          captures broader context but risks diluting the signal from the most
+          relevant word.
+        </InfoBox>
+      </Panel>
+
       <Callout
         type="note"
-        message='<strong>Temperature = 0 is a special case called "greedy decoding"</strong> — the model always picks the single highest-scoring option with 100% weight. In practice, values near 0 (like 0.01) approximate this. Most production systems use temperature between 0 and 1 for predictable, focused outputs.'
+        message='<strong>Temperature = 0 is a special case called "greedy decoding."</strong> The model always puts 100% weight on the single highest-scoring option. In practice, values near 0 (like 0.01) approximate this. Most production systems use temperature between 0 and 1 for predictable, focused outputs.'
       />
     </div>
   );
@@ -323,27 +467,56 @@ function BridgePage() {
   return (
     <div>
       <Panel>
-        <PanelHeader>From scores to blending</PanelHeader>
+        <PanelHeader>From weights to information</PanelHeader>
         <InfoBox>
-          We started with raw dot-product scores and converted them into attention
-          weights — probabilities that tell the model how much to listen to each word.
-          Now comes the final step: using those weights to actually gather information.
+          We now have attention weights — valid probabilities that tell the model
+          how much to draw from each word when processing "faulty":
         </InfoBox>
+
+        <div className="px-4 pb-2">
+          <div className="font-mono text-[13px] space-y-1 px-3 py-3 bg-[var(--color-surface-muted)] rounded-md">
+            <div>controller: 37.9%</div>
+            <div>crashed: 24.7%</div>
+            <div>server: 18.1%</div>
+            <div>was: 12.5%</div>
+            <div>last: 6.9%</div>
+          </div>
+        </div>
+
         <InfoBox>
-          Each word's <strong>Value</strong> vector carries its payload — the rich
-          semantic information that was created back in Stop 3 by multiplying the
-          embedding by W<sub>V</sub>. The attention weights determine how to blend
-          those Value vectors into a single output.
+          The next step is using these weights to actually gather information.
+          Each word has a <strong>Value vector</strong> — the information payload
+          created back in Stop 3 by multiplying the word's embedding by
+          W<sub>V</sub>. The Value vector for "controller" carries
+          information about hardware components. The Value vector for "crashed"
+          carries information about failure events. The Value vector for "last"
+          carries temporal information.
         </InfoBox>
+
         <InfoBox>
-          That blending — and the residual connection that preserves the original
-          signal — is <strong>Stop 7</strong>.
+          The model will multiply each Value vector by its weight and sum
+          them all together:
+        </InfoBox>
+
+        <div className="px-4 pb-2">
+          <div className="font-mono text-[13px] px-3 py-3 bg-[var(--color-surface-muted)] rounded-md leading-relaxed">
+            0.379 &times; V<sub>controller</sub> + 0.247 &times; V<sub>crashed</sub> + 0.181 &times; V<sub>server</sub> + 0.125 &times; V<sub>was</sub> + 0.069 &times; V<sub>last</sub>
+          </div>
+        </div>
+
+        <InfoBox>
+          The result is a single vector that blends information from every word
+          in proportion to its relevance. "faulty" will no longer be a generic
+          adjective meaning "broken" — it will become "faulty as it appears in
+          this sentence, describing the storage controller that crashed." That
+          blending, and the <strong>residual connection</strong> that preserves
+          the original signal alongside it, is <strong>Stop 7</strong>.
         </InfoBox>
       </Panel>
 
       <Callout
         type="good"
-        message="<strong>The full attention pipeline is almost complete.</strong> Embed &rarr; project to Q, K, V &rarr; dot-product scores &rarr; scale &rarr; softmax &rarr; weight the Values &rarr; sum. We have covered everything up through softmax. The final step — weighting and summing the Value vectors — completes the picture."
+        message="<strong>The full attention pipeline is almost complete.</strong> Embed &rarr; project to Q, K, V &rarr; dot-product scores &rarr; softmax &rarr; weight the Values &rarr; sum. We have covered everything up through softmax. The final step &mdash; weighting and summing the Value vectors &mdash; completes the picture."
       />
     </div>
   );
@@ -353,19 +526,19 @@ function BridgePage() {
 
 const NARRATIONS = {
   intro:
-    '<strong>Stop 6: Taming the Numbers &mdash; Scaling and Softmax.</strong> We have raw dot-product scores from Stop 5. Now we need to convert them into proper attention weights &mdash; non-negative numbers that sum to 1. The function that does this is <strong>softmax</strong>, and it appears in every transformer ever built.',
+    '<strong>Stop 6: Taming the Numbers &mdash; Scaling and Softmax.</strong> In Stop 5, we measured how strongly "faulty" matches each word using dot products. The scores came out as raw numbers &mdash; some positive, some negative, summing to whatever they happen to sum to. Before these scores can guide attention, we need to convert them into proper weights: all positive, summing to 1.',
 
   'why-softmax':
-    'Why use the exponential function instead of something simpler? Because it solves two problems at once: it guarantees positive outputs, and it <strong>amplifies differences</strong> so the highest-scoring word gets disproportionately more weight. It\u2019s also smooth and differentiable &mdash; essential for training.',
+    'Simple division will not work &mdash; negative scores stay negative, and sums near zero blow up. The solution is the <strong>exponential function</strong>, applied before dividing. Below, we see exactly how it solves both problems using our scores for "faulty."',
 
   walkthrough:
-    'Let\u2019s walk through softmax step by step on real numbers. We take five raw scores, exponentiate each one, sum the results, and divide. Three simple operations that convert arbitrary numbers into a valid probability distribution.',
+    'Three operations, applied to five real scores. Exponentiate each score, sum the results, divide each by that sum. The output is a valid probability distribution &mdash; positive numbers summing to exactly 1 &mdash; that tells the model how much to draw from each word.',
 
   temperature:
-    'Temperature is a single number that controls how <strong>sharp or flat</strong> the attention distribution is. Low temperature concentrates weight on the winner. High temperature spreads weight across all options. It\u2019s the same softmax &mdash; just applied to scaled scores.',
+    'Temperature is a single number that divides the scores <strong>before</strong> softmax is applied. Small temperature magnifies differences; large temperature compresses them. Below, see how the same five scores produce dramatically different attention patterns at three temperature settings.',
 
   bridge:
-    'Softmax gave us attention weights. The final step is using those weights to blend Value vectors into a single output &mdash; the actual information that flows forward through the network. That blending, and the residual connection that preserves the original signal, is <strong>Stop 7</strong>.',
+    'Softmax gave us attention weights &mdash; "controller" 37.9%, "crashed" 24.7%, and so on. The next step is using those weights to blend each word\'s <strong>Value vector</strong> into a single output. That blending is <strong>Stop 7</strong>.',
 };
 
 // --- Main Component ---
