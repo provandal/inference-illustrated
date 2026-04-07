@@ -294,7 +294,7 @@ function ExplorePage({ isDark }) {
 }
 
 function MatrixPage({ isDark }) {
-  const truncate = (w) => (w.length > 5 ? w.slice(0, 4) + '.' : w);
+  const truncate = (w) => (w.length > 10 ? w.slice(0, 8) + '.' : w);
   return (
     <div>
       <Panel>
@@ -303,7 +303,7 @@ function MatrixPage({ isDark }) {
           <div
             className="inline-grid gap-px"
             style={{
-              gridTemplateColumns: `60px repeat(${WORDS.length}, 1fr)`,
+              gridTemplateColumns: `80px repeat(${WORDS.length}, 1fr)`,
               minWidth: '600px',
             }}
           >
@@ -312,7 +312,7 @@ function MatrixPage({ isDark }) {
             {WORDS.map((w, i) => (
               <div
                 key={`col-${i}`}
-                className="h-[40px] flex items-end justify-center text-[8px] text-[var(--color-text-muted)] pb-1 font-mono"
+                className="h-[60px] flex items-end justify-center text-[11px] text-[var(--color-text-muted)] pb-1 font-mono"
                 style={{ writingMode: 'vertical-rl', textOrientation: 'mixed' }}
               >
                 {truncate(w)}
@@ -324,7 +324,7 @@ function MatrixPage({ isDark }) {
               <React.Fragment key={`row-${row}`}>
                 {/* Row label */}
                 <div
-                  className="h-[28px] flex items-center justify-end pr-2 text-[9px] text-[var(--color-text-muted)] font-mono whitespace-nowrap"
+                  className="h-[28px] flex items-center justify-end pr-2 text-[11px] text-[var(--color-text-muted)] font-mono whitespace-nowrap"
                 >
                   {truncate(rowWord)}
                 </div>
