@@ -505,8 +505,8 @@ function BridgePage() {
       </p>
       <p>
         That mechanism involves{' '}
-        <strong className="text-[var(--color-text)]">three separate roles</strong> that
-        each word plays simultaneously:
+        <strong className="text-[var(--color-text)]">three separate roles</strong> (stored
+        as vectors) that each word plays simultaneously. These roles or vectors are:
       </p>
       <div className="flex flex-col gap-2 my-3 pl-4">
         <div className="flex items-center gap-2">
@@ -562,7 +562,7 @@ export default function EveryTokenLooks() {
   let narration = '';
   if (page.id === 'intro') {
     narration =
-      '<strong>Stop 2: Every Token Looks at Every Token.</strong> In Stop 1, we saw the telephone problem — information decaying through a chain. Attention solved that for one word. Now let\u2019s see what happens when <em>every</em> word gets that same power, all at the same time.';
+      '<strong>Stop 2: Every Token Looks at Every Token.</strong> In Stop 1, we saw the telephone problem \u2014 information decaying through a chain. Attention solved that for one word. Now let\u2019s see what happens when <em>every</em> word gets that same power, all at the same time. This mechanism is the core of the <strong>transformer</strong> architecture, introduced in the landmark 2017 paper <em>"Attention Is All You Need"</em> by Vaswani et al.';
   } else if (page.id === 'self-attention') {
     narration =
       'The mechanism that gives every word direct access to every other word has a name: <strong>self-attention</strong>. It\u2019s the foundation of the transformer architecture, and the reason these models can handle long-range dependencies that RNNs could not.';
