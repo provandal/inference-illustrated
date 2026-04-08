@@ -438,10 +438,13 @@ function FfnPage() {
                   W&#x2081; &mdash; Expansion matrix
                 </div>
                 <div className="text-[11px] text-[var(--color-primary-text)] text-center font-sans">
-                  Multiplies the 8,192-dimensional input by a learned 8,192 &times; 28,672 matrix,
-                  expanding it into a <strong>28,672-dimensional</strong> internal workspace &mdash;
-                  3.5&times; wider. This gives the network room to represent complex patterns
-                  that don&rsquo;t fit in the original d_model dimensions.
+                  The input is a vector of 8,192 numbers. W&#x2081; is a learned matrix
+                  with 8,192 rows and 28,672 columns. Matrix multiplication works like
+                  taking 28,672 separate dot products &mdash; one for each column &mdash;
+                  producing a new vector of <strong>28,672 numbers</strong>. The result is
+                  3.5&times; wider than the input, giving the network a larger internal
+                  workspace to represent complex patterns that don&rsquo;t fit in the
+                  original d_model dimensions.
                 </div>
               </div>
             </div>
@@ -471,10 +474,11 @@ function FfnPage() {
                   W&#x2082; &mdash; Compression matrix
                 </div>
                 <div className="text-[11px] text-[var(--color-primary-text)] text-center font-sans">
-                  Multiplies the 28,672-dimensional result by a learned 28,672 &times; 8,192 matrix,
-                  compressing it back to <strong>d_model = 8,192</strong>. The output must be the
-                  same size as the input so it can be added back via the residual connection and
-                  fed into the next layer.
+                  The reverse operation: W&#x2082; has 28,672 rows and 8,192 columns.
+                  It takes the 28,672-dimensional expanded result and compresses it back
+                  to <strong>d_model = 8,192</strong> through another matrix multiplication.
+                  The output must be the same size as the original input so it can be
+                  added back via the residual connection and fed into the next layer.
                 </div>
               </div>
             </div>
@@ -551,28 +555,55 @@ function FullStackPage() {
                   : entry.model === 'Llama-3 70B'
                     ? '~320 KB'
                     : '~1,008 KB';
+              const refinement =
+                entry.model === 'Llama-3 8B'
+                  ? '32 rounds of refinement'
+                  : entry.model === 'Llama-3 70B'
+                    ? '80 rounds of refinement'
+                    : '126 rounds of refinement';
               return (
                 <div
                   key={entry.model}
-                  className="flex items-center gap-2 text-xs rounded-md px-2 py-2 bg-[var(--color-surface-muted)] border border-[var(--color-border-light)]"
+                  className="flex flex-col gap-1 text-xs rounded-md px-2 py-2 bg-[var(--color-surface-muted)] border border-[var(--color-border-light)]"
                 >
-                  <span className="flex-1 font-medium text-[var(--color-text)] text-[12px]">
-                    {entry.model}
-                  </span>
-                  <span className="w-16 text-right font-mono text-[12px] text-[var(--color-text-secondary)]">
-                    {entry.layers}
-                  </span>
-                  <span className="w-24 text-right font-mono text-[12px] text-[var(--color-text-secondary)]">
-                    {perLayer}
-                  </span>
-                  <span className="flex-1 text-right font-mono text-[12px] text-[var(--color-text-secondary)]">
-                    {perLayer} &times; {entry.layers} = {total}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="flex-1 font-medium text-[var(--color-text)] text-[12px]">
+                      {entry.model}
+                    </span>
+                    <span className="w-16 text-right font-mono text-[12px] text-[var(--color-text-secondary)]">
+                      {entry.layers}
+                    </span>
+                    <span className="w-24 text-right font-mono text-[12px] text-[var(--color-text-secondary)]">
+                      {perLayer}
+                    </span>
+                    <span className="flex-1 text-right font-mono text-[12px] text-[var(--color-text-secondary)]">
+                      {perLayer} &times; {entry.layers} = {total}
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-[var(--color-text-muted)] italic pl-1">
+                    {refinement}
+                  </div>
                 </div>
               );
             })}
           </div>
         </div>
+      </Panel>
+
+      <Panel className="mt-4">
+        <PanelHeader>Each layer is independent</PanelHeader>
+        <InfoBox>
+          Each layer has its own independent weight matrices &mdash; its own
+          W<sub>Q</sub>, W<sub>K</sub>, W<sub>V</sub>, W<sub>O</sub>, and FFN
+          matrices. None are shared between layers. Layer 1&rsquo;s attention
+          matrices are completely different from layer 40&rsquo;s.
+        </InfoBox>
+        <InfoBox>
+          This is how each layer specializes: early layers develop matrices tuned
+          for surface patterns, deep layers develop matrices tuned for abstract
+          reasoning. The specialization isn&rsquo;t programmed &mdash; it emerges
+          during training, just like head specialization in Stop 8.
+        </InfoBox>
       </Panel>
 
       <Panel className="mt-4">
@@ -670,7 +701,18 @@ function ArchitecturePage() {
     <div>
       <Panel>
         <PanelHeader>Complete transformer architecture</PanelHeader>
-        <div className="p-4 space-y-2">
+
+        {/* Spanning annotations */}
+        <div className="px-4 pt-3 pb-1 flex justify-between text-[10px] font-medium text-[var(--color-text-muted)]">
+          <span className="px-2 py-0.5 rounded border border-[var(--color-border)] bg-[var(--color-surface-muted)]">
+            Model weights (frozen) &mdash; loaded once, shared across all users
+          </span>
+          <span className="px-2 py-0.5 rounded border border-[var(--color-teal)] bg-[var(--color-teal-bg)] text-[var(--color-teal-text)]">
+            d_model = 8,192 throughout
+          </span>
+        </div>
+
+        <div className="p-4 pt-2 space-y-2">
           {stages.map((stage, idx) => (
             <div key={stage.title}>
               <div
@@ -697,9 +739,21 @@ function ArchitecturePage() {
                         KV cache
                       </span>
                     )}
+                    {!stage.highlight && stage.stops && (
+                      <span className="ml-2 text-[10px] font-normal text-[var(--color-text-muted)]">
+                        {stage.stops}
+                      </span>
+                    )}
                   </div>
                   <div className="text-[12px] text-[var(--color-text-secondary)] leading-relaxed mt-0.5">
                     {stage.desc}
+                    {stage.highlight && (
+                      <span className="text-[11px] text-[var(--color-text-muted)]">
+                        {' '}Model weights (W<sub>Q</sub>, W<sub>K</sub>, W<sub>V</sub>,
+                        W<sub>O</sub>, FFN) are frozen &mdash; the KV cache is the only
+                        per-conversation state.
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
@@ -797,6 +851,16 @@ function BridgePage() {
           <strong>Residual connections</strong> preserve information across depth
           (Stop 7).
         </InfoBox>
+        <InfoBox>
+          Throughout this journey, one structure has been growing quietly in the
+          background: the <strong>KV cache</strong>. It was introduced in
+          Stop 3 as a way to avoid recomputing K and V. It expanded in Stop 5
+          with the dot-product mechanism. It multiplied in Stop 8 across
+          heads and KV groups. And here in Stop 9, it multiplied again across
+          80 layers. Every layer, every head group, every token adds to it.
+          We&rsquo;ve calculated its size piece by piece. Now it&rsquo;s time to
+          put it all together and see the full picture.
+        </InfoBox>
       </Panel>
 
       <div className="text-sm text-[var(--color-text-secondary)] leading-relaxed space-y-3">
@@ -818,11 +882,14 @@ function BridgePage() {
         <p>
           We&rsquo;ve just seen that inference has two phases &mdash; prefill and
           decode &mdash; with different computational profiles.{' '}
-          <strong className="text-[var(--color-text)]">Stop 10</strong> explores
-          what this means for infrastructure: why some systems separate the two
-          phases onto different hardware, how the KV cache must be transferred
-          between them, and what happens when the cache outgrows the
-          GPU&rsquo;s memory.
+          <strong className="text-[var(--color-text)]">Stop 10</strong> asks the
+          questions that bridge Act 1 to Act 2: How expensive? What are the two
+          phases of inference, and why do some systems separate them onto
+          different hardware? What happens when the cache outgrows the
+          GPU&rsquo;s memory?
+        </p>
+        <p className="text-[var(--color-text)] font-medium pt-1">
+          That&rsquo;s the story of the KV cache &mdash; and the beginning of Act 2.
         </p>
       </div>
     </div>
