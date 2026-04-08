@@ -62,6 +62,10 @@ function IntroPage() {
             ephemeral. We calculated its per-token size in Stop 8. We saw it
             multiply across layers in Stop 9.
           </p>
+          <p>
+            <strong className="text-[var(--color-text)]">Now it&rsquo;s time to put the
+            full picture together.</strong>
+          </p>
         </div>
       </Panel>
 
@@ -122,7 +126,7 @@ function TwoPhasesPage() {
             },
             {
               num: '3',
-              text: 'Each token\u2019s Q is compared against the K vectors of all tokens at its position or earlier. Token 1 sees only itself. Token 500 sees tokens 1\u2013500. Token 2,000 sees all 2,000.',
+              text: 'Each token\u2019s Q is compared against the K vectors of all tokens at its position or earlier. Token 1 sees only itself. Token 500 sees tokens 1\u2013500. Token 2,000 sees all 2,000. A token always attends to its own K \u2014 this ensures its identity contributes to the attention output alongside context from other tokens.',
             },
             {
               num: '4',
@@ -355,11 +359,12 @@ function MultiTurnPage() {
               Stored
             </span>
             <div className="text-[13px] text-[var(--color-text-secondary)] leading-relaxed">
-              <strong className="text-[var(--color-text)]">K and V vectors</strong> &mdash; the
-              results of multiplying each token&rsquo;s representation by W<sub>K</sub> and
+              <strong className="text-[var(--color-text)]">Pre-computed K and V vectors</strong> &mdash; the
+              results of multiplying each token&rsquo;s embedding by W<sub>K</sub> and
               W<sub>V</sub> at each layer. One pair per token, per layer, per KV head group.
               When a new token attends to the cache, it reads K vectors (to compute attention
-              scores) and V vectors (to blend information).
+              scores) and V vectors (to blend information). It does not re-process earlier
+              tokens. Those tokens&rsquo; contributions are fully captured in their cached K and V.
             </div>
           </div>
 
@@ -379,6 +384,15 @@ function MultiTurnPage() {
           </div>
         </div>
       </Panel>
+
+      <InfoBox>
+        This is exactly why the KV cache exists: <strong>to avoid recomputation</strong>.
+        Without it, every time the model generates a new token, it would need to run all
+        previous tokens through W<sub>K</sub> and W<sub>V</sub> again at every layer &mdash;
+        just to reconstruct the K and V vectors it already computed. With 2,500 tokens in
+        the conversation and 80 layers, that&rsquo;s <strong>200,000 matrix
+        multiplications</strong> the cache eliminates.
+      </InfoBox>
 
       <Callout
         type="note"
@@ -427,7 +441,10 @@ function TradeoffPage() {
                 </p>
                 <p className="font-mono text-[12px] text-[var(--color-text)]">
                   9,999 &times; 2 &times; 80
-                  = <strong>~1,600,000</strong> matrix multiplications
+                  = 1,599,840 &asymp; <strong>1.6M</strong> matrix multiplications
+                </p>
+                <p className="text-[12px] text-[var(--color-text-muted)]">
+                  Read from memory: nothing (all recomputed from scratch)
                 </p>
                 <p className="text-[12px] text-[var(--color-text-muted)]">
                   Bottleneck: compute (massive redundant arithmetic)
@@ -447,6 +464,9 @@ function TradeoffPage() {
                 <p className="font-mono text-[12px] text-[var(--color-text)]">
                   1 &times; 2 &times; 80
                   = <strong>160</strong> matrix multiplications
+                </p>
+                <p className="text-[12px] text-[var(--color-text-muted)]">
+                  Read from memory: 9,999 entries per layer &times; 80 layers
                 </p>
                 <p className="text-[12px] text-[var(--color-text-muted)]">
                   Bottleneck: memory bandwidth (reading the cache)
@@ -637,6 +657,21 @@ function MemoryWallPage() {
         </div>
       </Panel>
 
+      <InfoBox>
+        At full context, <strong>one user nearly fills the GPU.</strong> At typical
+        conversation lengths (8K to 32K), you can serve a handful of users. At production
+        scale &mdash; thousands of concurrent conversations &mdash; you run out of memory
+        constantly.
+      </InfoBox>
+
+      <InfoBox>
+        Consider Llama-3 70B at 32K tokens: the cache alone is <strong>10 GB</strong>.
+        That 10 GB of cache is read at every single decode step, just to produce one token.
+        And HBM is a <strong>shared resource</strong> &mdash; two tenants competing for the
+        same pool: model weights and KV cache. Every gigabyte consumed by the cache is a
+        gigabyte unavailable for serving additional users.
+      </InfoBox>
+
       <Panel className="mt-4">
         <PanelHeader>When the wall is hit</PanelHeader>
         <div className="p-4 space-y-2">
@@ -672,6 +707,26 @@ function InfrastructurePage() {
     <div>
       <Panel>
         <PanelHeader>Prefill vs. decode: two different problems</PanelHeader>
+        <div className="p-4 space-y-3 text-[13px] text-[var(--color-text-secondary)] leading-relaxed">
+          <p>
+            <strong className="text-[var(--color-text)]">Prefill</strong> processes hundreds or
+            thousands of tokens in parallel. The GPU&rsquo;s arithmetic units are fully
+            saturated &mdash; every core is busy with matrix multiplications. The bottleneck
+            is <strong className="text-[var(--color-text)]">compute throughput</strong>: how fast
+            the GPU can multiply. Memory bandwidth matters less because the data being processed
+            is compact relative to the computation performed on it.
+          </p>
+          <p>
+            <strong className="text-[var(--color-text)]">Decode</strong> processes one token per
+            step. The arithmetic per step is small &mdash; one token&rsquo;s Q, K, V computation
+            plus one row of attention. But each step must <strong className="text-[var(--color-text)]">read
+            the entire KV cache</strong> at every layer to compute that attention. For Llama-3 70B
+            at 32K tokens: <strong className="text-[var(--color-text)]">10 GB of cache read at every
+            decode step</strong>, just to produce one token. The GPU&rsquo;s arithmetic units are
+            mostly idle, waiting for data to arrive from memory. The bottleneck
+            is <strong className="text-[var(--color-text)]">memory bandwidth</strong>.
+          </p>
+        </div>
         <div className="overflow-x-auto">
           <table className="w-full text-[13px]">
             <thead>
@@ -818,6 +873,14 @@ function BridgePage() {
               </div>
             </div>
           ))}
+        </div>
+      </Panel>
+
+      <Panel className="mt-4">
+        <div className="p-4 text-center">
+          <div className="text-[15px] font-medium text-[var(--color-text)] leading-relaxed">
+            That&rsquo;s the story of the KV cache &mdash; and the beginning of Act 2.
+          </div>
         </div>
       </Panel>
 
