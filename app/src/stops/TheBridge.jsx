@@ -109,8 +109,10 @@ function TwoPhasesPage() {
             exists yet &mdash; the conversation is just starting.
           </p>
           <p>
-            All 2,000 tokens enter the model <strong className="text-[var(--color-text)]">simultaneously</strong>.
-            At each of the 80 layers:
+            All 2,000 tokens are processed <strong className="text-[var(--color-text)]">in parallel within each layer</strong>,
+            but the layers themselves run sequentially &mdash; layer 1 must finish all 2,000 tokens
+            before layer 2 can begin, because layer 2&rsquo;s input is layer 1&rsquo;s output.
+            Here is what happens at each layer:
           </p>
         </div>
 
