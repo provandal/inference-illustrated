@@ -15,62 +15,69 @@ import { useStore } from '../store';
 
 const NARRATIONS = {
   intro:
-    '<strong>Stop 10: And Now, The Cache &mdash; The Bridge.</strong> Over nine stops we built the attention mechanism piece by piece. At every step, one structure has been growing in the background: the KV cache. Now it\u2019s time to put the full picture together.',
+    '<strong>Stop 10: And Now, The Cache &mdash; The Bridge.</strong> Over nine stops we assembled the transformer from the ground up. At every step, one structure has been growing in the background: the KV cache. Now it is time to trace how inference actually works &mdash; step by step, token by token &mdash; and confront what the cache costs.',
 
   'two-phases':
-    'Inference has <strong>two fundamentally different phases</strong>: prefill and decode. Understanding the mechanical difference between them is the single most important concept for everything that follows.',
+    'You send a 2,000-token message to a model like Claude or Llama. What happens next unfolds in two phases with fundamentally different computational profiles. Tracing the full mechanical sequence &mdash; from prompt entry through token selection to autoregressive generation &mdash; is the single most important concept for everything that follows.',
 
   'multi-turn':
-    'In a multi-turn conversation, the model doesn\u2019t start from scratch each time you reply. The KV cache from previous turns persists &mdash; only the new tokens need processing. But what exactly does the cache store?',
+    'You read the model&rsquo;s response and send a follow-up. The KV cache from the first exchange is still in GPU memory &mdash; nothing needs to be recomputed. Only the new tokens pass through prefill.',
 
   tradeoff:
-    'The KV cache is a classic <strong>space-time tradeoff</strong>. Without it, generating each token requires recomputing attention over the entire context from scratch. With it, generation is fast &mdash; but the cache consumes memory that grows linearly with context length.',
+    'The KV cache is a classic <strong>space-time tradeoff</strong>: spend memory to save computation. Without it, generating the 10,000th token would require 1.6 million matrix multiplications. With it: 160.',
 
   calculation:
-    'Let\u2019s compute the exact size of the KV cache for Llama-3 70B. The formula involves every architectural parameter we\u2019ve discussed: layers, KV heads, head dimension, sequence length, and numerical precision.',
+    'Every architectural parameter we have discussed &mdash; layers, KV heads, head dimension, numerical precision &mdash; feeds into a single formula. For Llama-3 70B, the coefficient is 327,680 bytes per token. Multiply by context length to get total cache size.',
 
   'memory-wall':
-    'A single H100 GPU has 80 GB of memory. After loading the model weights, what\u2019s left is all that exists for KV caches &mdash; and it runs out faster than you\u2019d expect. This is the <strong>memory wall</strong>.',
+    'A single NVIDIA H100 has 80 GB of memory. After loading FP4-quantized weights for a 70B model (~35 GB), roughly 45 GB remains. The table below shows how fast that fills up &mdash; and how few users it takes to exceed it.',
 
   infrastructure:
-    'Prefill and decode have opposite computational profiles &mdash; one is compute-bound, the other is memory-bound. Running both on the same hardware means <strong>neither</strong> is optimized. This insight leads to a radical architectural decision.',
+    'Prefill saturates the GPU&rsquo;s arithmetic units. Decode starves them while flooding the memory bus. Running both on the same hardware means neither is optimized &mdash; a mismatch with profound consequences.',
 
   bridge:
-    'Act 1 is complete. You now understand why the KV cache exists, what it stores, how large it gets, and why it creates the central bottleneck of LLM inference. <strong>Act 2</strong> is about the engineering solutions.',
+    'Act 1 is complete. You now understand why the KV cache exists, what it stores, how large it gets, and why it creates the central bottleneck of LLM inference. Act 2 is about what we do about it.',
 };
 
 // --- Page Content Components ---
 
 function IntroPage() {
-  const stops = [
-    { num: 1, title: 'The Telephone Problem', point: 'Sequential models lose information over distance.' },
-    { num: 2, title: 'Every Token Looks at Every Token', point: 'Self-attention solves this, but at quadratic cost.' },
-    { num: 3, title: 'Query, Key, Value', point: 'Each token plays three roles — and K and V must be stored.' },
-    { num: 4, title: 'Learning to Pay Attention', point: 'Weight matrices learn what to attend to from data.' },
-    { num: 5, title: 'The Dot Product', point: 'Similarity between Q and K becomes a number.' },
-    { num: 6, title: 'Scaling & Softmax', point: 'Raw scores become probabilities that sum to 1.' },
-    { num: 7, title: 'Blending the Values', point: 'Attention weights blend Value vectors into enriched output.' },
-    { num: 8, title: 'Why Multiple Heads?', point: 'Parallel heads specialize — and GQA shares K/V to reduce cache.' },
-    { num: 9, title: 'The Stack', point: '80 layers deep, each one reading from and writing to the cache.' },
-  ];
-
   return (
     <div>
       <Panel>
-        <PanelHeader>Nine stops, one destination</PanelHeader>
+        <PanelHeader>Nine stops, one structure</PanelHeader>
+        <div className="p-4 space-y-3 text-[13px] text-[var(--color-text-secondary)] leading-relaxed">
+          <p>
+            <strong className="text-[var(--color-text)]">Embeddings</strong> give tokens
+            a numerical identity (Stops 1, 3). <strong className="text-[var(--color-text)]">Q, K, V</strong> enable
+            matching and information retrieval (Stops 3, 5, 6, 7). <strong className="text-[var(--color-text)]">Multi-head
+            attention</strong> provides parallel perspectives (Stop 8). <strong className="text-[var(--color-text)]">FFN</strong> adds
+            non-linear processing and stores learned knowledge (Stop 9). <strong className="text-[var(--color-text)]">Layers</strong> stack
+            for progressive refinement (Stop 9). <strong className="text-[var(--color-text)]">Residual
+            connections</strong> preserve information across depth (Stop 7).
+          </p>
+          <p>
+            At every step, K and V vectors were cached. We first met the KV cache
+            in Stop 3, when we learned that K and V are persistent while Q is
+            ephemeral. We calculated its per-token size in Stop 8. We saw it
+            multiply across layers in Stop 9.
+          </p>
+        </div>
+      </Panel>
+
+      <Panel className="mt-4">
+        <PanelHeader>Three questions</PanelHeader>
         <div className="p-4 space-y-2">
-          {stops.map((s) => (
-            <div
-              key={s.num}
-              className="flex gap-3 items-start text-[13px]"
-            >
+          {[
+            'How does inference actually work, step by step?',
+            'Why is the cache necessary?',
+            'What happens when it outgrows the GPU\u2019s memory?',
+          ].map((q, i) => (
+            <div key={i} className="flex gap-3 items-start text-[13px]">
               <span className="flex-shrink-0 w-6 h-6 rounded-full bg-[var(--color-primary-bg)] border border-[var(--color-primary)] text-[var(--color-primary-text)] text-xs font-medium flex items-center justify-center">
-                {s.num}
+                {i + 1}
               </span>
-              <div className="min-w-0">
-                <span className="font-medium text-[var(--color-text)]">{s.title}.</span>{' '}
-                <span className="text-[var(--color-text-secondary)]">{s.point}</span>
-              </div>
+              <span className="text-[var(--color-text)]">{q}</span>
             </div>
           ))}
         </div>
@@ -78,7 +85,7 @@ function IntroPage() {
 
       <Callout
         type="note"
-        message="At every step, one structure has been growing in the background: the <strong>KV cache</strong>. Keys and Values stored at every layer, for every token, across the entire context. Now it&rsquo;s time to put the full picture together &mdash; and understand why this structure dominates the cost of running large language models."
+        message="This stop is the longest and most detailed in Act 1. It synthesizes everything from the previous nine stops into the central problem statement for the rest of the course. Take your time &mdash; every concept here will be referenced in Act 2."
       />
     </div>
   );
@@ -87,64 +94,197 @@ function IntroPage() {
 function TwoPhasesPage() {
   return (
     <div>
+      {/* PREFILL */}
       <Panel>
-        <PanelHeader>Phase 1: Prefill</PanelHeader>
+        <PanelHeader>Phase 1: Prefill &mdash; processing the prompt</PanelHeader>
+        <div className="p-4 space-y-3 text-[13px] text-[var(--color-text-secondary)] leading-relaxed">
+          <p>
+            Your message arrives as part of a larger context: system instructions +
+            any conversation history + your new message. Say this totals{' '}
+            <strong className="text-[var(--color-text)]">2,000 tokens</strong>. No KV cache
+            exists yet &mdash; the conversation is just starting.
+          </p>
+          <p>
+            All 2,000 tokens enter the model <strong className="text-[var(--color-text)]">simultaneously</strong>.
+            At each of the 80 layers:
+          </p>
+        </div>
+
+        <div className="px-4 pb-4 space-y-2">
+          {[
+            {
+              num: '1',
+              text: 'All 2,000 tokens are transformed through W_Q, W_K, W_V \u2014 producing 2,000 Q vectors, 2,000 K vectors, and 2,000 V vectors.',
+            },
+            {
+              num: '2',
+              text: 'All 2,000 K and V vectors are stored in that layer\u2019s KV cache.',
+            },
+            {
+              num: '3',
+              text: 'Each token\u2019s Q is compared against the K vectors of all tokens at its position or earlier. Token 1 sees only itself. Token 500 sees tokens 1\u2013500. Token 2,000 sees all 2,000.',
+            },
+            {
+              num: '4',
+              text: 'Attention weights are computed via softmax (Stop 6), Values are blended using those weights (Stop 7), and the FFN processes each token (Stop 9). The 2,000 enriched representations flow into the next layer.',
+            },
+          ].map((step) => (
+            <div key={step.num} className="flex gap-3 items-start text-[13px]">
+              <span className="flex-shrink-0 w-6 h-6 rounded-full bg-[var(--color-primary-bg)] border border-[var(--color-primary)] text-[var(--color-primary-text)] text-xs font-medium flex items-center justify-center">
+                {step.num}
+              </span>
+              <span className="text-[var(--color-text-secondary)] leading-relaxed">{step.text}</span>
+            </div>
+          ))}
+        </div>
+
         <InfoBox>
-          Your message arrives as part of a larger context &mdash; say, 2,000 tokens including
-          the system prompt and conversation history. All 2,000 tokens enter the model{' '}
-          <strong>simultaneously</strong>. At each of the 80 layers, every token gets its own
-          Q, K, and V vectors computed by the layer&rsquo;s weight matrices.
+          The restriction in step 3 is called <strong>causal masking</strong>. The term
+          &ldquo;causal&rdquo; comes from signal processing, where a &ldquo;causal
+          system&rdquo; depends only on past and present inputs, never future ones.
+          It does not refer to cause and effect &mdash; it refers
+          to <strong>time-ordering</strong>. The mask enforces what would be true during
+          real generation: when the model produces token N, tokens N+1, N+2, ...
+          do not exist yet. During prefill, those future tokens <em>are</em> present
+          (the user already typed them), but the mask is applied so the model produces
+          the same result it would during step-by-step generation.
         </InfoBox>
+
         <InfoBox>
-          The K and V vectors are stored in that layer&rsquo;s cache. Each token&rsquo;s Q
-          matches against all K vectors at its position or earlier &mdash; this is{' '}
-          <strong>causal masking</strong>, the rule that prevents tokens from attending to the
-          future.
+          After all 80 layers, the cache holds K and V vectors for all 2,000 tokens at
+          all 80 layers &mdash; that is 2,000 &times; 80 layers &times; 8 KV groups
+          &times; 128 d<sub>head</sub> &times; 2 bytes &times; 2 (K+V)
+          = <strong>655 MB</strong>, computed in one parallel burst.
         </InfoBox>
+
         <InfoBox>
-          After all 80 layers, the cache holds <strong>655 MB</strong> of key-value data for
-          those 2,000 tokens, computed in one burst. This phase is{' '}
-          <strong>compute-bound</strong> &mdash; GPUs love it. The arithmetic units are fully
-          utilized, processing thousands of tokens in parallel through massive matrix
-          multiplications.
+          All 2,000 tokens can be processed in parallel because they are
+          all <em>known</em> &mdash; the user already typed them. The model does not
+          need to wait for one token&rsquo;s output to know what the next token is.
+          GPUs are built for exactly this kind of massive parallel matrix multiplication.
+          Prefill is <strong>compute-bound</strong>: the bottleneck is arithmetic
+          throughput, not memory bandwidth.
         </InfoBox>
       </Panel>
 
+      {/* TOKEN SELECTION */}
       <Panel className="mt-4">
-        <PanelHeader>Token selection</PanelHeader>
+        <PanelHeader>How the first response token is selected</PanelHeader>
         <InfoBox>
-          After the final layer, an <strong>output projection</strong> converts the last
-          token&rsquo;s representation into a score for every token in the vocabulary &mdash;
-          128,256 entries for Llama-3. Softmax converts these scores into probabilities. A
-          token is sampled from this distribution.
+          After prefill, the final layer produces a d<sub>model</sub>-sized vector
+          (8,192 numbers for Llama-3 70B) for every token position. But only
+          the <strong>last position</strong> matters for generation &mdash; thanks to
+          causal masking, it is the only one that has attended to the entire prompt.
+          Its representation encodes everything the model has seen.
+        </InfoBox>
+
+        <div className="px-4 pb-4 space-y-2">
+          {[
+            {
+              num: '1',
+              label: 'Output projection',
+              text: 'A weight matrix of size d_model \u00d7 vocab_size (8,192 \u00d7 128,256 for Llama-3) multiplies the vector, producing a score for every token in the vocabulary. These scores are called logits \u2014 raw, unnormalized numbers. A high logit means the model considers that vocabulary entry a likely next token.',
+            },
+            {
+              num: '2',
+              label: 'Softmax',
+              text: 'The same function from Stop 6, applied here to 128,256 logits instead of attention scores. It converts them into a probability distribution \u2014 128,256 probabilities summing to 1. "The" might be 0.12, "A" might be 0.08, "banana" might be 0.000001.',
+            },
+            {
+              num: '3',
+              label: 'Sampling',
+              text: 'A token is selected from this distribution. The temperature parameter (from Stop 6) controls how: low temperature favors the highest-probability token, high temperature allows more variety, temperature 0 always picks the top token (greedy decoding).',
+            },
+          ].map((step) => (
+            <div key={step.num} className="flex gap-3 items-start text-[13px]">
+              <span className="flex-shrink-0 w-6 h-6 rounded-full bg-[var(--color-teal-bg)] border border-[var(--color-teal)] text-[var(--color-teal-text)] text-xs font-medium flex items-center justify-center">
+                {step.num}
+              </span>
+              <div className="text-[var(--color-text-secondary)] leading-relaxed">
+                <strong className="text-[var(--color-text)]">{step.label}.</strong>{' '}
+                {step.text}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <InfoBox>
+          The vocabulary is the fixed set of all tokens the model knows &mdash; 128,256
+          for Llama-3. It is established before training and never changes. Every
+          possible output is a selection from this vocabulary. The model cannot
+          produce a token outside its vocabulary &mdash; this is why rare words get
+          split into sub-word tokens (Stop 3).
         </InfoBox>
       </Panel>
 
+      {/* DECODE */}
       <Panel className="mt-4">
-        <PanelHeader>Phase 2: Decode</PanelHeader>
+        <PanelHeader>Phase 2: Decode &mdash; generating the response</PanelHeader>
         <InfoBox>
-          Now the model generates <strong>one token at a time</strong>. Each new token passes
-          through all 80 layers. At each layer, it computes its own Q, K, V &mdash; then reads
-          the <strong>entire cache</strong> for that layer to compute attention, and appends its
-          new K and V entry.
+          Now the model generates the rest of the response, one token at a time.
+          This is <strong>autoregressive generation</strong> &mdash; each new token
+          depends on the prediction from the previous step.
         </InfoBox>
+
+        <div className="px-4 pb-4 space-y-2">
+          {[
+            {
+              num: '1',
+              text: 'The selected first response token is embedded (looked up in the embedding table, producing a d_model-sized vector \u2014 the same process prompt tokens went through) and fed into Layer 1.',
+            },
+            {
+              num: '2',
+              text: 'This single new token computes its Q, K, V through the weight matrices. Its K and V are appended to the existing cache (which already has 2,000 entries at this layer). Its Q is compared against all 2,001 cached K vectors \u2014 including its own.',
+            },
+            {
+              num: '3',
+              text: 'The enriched representation passes through the FFN, then into Layer 2. The same process repeats at every layer: compute Q, K, V; append K, V to that layer\u2019s cache; attend to all cached K vectors; blend Values; FFN; pass to the next layer.',
+            },
+            {
+              num: '4',
+              text: 'The token must pass through all 80 layers before the next token can begin. There is no way to pipeline this \u2014 Layer 1 cannot start on the next token while Layer 2 works on the current one \u2014 because the next token\u2019s identity is determined by the output of Layer 80. It does not exist yet.',
+            },
+            {
+              num: '5',
+              text: 'After Layer 80, the last-position vector passes through the same output projection \u2192 softmax \u2192 sampling sequence. The selected token is embedded and fed back into Layer 1. The cycle repeats.',
+            },
+          ].map((step) => (
+            <div key={step.num} className="flex gap-3 items-start text-[13px]">
+              <span className="flex-shrink-0 w-6 h-6 rounded-full bg-[var(--color-primary-bg)] border border-[var(--color-primary)] text-[var(--color-primary-text)] text-xs font-medium flex items-center justify-center">
+                {step.num}
+              </span>
+              <span className="text-[var(--color-text-secondary)] leading-relaxed">{step.text}</span>
+            </div>
+          ))}
+        </div>
+
         <InfoBox>
-          Layers cannot pipeline &mdash; layer 1 cannot start processing the next token while
-          layer 80 is still working on the current one, because the next token&rsquo;s{' '}
-          <strong>identity</strong> depends on layer 80&rsquo;s output. The model must finish
-          the full 80-layer forward pass, select a token, and only then begin the next one.
+          Each decode step produces one token. To generate a 500-token response, the
+          full 80-layer stack runs 500 times &mdash; sequentially. After those 500
+          steps, the cache has grown from 2,000 to 2,500 tokens&rsquo; worth of K, V at
+          every layer.
         </InfoBox>
+
         <InfoBox>
-          This phase is <strong>memory-bound</strong>. The GPU spends most of its time reading
-          the cache from memory, not computing. For each new token, it reads hundreds of
-          megabytes (or gigabytes) of cached K and V vectors, but performs only a tiny
-          amount of arithmetic per byte read.
+          Each new token&rsquo;s identity depends on the prediction at the previous step.
+          The model cannot process token 2,002 until it knows what token 2,001 <em>is</em>.
+          This inherent sequentiality is why generating long responses takes time, even on
+          powerful hardware.
+        </InfoBox>
+
+        <InfoBox>
+          Decode is <strong>memory-bound</strong>: each step involves only one new
+          token&rsquo;s worth of matrix multiplications (fast), but it must <strong>read
+          the entire KV cache</strong> at every layer to compute attention (slow). As the
+          cache grows, each decode step gets slower &mdash; there is more data to read
+          from HBM. The GPU&rsquo;s arithmetic units are mostly idle, waiting for cache
+          data to arrive from memory.
         </InfoBox>
       </Panel>
 
       <Callout
         type="warn"
-        message="<strong>Prefill is compute-bound. Decode is memory-bound.</strong> This asymmetry is the root cause of nearly every optimization technique in Act 2. The same hardware cannot serve both phases efficiently &mdash; a fact with profound consequences for inference infrastructure."
+        message="<strong>Prefill is compute-bound. Decode is memory-bound.</strong> The same hardware cannot serve both phases efficiently. This asymmetry is the root cause of nearly every optimization technique in Act 2."
       />
     </div>
   );
@@ -155,20 +295,58 @@ function MultiTurnPage() {
     <div>
       <Panel>
         <PanelHeader>Incremental prefill</PanelHeader>
-        <InfoBox>
-          When you send a follow-up message in a conversation, the model does not reprocess
-          the entire history from scratch. The KV cache from previous turns{' '}
-          <strong>already exists in GPU memory</strong>. Only the new tokens &mdash; your
-          latest message &mdash; need to go through prefill. Their K and V vectors are computed
-          and appended to the existing cache at each layer.
-        </InfoBox>
-        <InfoBox>
-          This is why multi-turn conversations feel fast once the first response arrives. The
-          initial prefill might process thousands of tokens, but each subsequent turn only
-          processes the delta &mdash; the new tokens since the last turn.
-        </InfoBox>
+        <div className="p-4 space-y-3 text-[13px] text-[var(--color-text-secondary)] leading-relaxed">
+          <p>
+            The context is now: system prompt + your first message + the model&rsquo;s
+            response + your new second message. But the KV cache already contains K, V
+            for everything through the model&rsquo;s response &mdash; those were computed
+            during the first prefill and the subsequent decode steps.
+          </p>
+          <p>
+            Only your <strong className="text-[var(--color-text)]">new tokens</strong> (the
+            second message) need to go through prefill. This is <strong className="text-[var(--color-text)]">incremental
+            prefill</strong>. The new tokens are processed through all 80 layers in
+            parallel, and at each layer, their K and V are appended to the existing cache.
+            When their Q vectors compute attention, they attend to the <strong className="text-[var(--color-text)]">entire
+            cache</strong> &mdash; all the K vectors from the first exchange plus their own.
+          </p>
+          <p>
+            <strong className="text-[var(--color-text)]">Nothing from the first exchange is
+            recomputed.</strong> The cached K and V vectors from the system prompt, your
+            first message, and the model&rsquo;s first response are all still there, still
+            valid. The new tokens simply add to them.
+          </p>
+        </div>
       </Panel>
 
+      {/* Conversation timeline */}
+      <Panel className="mt-4">
+        <PanelHeader>Conversation timeline</PanelHeader>
+        <div className="p-4 space-y-2">
+          {[
+            { phase: 'First prefill', desc: 'System prompt + first message', color: 'var(--color-teal)', action: 'Cache fills' },
+            { phase: 'First decode', desc: 'Model generates response', color: 'var(--color-blue)', action: 'Cache extends' },
+            { phase: 'Second prefill', desc: 'New message only', color: 'var(--color-teal)', action: 'Cache extends' },
+            { phase: 'Second decode', desc: 'Model generates second response', color: 'var(--color-blue)', action: 'Cache extends further' },
+          ].map((item, i) => (
+            <div key={i} className="flex items-center gap-3 text-[13px]">
+              <div
+                className="flex-shrink-0 w-3 h-3 rounded-sm"
+                style={{ background: item.color }}
+              />
+              <div className="min-w-0 flex-1">
+                <span className="font-medium text-[var(--color-text)]">{item.phase}</span>
+                <span className="text-[var(--color-text-muted)]"> &mdash; {item.desc}</span>
+              </div>
+              <span className="flex-shrink-0 text-[12px] text-[var(--color-text-secondary)] italic">
+                {item.action}
+              </span>
+            </div>
+          ))}
+        </div>
+      </Panel>
+
+      {/* What the cache stores */}
       <Panel className="mt-4">
         <PanelHeader>What the cache stores (and what it does not)</PanelHeader>
         <div className="p-4 space-y-3">
@@ -177,10 +355,11 @@ function MultiTurnPage() {
               Stored
             </span>
             <div className="text-[13px] text-[var(--color-text-secondary)] leading-relaxed">
-              <strong className="text-[var(--color-text)]">Key vectors</strong> and{' '}
-              <strong className="text-[var(--color-text)]">Value vectors</strong> &mdash; one
-              pair per token, per layer, per KV head group. These are the projections computed
-              by W<sub>K</sub> and W<sub>V</sub> at each layer.
+              <strong className="text-[var(--color-text)]">K and V vectors</strong> &mdash; the
+              results of multiplying each token&rsquo;s representation by W<sub>K</sub> and
+              W<sub>V</sub> at each layer. One pair per token, per layer, per KV head group.
+              When a new token attends to the cache, it reads K vectors (to compute attention
+              scores) and V vectors (to blend information).
             </div>
           </div>
 
@@ -192,9 +371,9 @@ function MultiTurnPage() {
               <strong className="text-[var(--color-text)]">Tokens</strong> themselves (just
               integer IDs, trivially small).{' '}
               <strong className="text-[var(--color-text)]">Embeddings</strong> (consumed by
-              layer 1 and not needed again).{' '}
-              <strong className="text-[var(--color-text)]">Query vectors</strong> (computed
-              fresh for each new token and discarded after use &mdash; they never need to be
+              Layer 1 and not needed again).{' '}
+              <strong className="text-[var(--color-text)]">Q vectors</strong> (computed fresh
+              for each new token and discarded after use &mdash; they never need to be
               looked up later).
             </div>
           </div>
@@ -203,7 +382,7 @@ function MultiTurnPage() {
 
       <Callout
         type="note"
-        message="<strong>Only K and V persist.</strong> The Query is ephemeral &mdash; it exists only for the current token&rsquo;s attention computation and is then discarded. Keys and Values must persist because every future token will need to attend to them."
+        message="<strong>The cache must persist.</strong> It must stay in GPU memory for the duration of the conversation. It cannot be discarded after each turn because the next turn needs it. And it grows with every token &mdash; your messages, the model&rsquo;s responses, all accumulating."
       />
     </div>
   );
@@ -213,26 +392,30 @@ function TradeoffPage() {
   return (
     <div>
       <Panel>
-        <PanelHeader>The space-time tradeoff</PanelHeader>
-        <InfoBox>
-          <strong>Without the cache:</strong> to generate the next token, the model must
-          reprocess the entire context from scratch &mdash; recomputing every K and V at every
-          layer for every previous token. The total compute per generated token scales as{' '}
-          <strong>O(T&sup2;)</strong> where T is the context length, because each of the T
-          tokens must attend to all T tokens.
-        </InfoBox>
-        <InfoBox>
-          <strong>With the cache:</strong> only the new token passes through the model. It
-          reads cached K and V vectors from all previous tokens, computes attention, and
-          appends its own K and V. The compute per generated token scales as{' '}
-          <strong>O(T)</strong> &mdash; linear, not quadratic. But the cache itself consumes{' '}
-          <strong>O(T) memory</strong> that grows with every token generated.
-        </InfoBox>
+        <PanelHeader>O(T&sup2;) becomes O(T)</PanelHeader>
+        <div className="p-4 space-y-3 text-[13px] text-[var(--color-text-secondary)] leading-relaxed">
+          <p>
+            <strong className="text-[var(--color-text)]">Without the cache,</strong> every
+            decode step requires recomputing K and V for all previous tokens. At step N,
+            that is N&minus;1 tokens &times; 2 (K+V) &times; 80 layers of matrix
+            multiplications &mdash; just to reconstruct what was already computed in
+            previous steps. Total computation across a generation of T tokens:
+            proportional to <strong>T&sup2;</strong> (the sum 1 + 2 + 3 + ... + T&minus;1).
+            The same quadratic scaling from Stop 2 &mdash; now applied to compute cost,
+            not attention scores.
+          </p>
+          <p>
+            <strong className="text-[var(--color-text)]">With the cache,</strong> each decode
+            step computes only the new token&rsquo;s K and V (2 matrix multiplications per
+            layer) and reads the existing cache. Total computation across T tokens:
+            proportional to <strong>T</strong> &mdash; linear, not quadratic.
+          </p>
+        </div>
       </Panel>
 
       <Panel className="mt-4">
-        <PanelHeader>Worked example: generating the 10,000th token</PanelHeader>
-        <div className="p-4 space-y-4">
+        <PanelHeader>Worked example: generating the 10,000th token (Llama-3 70B)</PanelHeader>
+        <div className="p-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="p-3 rounded-lg bg-[var(--color-red-bg)] border border-[var(--color-red)]">
               <div className="text-[11px] font-medium text-[var(--color-red-text)] uppercase tracking-wider mb-2">
@@ -240,12 +423,14 @@ function TradeoffPage() {
               </div>
               <div className="text-[13px] text-[var(--color-text-secondary)] leading-relaxed space-y-2">
                 <p>
-                  Reprocess all 10,000 tokens through 80 layers. Each token at each layer
-                  computes Q, K, V and runs attention against all prior tokens.
+                  Recompute K, V for all 9,999 previous tokens through all 80 layers.
                 </p>
                 <p className="font-mono text-[12px] text-[var(--color-text)]">
-                  10,000 tokens &times; 80 layers &times; ~2 matmuls
-                  = <strong>~1,600,000</strong> matrix operations
+                  9,999 &times; 2 &times; 80
+                  = <strong>~1,600,000</strong> matrix multiplications
+                </p>
+                <p className="text-[12px] text-[var(--color-text-muted)]">
+                  Bottleneck: compute (massive redundant arithmetic)
                 </p>
               </div>
             </div>
@@ -256,12 +441,15 @@ function TradeoffPage() {
               </div>
               <div className="text-[13px] text-[var(--color-text-secondary)] leading-relaxed space-y-2">
                 <p>
-                  Process only the 1 new token through 80 layers. At each layer, read
-                  cached K and V, compute attention, append new K and V.
+                  Process only the 1 new token through 80 layers. Read cached K and V
+                  at each layer.
                 </p>
                 <p className="font-mono text-[12px] text-[var(--color-text)]">
-                  1 token &times; 80 layers &times; 2 matmuls
-                  = <strong>160</strong> matrix operations
+                  1 &times; 2 &times; 80
+                  = <strong>160</strong> matrix multiplications
+                </p>
+                <p className="text-[12px] text-[var(--color-text-muted)]">
+                  Bottleneck: memory bandwidth (reading the cache)
                 </p>
               </div>
             </div>
@@ -271,7 +459,7 @@ function TradeoffPage() {
 
       <Callout
         type="good"
-        message="<strong>10,000&times; fewer operations</strong> &mdash; from 1.6 million matrix multiplications down to 160. The KV cache turns a quadratic nightmare into a linear scan. But that linear scan reads an enormous amount of data from memory, and the cache itself must be stored somewhere. That &ldquo;somewhere&rdquo; is GPU HBM &mdash; the scarcest resource in inference."
+        message="<strong>10,000&times; fewer K, V computations.</strong> The cache turns O(T&sup2;) compute into O(T) compute &mdash; at the cost of O(T) memory. For a 128K context, that is the difference between feasible and impossible. But that O(T) memory is not free &mdash; it must be stored in the scarcest resource in inference: GPU HBM."
       />
     </div>
   );
@@ -285,30 +473,56 @@ function CalculationPage() {
       <Panel>
         <PanelHeader>The full formula</PanelHeader>
         <div className="p-4 space-y-3">
-          <div className="text-[13px] text-[var(--color-text-secondary)] leading-relaxed">
-            The KV cache stores <strong>two</strong> vectors (K and V) at every layer, for
-            every KV head group, with each vector having d<sub>head</sub> dimensions, at the
-            chosen numerical precision:
-          </div>
           <div className="p-3 rounded-lg bg-[var(--color-surface-muted)] border border-[var(--color-border-light)] font-mono text-[13px] text-[var(--color-text)] text-center leading-loose">
             Cache = 2 &times; layers &times; KV_heads &times; d<sub>head</sub> &times; seq_len &times; precision
+          </div>
+          <div className="text-[13px] text-[var(--color-text-secondary)] leading-relaxed space-y-1">
+            <div className="flex gap-2">
+              <span className="font-mono text-[var(--color-text)] min-w-[90px] text-right">2</span>
+              <span>= K + V (both cached)</span>
+            </div>
+            <div className="flex gap-2">
+              <span className="font-mono text-[var(--color-text)] min-w-[90px] text-right">layers</span>
+              <span>= number of transformer layers</span>
+            </div>
+            <div className="flex gap-2">
+              <span className="font-mono text-[var(--color-text)] min-w-[90px] text-right">KV_heads</span>
+              <span>= number of KV head groups (GQA &mdash; Stop 8)</span>
+            </div>
+            <div className="flex gap-2">
+              <span className="font-mono text-[var(--color-text)] min-w-[90px] text-right">d<sub>head</sub></span>
+              <span>= head dimension (128 for all Llama-3)</span>
+            </div>
+            <div className="flex gap-2">
+              <span className="font-mono text-[var(--color-text)] min-w-[90px] text-right">seq_len</span>
+              <span>= total tokens processed so far (prompt + generated)</span>
+            </div>
+            <div className="flex gap-2">
+              <span className="font-mono text-[var(--color-text)] min-w-[90px] text-right">precision</span>
+              <span>= bytes per number (2 for FP16, 1 for FP8)</span>
+            </div>
           </div>
         </div>
       </Panel>
 
       <Panel className="mt-4">
-        <PanelHeader>Llama-3 70B coefficient</PanelHeader>
+        <PanelHeader>Llama-3 70B: the coefficient</PanelHeader>
         <div className="p-4 space-y-3">
-          <div className="text-[13px] text-[var(--color-text-secondary)] leading-relaxed">
-            Plugging in the architectural parameters:
-          </div>
           <div className="p-3 rounded-lg bg-[var(--color-surface-muted)] border border-[var(--color-border-light)] font-mono text-[12px] text-[var(--color-text)] text-center leading-loose">
-            2 &times; {layers} layers &times; {kvHeads} KV heads &times; {dHead} d<sub>head</sub> &times; {precision} bytes
-            = <strong>{coefficient.toLocaleString()} bytes per token</strong>
+            2 &times; {layers} &times; {kvHeads} &times; {dHead} &times; {precision} bytes
+            = <strong>{coefficient.toLocaleString()} bytes per token</strong> (~320 KB)
           </div>
-          <div className="text-[13px] text-[var(--color-text-secondary)] leading-relaxed">
-            That is roughly <strong>320 KB per token</strong>. Multiply by context length to
-            get total cache size.
+          <div className="text-[13px] text-[var(--color-text-secondary)] leading-relaxed space-y-2">
+            <p>
+              That coefficient &mdash; 327,680 bytes &mdash; is the amount of cache added
+              for each additional token. This is the same per-token number from Stop 8;
+              now you can see every factor in the formula and trace where each one comes from.
+            </p>
+            <div className="font-mono text-[12px] text-[var(--color-text)] space-y-1 pl-4">
+              <div>At 1 token: &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;327,680 &times; 1 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;= 320 KB</div>
+              <div>At 1,000 tokens: &nbsp;327,680 &times; 1,000 &nbsp;&nbsp;&nbsp;= 320 MB</div>
+              <div>At 128,000 tokens: 327,680 &times; 128,000 = <strong>40 GB</strong></div>
+            </div>
           </div>
         </div>
       </Panel>
@@ -320,8 +534,8 @@ function CalculationPage() {
             <thead>
               <tr className="border-b border-[var(--color-border)] text-[11px] font-medium text-[var(--color-text-muted)] uppercase tracking-wider">
                 <th className="px-4 py-2 text-left">Context</th>
-                <th className="px-4 py-2 text-right">8B</th>
-                <th className="px-4 py-2 text-right">70B</th>
+                <th className="px-4 py-2 text-right">8B cache</th>
+                <th className="px-4 py-2 text-right">70B cache</th>
                 <th className="px-4 py-2 text-left">Typical use</th>
               </tr>
             </thead>
@@ -352,7 +566,7 @@ function CalculationPage() {
 
       <Callout
         type="warn"
-        message="<strong>These are per-user numbers.</strong> Every concurrent user gets their own KV cache. Serve 10 users at 8K context on a 70B model and the caches alone consume 25 GB &mdash; before counting the model weights themselves."
+        message="<strong>These are per-user numbers.</strong> Every concurrent conversation needs its own KV cache &mdash; the cached vectors are specific to that conversation&rsquo;s tokens. Ten concurrent users at 32K tokens each = 10 &times; 10 GB = <strong>100 GB</strong> of KV cache for the 70B model alone."
       />
     </div>
   );
@@ -364,10 +578,11 @@ function MemoryWallPage() {
       <Panel>
         <PanelHeader>Scenario: Llama-3 70B on a single H100</PanelHeader>
         <InfoBox>
-          An NVIDIA H100 has <strong>80 GB</strong> of HBM3 memory. Loading Llama-3 70B with
-          FP4 quantized weights takes roughly <strong>35 GB</strong>. That leaves about{' '}
-          <strong>45 GB</strong> for everything else &mdash; KV caches, activations, and
-          operating overhead.
+          An NVIDIA H100 has <strong>80 GB</strong> of HBM3 &mdash; <strong>High Bandwidth
+          Memory</strong>, the GPU&rsquo;s main memory pool. Loading Llama-3 70B with FP4
+          quantized weights takes roughly <strong>35 GB</strong>. That
+          leaves <strong>45 GB</strong> for everything else &mdash; KV caches, activations,
+          and operating overhead.
         </InfoBox>
       </Panel>
 
@@ -389,9 +604,7 @@ function MemoryWallPage() {
                 <tr
                   key={idx}
                   className={`border-b border-[var(--color-border-light)] last:border-b-0 ${
-                    row.fits
-                      ? ''
-                      : 'bg-[var(--color-red-bg)]'
+                    row.fits ? '' : 'bg-[var(--color-red-bg)]'
                   }`}
                 >
                   <td className="px-4 py-2 text-right font-mono text-[var(--color-text)]">
@@ -424,9 +637,31 @@ function MemoryWallPage() {
         </div>
       </Panel>
 
+      <Panel className="mt-4">
+        <PanelHeader>When the wall is hit</PanelHeader>
+        <div className="p-4 space-y-2">
+          {[
+            { label: 'Evict oldest conversation', detail: 'One user\u2019s cache disappears. They must re-prefill.' },
+            { label: 'Reduce context window', detail: 'Conversation history is truncated. The model forgets.' },
+            { label: 'Spill to slower memory', detail: 'Cache migrates to DRAM or NVMe. Latency increases.' },
+            { label: 'Add more GPUs', detail: 'Cost increases. The cache must be distributed.' },
+          ].map((option, i) => (
+            <div key={i} className="flex gap-3 items-start text-[13px]">
+              <span className="flex-shrink-0 w-5 h-5 rounded bg-[var(--color-red-bg)] border border-[var(--color-red)] text-[var(--color-red-text)] text-[10px] font-medium flex items-center justify-center">
+                {i + 1}
+              </span>
+              <div className="text-[var(--color-text-secondary)] leading-relaxed">
+                <strong className="text-[var(--color-text)]">{option.label}.</strong>{' '}
+                {option.detail}
+              </div>
+            </div>
+          ))}
+        </div>
+      </Panel>
+
       <Callout
         type="warn"
-        message="<strong>At full context, one user nearly fills the GPU.</strong> Two users at 128K are impossible. Even at shorter contexts, scaling to dozens of concurrent users exhausts memory quickly. This is the <strong>memory wall</strong> &mdash; the point where GPU memory, not compute, becomes the binding constraint. The memory wall isn&rsquo;t a future problem. It&rsquo;s the central operational challenge of running LLM inference today."
+        message="<strong>At full context, one user nearly fills the GPU.</strong> The <strong>memory wall</strong> &mdash; the point where KV cache demand exceeds available HBM &mdash; is not a future problem. It is the central operational challenge of running LLM inference today. Every production inference system is fundamentally a system for managing KV cache memory."
       />
     </div>
   );
@@ -470,33 +705,47 @@ function InfrastructurePage() {
 
       <Panel className="mt-4">
         <PanelHeader>Disaggregated inference</PanelHeader>
-        <InfoBox>
-          If prefill is compute-bound and decode is memory-bound, running both on the same
-          GPU means <strong>neither phase gets optimal hardware</strong>. Prefill wants maximum
-          FLOPS &mdash; big GPUs with fast arithmetic units. Decode wants maximum memory
-          bandwidth &mdash; or simply more total memory to hold caches for many users.
-        </InfoBox>
-        <InfoBox>
-          The emerging solution is <strong>disaggregated inference</strong>: run prefill on
-          compute-optimized hardware, then <strong>transfer the KV cache</strong> over the
-          network to decode-optimized hardware. The cache becomes a data structure that must
-          be serialized, transmitted, and deserialized &mdash; potentially many gigabytes
-          per request.
-        </InfoBox>
-        <InfoBox>
-          <strong className="text-[var(--color-text)]">
+        <div className="p-4 space-y-3 text-[13px] text-[var(--color-text-secondary)] leading-relaxed">
+          <p>
+            Prefill wants maximum FLOPS &mdash; GPUs with fast arithmetic units, fully
+            saturated by the parallel matrix multiplications of thousands of prompt tokens.
+            Decode wants maximum memory bandwidth &mdash; or simply more total memory to
+            hold caches for many users. A GPU optimized for one phase is not optimal for
+            the other.
+          </p>
+          <p>
+            This mismatch has led to <strong className="text-[var(--color-text)]">disaggregated
+            inference</strong>: separating prefill and decode onto different hardware, each
+            optimized for its phase. Prefill runs on compute-optimized GPU pools. Decode runs
+            on bandwidth-optimized GPU pools.
+          </p>
+          <p>
+            The catch: after prefill completes on GPU Pool A, the KV cache &mdash; potentially
+            tens of gigabytes &mdash; must be <strong className="text-[var(--color-text)]">transferred
+            over the network</strong> to GPU Pool B where decode will run. The speed of that
+            transfer is a networking problem.
+          </p>
+        </div>
+      </Panel>
+
+      <Panel className="mt-4">
+        <div className="p-4">
+          <div className="text-[15px] font-medium text-[var(--color-text)] text-center leading-relaxed py-3">
             And that is how the KV cache became a networking story.
-          </strong>{' '}
-          The cache is no longer just a GPU-local optimization. It is data in flight &mdash;
-          shipped between machines, compressed for transit, paged into and out of memory,
-          scheduled across clusters. The engineering challenges of LLM inference are
-          fundamentally shaped by the size, structure, and lifecycle of the KV cache.
-        </InfoBox>
+          </div>
+          <div className="text-[13px] text-[var(--color-text-secondary)] leading-relaxed mt-2">
+            The cache is no longer just a GPU-local optimization. It is data in
+            flight &mdash; shipped between machines, compressed for transit, paged into
+            and out of memory, scheduled across clusters. The engineering challenges of
+            LLM inference are fundamentally shaped by the size, structure, and lifecycle
+            of the KV cache.
+          </div>
+        </div>
       </Panel>
 
       <Callout
         type="note"
-        message="<strong>Two phases, two bottlenecks, two hardware profiles.</strong> This split is the organizing principle of modern inference infrastructure. Every technique in Act 2 &mdash; quantization, paging, batching, speculation, disaggregation &mdash; targets one side of this divide or the other."
+        message="<strong>Two phases, two bottlenecks, two hardware profiles.</strong> This split is the organizing principle of modern inference infrastructure. Every technique in Act 2 targets one side of this divide or the other."
       />
     </div>
   );
@@ -506,24 +755,46 @@ function BridgePage() {
   return (
     <div>
       <Panel>
-        <PanelHeader>Act 1 complete</PanelHeader>
-        <InfoBox>
-          You now know what the KV cache is, why it exists, and why it matters. You&rsquo;ve
-          seen how attention works &mdash; from the dot product through softmax to the
-          weighted sum of Value vectors. You understand that multi-head attention multiplies
-          the cache cost, that GQA reduces it, and that 80 layers of this structure create a
-          memory footprint measured in gigabytes per user.
-        </InfoBox>
-        <InfoBox>
-          You understand the two phases of inference &mdash; prefill and decode &mdash; and
-          why they have opposite hardware requirements. You&rsquo;ve seen the memory wall:
-          a single user at full context nearly fills an H100.
-        </InfoBox>
-        <InfoBox>
-          <strong className="text-[var(--color-text)]">Act 2 is about what we do about
-          it.</strong> The engineering techniques that make serving LLMs to millions of users
-          economically viable &mdash; all of which center on managing the KV cache.
-        </InfoBox>
+        <PanelHeader>Act 1: the complete picture</PanelHeader>
+        <div className="p-4 space-y-2">
+          {[
+            { num: 1, text: 'Sequential models (RNNs) lose information over distance.' },
+            { num: 2, text: 'Attention lets every token see every other token directly.' },
+            { num: 3, text: 'Q, K, V separate matching, being found, and carrying information \u2014 and K, V must be stored.' },
+            { num: 4, text: 'Weight matrices learn meaningful attention patterns through training.' },
+            { num: 5, text: 'Dot products measure the alignment that training created.' },
+            { num: 6, text: 'Scaling and softmax convert raw scores to proper weights.' },
+            { num: 7, text: 'The weighted sum blends Values into context-enriched representations.' },
+            { num: 8, text: 'Multiple heads provide parallel perspectives \u2014 and each stores its own K, V.' },
+            { num: 9, text: 'Stacking layers enables progressive refinement \u2014 and each layer has its own cache.' },
+            { num: 10, text: 'The resulting KV cache makes inference possible \u2014 and creates the central infrastructure challenge.' },
+          ].map((item) => (
+            <div key={item.num} className="flex gap-3 items-start text-[13px]">
+              <span className="flex-shrink-0 w-6 h-6 rounded-full bg-[var(--color-primary-bg)] border border-[var(--color-primary)] text-[var(--color-primary-text)] text-xs font-medium flex items-center justify-center">
+                {item.num}
+              </span>
+              <span className="text-[var(--color-text-secondary)] leading-relaxed">{item.text}</span>
+            </div>
+          ))}
+        </div>
+      </Panel>
+
+      <Panel className="mt-4">
+        <PanelHeader>The thesis</PanelHeader>
+        <div className="p-4 space-y-3 text-[13px] text-[var(--color-text-secondary)] leading-relaxed">
+          <p>
+            <strong className="text-[var(--color-text)]">The KV cache is what makes modern LLMs
+            possible.</strong> Without it, inference would be impossibly slow &mdash; O(T&sup2;)
+            compute for every conversation. With it, inference is fast &mdash; O(T) compute.
+            But fast is not free. The cache that enables speed creates a memory footprint that
+            grows with every token, every user, every conversation.
+          </p>
+          <p>
+            At production scale &mdash; thousands of concurrent users, long contexts, multiple
+            models &mdash; KV cache management <em>is</em> the inference problem. Every other
+            optimization operates within the constraints that the KV cache imposes.
+          </p>
+        </div>
       </Panel>
 
       <Panel className="mt-4">
