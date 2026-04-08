@@ -432,7 +432,7 @@ function MultiTurnPage() {
 
       <Callout
         type="note"
-        message="<strong>The cache must persist.</strong> It must stay in GPU memory for the duration of the conversation. It cannot be discarded after each turn because the next turn needs it. And it grows with every token &mdash; your messages, the model&rsquo;s responses, all accumulating."
+        message="<strong>The cache must persist &mdash; but not necessarily in HBM.</strong> During active generation, the KV cache must be in GPU HBM because the GPU reads it at every decode step. But between turns &mdash; while you are reading the response or typing your next message &mdash; the cache can be <strong>moved out</strong> to slower memory tiers (host DRAM, NVMe storage, or even across the network) to free HBM for other users. When you send your next message, the cache must be <strong>reloaded into HBM</strong> before processing can resume. This swapping adds latency to each new turn, but it allows the system to serve far more concurrent users than HBM alone could hold. Managing this movement &mdash; where to store idle caches, when to evict them, how fast to reload them &mdash; is one of the central infrastructure challenges we will explore in Act 2."
       />
     </div>
   );
