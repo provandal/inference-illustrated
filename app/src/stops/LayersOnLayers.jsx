@@ -324,33 +324,49 @@ function EvolutionPage() {
           processes what was gathered. Watch how the representation transforms
           from a bare dictionary entry into a richly contextual understanding.
         </InfoBox>
-        <div className="p-4 space-y-2.5">
+        <div className="p-4 space-y-3">
           {FAULTY_EVOLUTION.map((step, idx) => {
             const isLast = idx === FAULTY_EVOLUTION.length - 1;
             return (
               <div key={step.layer}>
                 <div
-                  className={`flex gap-3 items-start p-2.5 rounded-lg border ${
+                  className={`rounded-lg border overflow-hidden ${
                     isLast
-                      ? 'bg-[var(--color-teal-bg)] border-[var(--color-teal)]'
-                      : 'bg-[var(--color-surface-muted)] border-[var(--color-border-light)]'
+                      ? 'border-[var(--color-teal)]'
+                      : 'border-[var(--color-border-light)]'
                   }`}
                 >
-                  <span
-                    className={`flex-shrink-0 w-6 h-6 rounded-full text-xs font-medium flex items-center justify-center ${
-                      isLast
-                        ? 'bg-[var(--color-teal)] text-white'
-                        : 'bg-[var(--color-primary-bg)] border border-[var(--color-primary)] text-[var(--color-primary-text)]'
-                    }`}
-                  >
-                    {step.layer}
-                  </span>
-                  <div className="min-w-0">
+                  {/* Layer header */}
+                  <div className={`flex items-center gap-2 px-3 py-2 ${
+                    isLast
+                      ? 'bg-[var(--color-teal-bg)]'
+                      : 'bg-[var(--color-surface-muted)]'
+                  }`}>
+                    <span
+                      className={`flex-shrink-0 w-6 h-6 rounded-full text-xs font-medium flex items-center justify-center ${
+                        isLast
+                          ? 'bg-[var(--color-teal)] text-white'
+                          : 'bg-[var(--color-primary-bg)] border border-[var(--color-primary)] text-[var(--color-primary-text)]'
+                      }`}
+                    >
+                      {step.layer}
+                    </span>
                     <div className="text-[13px] font-medium text-[var(--color-text)]">
-                      Layer {step.layer}
+                      Layer {step.layer}: {step.title}
                     </div>
-                    <div className="text-[12px] text-[var(--color-text-secondary)] leading-relaxed mt-0.5">
-                      {step.summary}
+                  </div>
+                  {/* Layer content */}
+                  <div className="px-3 py-2.5 text-[12px] text-[var(--color-text-secondary)] leading-relaxed space-y-2">
+                    <p>{step.summary}</p>
+                    <div className="flex gap-3 text-[11px]">
+                      <div className="flex-1 px-2 py-1.5 rounded bg-[var(--color-teal-bg)] border border-[var(--color-teal)]">
+                        <span className="font-medium text-[var(--color-teal-text)]">Attention gathered:</span>{' '}
+                        <span className="text-[var(--color-text-secondary)]">{step.attention}</span>
+                      </div>
+                      <div className="flex-1 px-2 py-1.5 rounded bg-[var(--color-primary-bg)] border border-[var(--color-primary)]">
+                        <span className="font-medium text-[var(--color-primary-text)]">FFN processed:</span>{' '}
+                        <span className="text-[var(--color-text-secondary)]">{step.ffn}</span>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -402,6 +418,74 @@ function FfnPage() {
           the larger component. Across 80 layers, that&rsquo;s roughly 37 billion
           parameters dedicated to feed-forward processing.
         </InfoBox>
+      </Panel>
+
+      {/* FFN block diagram */}
+      <Panel className="mt-4">
+        <PanelHeader>Inside the FFN &mdash; block diagram</PanelHeader>
+        <div className="p-4 flex justify-center">
+          <div className="inline-flex flex-col items-center gap-0 text-[12px] font-mono">
+            {/* Input */}
+            <div className="px-4 py-1.5 rounded border border-[var(--color-border)] bg-[var(--color-surface-muted)] text-[var(--color-text)] font-medium text-center">
+              Input from attention <span className="text-[var(--color-text-muted)] font-normal">(d_model = 8,192)</span>
+            </div>
+            <div className="text-[var(--color-text-muted)]">&darr;</div>
+
+            {/* W1 expansion */}
+            <div className="w-[340px] border border-[var(--color-primary)] rounded-lg bg-[var(--color-primary-bg)] p-3">
+              <div className="flex flex-col items-center gap-1">
+                <div className="px-3 py-1.5 rounded bg-[var(--color-primary)] text-white text-[11px] font-semibold">
+                  W&#x2081; &mdash; Expansion matrix
+                </div>
+                <div className="text-[11px] text-[var(--color-primary-text)] text-center font-sans">
+                  Multiplies the 8,192-dimensional input by a learned 8,192 &times; 28,672 matrix,
+                  expanding it into a <strong>28,672-dimensional</strong> internal workspace &mdash;
+                  3.5&times; wider. This gives the network room to represent complex patterns
+                  that don&rsquo;t fit in the original d_model dimensions.
+                </div>
+              </div>
+            </div>
+            <div className="text-[var(--color-text-muted)]">&darr; <span className="text-[10px] font-sans">28,672 dimensions</span></div>
+
+            {/* SwiGLU */}
+            <div className="w-[340px] border border-[var(--color-amber)] rounded-lg bg-[var(--color-amber-bg)] p-3">
+              <div className="flex flex-col items-center gap-1">
+                <div className="px-3 py-1.5 rounded bg-[var(--color-amber)] text-white text-[11px] font-semibold">
+                  SwiGLU activation
+                </div>
+                <div className="text-[11px] text-[var(--color-amber-text)] text-center font-sans">
+                  A non-linear function applied element by element. This is what makes the FFN
+                  more than a simple matrix multiplication &mdash; without non-linearity, stacking
+                  layers would collapse into a single linear transformation. SwiGLU selectively
+                  gates which dimensions pass through, allowing the network to learn complex,
+                  non-linear patterns.
+                </div>
+              </div>
+            </div>
+            <div className="text-[var(--color-text-muted)]">&darr; <span className="text-[10px] font-sans">28,672 dimensions</span></div>
+
+            {/* W2 compression */}
+            <div className="w-[340px] border border-[var(--color-primary)] rounded-lg bg-[var(--color-primary-bg)] p-3">
+              <div className="flex flex-col items-center gap-1">
+                <div className="px-3 py-1.5 rounded bg-[var(--color-primary)] text-white text-[11px] font-semibold">
+                  W&#x2082; &mdash; Compression matrix
+                </div>
+                <div className="text-[11px] text-[var(--color-primary-text)] text-center font-sans">
+                  Multiplies the 28,672-dimensional result by a learned 28,672 &times; 8,192 matrix,
+                  compressing it back to <strong>d_model = 8,192</strong>. The output must be the
+                  same size as the input so it can be added back via the residual connection and
+                  fed into the next layer.
+                </div>
+              </div>
+            </div>
+            <div className="text-[var(--color-text-muted)]">&darr;</div>
+
+            {/* Output */}
+            <div className="px-4 py-1.5 rounded border border-[var(--color-border)] bg-[var(--color-surface-muted)] text-[var(--color-text)] font-medium text-center">
+              Output <span className="text-[var(--color-text-muted)] font-normal">(d_model = 8,192) &rarr; + residual</span>
+            </div>
+          </div>
+        </div>
       </Panel>
 
       <Panel className="mt-4">
