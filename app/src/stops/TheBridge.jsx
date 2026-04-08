@@ -280,9 +280,12 @@ function TwoPhasesPage() {
 
         <InfoBox>
           Decode is <strong>memory-bound</strong>: each step involves only one new
-          token&rsquo;s worth of matrix multiplications (fast), but it must <strong>read
-          the entire KV cache</strong> at every layer to compute attention (slow). As the
-          cache grows, each decode step gets slower &mdash; there is more data to read
+          token&rsquo;s worth of matrix multiplications (fast), but as the token passes
+          through each layer sequentially, it must <strong>read that layer&rsquo;s
+          KV cache entries</strong> for all previous tokens to compute attention. Across
+          all 80 layers, this means the entire cache is read once per decode step &mdash;
+          but the access pattern is 80 sequential reads, one layer&rsquo;s portion at a time.
+          As the cache grows, each decode step gets slower &mdash; there is more data to read
           from HBM. The GPU&rsquo;s arithmetic units are mostly idle, waiting for cache
           data to arrive from memory.
         </InfoBox>
@@ -721,9 +724,11 @@ function InfrastructurePage() {
           <p>
             <strong className="text-[var(--color-text)]">Decode</strong> processes one token per
             step. The arithmetic per step is small &mdash; one token&rsquo;s Q, K, V computation
-            plus one row of attention. But each step must <strong className="text-[var(--color-text)]">read
-            the entire KV cache</strong> at every layer to compute that attention. For Llama-3 70B
-            at 32K tokens: <strong className="text-[var(--color-text)]">10 GB of cache read at every
+            plus one row of attention. But as the token passes through each layer, it must{' '}
+            <strong className="text-[var(--color-text)]">read that layer&rsquo;s cached K and V
+            entries</strong> for all previous tokens. Across all 80 layers, the total data read
+            per decode step equals the full cache size. For Llama-3 70B at 32K tokens:{' '}
+            <strong className="text-[var(--color-text)]">10 GB of cache read per
             decode step</strong>, just to produce one token. The GPU&rsquo;s arithmetic units are
             mostly idle, waiting for data to arrive from memory. The bottleneck
             is <strong className="text-[var(--color-text)]">memory bandwidth</strong>.
