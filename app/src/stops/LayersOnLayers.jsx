@@ -687,7 +687,7 @@ function ArchitecturePage() {
       title: 'Final RMSNorm',
       desc: 'Normalizes the output of the last transformer layer before projection.',
       highlight: false,
-      stops: '',
+      stops: 'This stop',
     },
     {
       title: 'Output Projection + Softmax',
@@ -739,7 +739,7 @@ function ArchitecturePage() {
                         KV cache
                       </span>
                     )}
-                    {!stage.highlight && stage.stops && (
+                    {stage.stops && (
                       <span className="ml-2 text-[10px] font-normal text-[var(--color-text-muted)]">
                         {stage.stops}
                       </span>
