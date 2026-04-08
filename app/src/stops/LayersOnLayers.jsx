@@ -278,7 +278,9 @@ function LayerAnatomyPage() {
               the forward copy is normalized again, then processed by the <strong>feed-forward
               network</strong>: expansion through W&#x2081;, SwiGLU activation, compression
               through W&#x2082;. Each token is processed independently &mdash; no communication
-              between tokens, no cache involved. Only frozen weight matrices.
+              between tokens, no cache involved. Only frozen weight matrices. (The FFN turns
+              out to be surprisingly large and important &mdash; we&rsquo;ll take a closer look
+              on the next page.)
             </div>
           </div>
 
