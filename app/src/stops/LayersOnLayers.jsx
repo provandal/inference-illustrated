@@ -123,9 +123,96 @@ function LayerAnatomyPage() {
         </InfoBox>
       </Panel>
 
-      {/* Annotated block diagram — showing the split/rejoin structure */}
+      {/* Visual block diagram showing fork/rejoin structure */}
       <Panel className="my-4">
-        <PanelHeader>Single transformer layer &mdash; step by step</PanelHeader>
+        <PanelHeader>Single transformer layer &mdash; block diagram</PanelHeader>
+        <div className="p-4 flex justify-center">
+          <div className="inline-flex flex-col items-center gap-0 text-[12px] font-mono">
+            {/* Input */}
+            <div className="px-4 py-1.5 rounded border border-[var(--color-border)] bg-[var(--color-surface-muted)] text-[var(--color-text)] font-medium text-center">
+              Input <span className="text-[var(--color-text-muted)] font-normal">(d_model)</span>
+            </div>
+            <div className="text-[var(--color-text-muted)]">&darr;</div>
+
+            {/* Attention sub-block with residual fork */}
+            <div className="relative w-[320px] border border-[var(--color-teal)] rounded-lg bg-[var(--color-teal-bg)] p-3">
+              {/* Residual bypass arrow — right side */}
+              <div className="absolute -right-[60px] top-0 bottom-0 flex flex-col items-center justify-between py-1">
+                <div className="text-[10px] text-[var(--color-text-muted)] writing-mode-vertical" style={{ writingMode: 'vertical-rl' }}>
+                  residual
+                </div>
+                <div className="flex-1 w-px bg-[var(--color-border)] mx-auto my-1" />
+                <div className="text-[var(--color-text-muted)]">&darr;</div>
+              </div>
+
+              <div className="flex flex-col items-center gap-1">
+                <div className="px-3 py-1 rounded bg-[var(--color-surface)] border border-[var(--color-border-light)] text-[var(--color-text-muted)] text-[11px]">
+                  RMSNorm
+                </div>
+                <div className="text-[var(--color-text-muted)]">&darr;</div>
+                <div className="px-3 py-1.5 rounded bg-[var(--color-teal)] text-white text-[11px] font-semibold">
+                  Multi-Head Attention
+                </div>
+                <div className="text-[10px] text-[var(--color-teal-text)] mt-0.5">
+                  &harr; KV Cache
+                </div>
+              </div>
+            </div>
+
+            {/* Add residual */}
+            <div className="flex items-center gap-2 my-0.5">
+              <div className="text-[var(--color-text-muted)]">&darr;</div>
+            </div>
+            <div className="px-3 py-1 rounded-full border border-[var(--color-amber)] bg-[var(--color-amber-bg)] text-[var(--color-amber-text)] text-[11px] font-medium">
+              + add residual
+            </div>
+            <div className="text-[var(--color-text-muted)]">&darr;</div>
+
+            {/* FFN sub-block with residual fork */}
+            <div className="relative w-[320px] border border-[var(--color-primary)] rounded-lg bg-[var(--color-primary-bg)] p-3">
+              {/* Residual bypass arrow — right side */}
+              <div className="absolute -right-[60px] top-0 bottom-0 flex flex-col items-center justify-between py-1">
+                <div className="text-[10px] text-[var(--color-text-muted)]" style={{ writingMode: 'vertical-rl' }}>
+                  residual
+                </div>
+                <div className="flex-1 w-px bg-[var(--color-border)] mx-auto my-1" />
+                <div className="text-[var(--color-text-muted)]">&darr;</div>
+              </div>
+
+              <div className="flex flex-col items-center gap-1">
+                <div className="px-3 py-1 rounded bg-[var(--color-surface)] border border-[var(--color-border-light)] text-[var(--color-text-muted)] text-[11px]">
+                  RMSNorm
+                </div>
+                <div className="text-[var(--color-text-muted)]">&darr;</div>
+                <div className="px-3 py-1.5 rounded bg-[var(--color-primary)] text-white text-[11px] font-semibold">
+                  FFN: W&#x2081; &rarr; SwiGLU &rarr; W&#x2082;
+                </div>
+                <div className="text-[10px] text-[var(--color-primary-text)] mt-0.5">
+                  No cache &bull; Independent per token
+                </div>
+              </div>
+            </div>
+
+            {/* Add residual */}
+            <div className="flex items-center gap-2 my-0.5">
+              <div className="text-[var(--color-text-muted)]">&darr;</div>
+            </div>
+            <div className="px-3 py-1 rounded-full border border-[var(--color-amber)] bg-[var(--color-amber-bg)] text-[var(--color-amber-text)] text-[11px] font-medium">
+              + add residual
+            </div>
+            <div className="text-[var(--color-text-muted)]">&darr;</div>
+
+            {/* Output */}
+            <div className="px-4 py-1.5 rounded border border-[var(--color-border)] bg-[var(--color-surface-muted)] text-[var(--color-text)] font-medium text-center">
+              Output <span className="text-[var(--color-text-muted)] font-normal">&rarr; next layer</span>
+            </div>
+          </div>
+        </div>
+      </Panel>
+
+      {/* Detailed step-by-step walkthrough */}
+      <Panel className="my-4">
+        <PanelHeader>The same flow &mdash; step by step</PanelHeader>
 
         <div className="p-4 space-y-4 text-[13px] leading-relaxed text-[var(--color-text-secondary)]">
           {/* Step 1: Input */}
