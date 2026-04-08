@@ -280,16 +280,47 @@ function TwoPhasesPage() {
 
         <InfoBox>
           Decode is <strong>memory-bound</strong>: each step involves only one new
-          token&rsquo;s worth of matrix multiplications (fast), but as the token passes
-          through each layer sequentially, it must <strong>read that layer&rsquo;s
-          KV cache entries</strong> for all previous tokens to compute attention. Across
-          all 80 layers, this means the entire cache is read once per decode step &mdash;
-          but the access pattern is 80 sequential reads, one layer&rsquo;s portion at a time.
-          As the cache grows, each decode step gets slower &mdash; there is more data to read
-          from HBM. The GPU&rsquo;s arithmetic units are mostly idle, waiting for cache
-          data to arrive from memory.
+          token&rsquo;s worth of arithmetic (fast), but to execute that arithmetic
+          the GPU must read an enormous amount of data from memory. At each of the
+          80 layers, the GPU reads:
+        </InfoBox>
+        <InfoBox>
+          <div className="space-y-2">
+            <div className="flex gap-3 items-start">
+              <span className="flex-shrink-0 w-5 h-5 rounded-full bg-[var(--color-surface-muted)] border border-[var(--color-border)] text-[var(--color-text-muted)] text-[10px] font-medium flex items-center justify-center">1</span>
+              <div>
+                <strong className="text-[var(--color-text)]">Weight matrices</strong> &mdash;
+                W<sub>Q</sub>, W<sub>K</sub>, W<sub>V</sub>, W<sub>O</sub> (attention) plus
+                W<sub>1</sub>, W<sub>2</sub> (FFN). For Llama-3 70B at FP16, that is roughly{' '}
+                <strong>1.2 GB of frozen weights per layer</strong>. These are the same every time,
+                but they must be read from HBM for every single token generated.
+              </div>
+            </div>
+            <div className="flex gap-3 items-start">
+              <span className="flex-shrink-0 w-5 h-5 rounded-full bg-[var(--color-surface-muted)] border border-[var(--color-border)] text-[var(--color-text-muted)] text-[10px] font-medium flex items-center justify-center">2</span>
+              <div>
+                <strong className="text-[var(--color-text)]">KV cache entries</strong> &mdash;
+                that layer&rsquo;s cached K and V vectors for all previous tokens. At 32K
+                tokens, roughly <strong>130 MB per layer</strong>. This is the portion that{' '}
+                <em>grows</em> with conversation length.
+              </div>
+            </div>
+          </div>
+        </InfoBox>
+        <InfoBox>
+          Across all 80 layers, a single decode step reads roughly{' '}
+          <strong>99 GB of weights + 10 GB of cache = ~109 GB</strong> from HBM
+          (at 32K context, FP16 weights). The H100&rsquo;s HBM bandwidth is about
+          3.35 TB/s, so each token takes roughly <strong>30&ndash;50 ms</strong> to
+          generate &mdash; which matches real-world latency. The GPU&rsquo;s
+          arithmetic units are mostly idle, waiting for data to arrive from memory.
         </InfoBox>
       </Panel>
+
+      <Callout
+        type="note"
+        message="<strong>Weight reads dominate at short contexts. Cache reads dominate at long contexts.</strong> At 8K tokens, the KV cache is ~2.5 GB per decode step — a fraction of the ~99 GB weight read. At 128K tokens, the cache alone is 40 GB per step — it overtakes the weights. This crossover is why long-context serving is fundamentally harder than short-context, and why weight quantization (FP4 instead of FP16) has such a large impact — it cuts the weight reads by 4&times;."
+      />
 
       <Callout
         type="warn"
@@ -723,13 +754,12 @@ function InfrastructurePage() {
           </p>
           <p>
             <strong className="text-[var(--color-text)]">Decode</strong> processes one token per
-            step. The arithmetic per step is small &mdash; one token&rsquo;s Q, K, V computation
-            plus one row of attention. But as the token passes through each layer, it must{' '}
-            <strong className="text-[var(--color-text)]">read that layer&rsquo;s cached K and V
-            entries</strong> for all previous tokens. Across all 80 layers, the total data read
-            per decode step equals the full cache size. For Llama-3 70B at 32K tokens:{' '}
-            <strong className="text-[var(--color-text)]">10 GB of cache read per
-            decode step</strong>, just to produce one token. The GPU&rsquo;s arithmetic units are
+            step. The arithmetic per step is small &mdash; but the data reads are massive.
+            At each layer, the GPU must read frozen weight matrices (~1.2 GB per layer at FP16)
+            plus that layer&rsquo;s KV cache entries for all previous tokens. For Llama-3 70B
+            at 32K tokens, a single decode step reads roughly{' '}
+            <strong className="text-[var(--color-text)]">99 GB of weights + 10 GB of cache
+            = ~109 GB</strong> from HBM. The GPU&rsquo;s arithmetic units are
             mostly idle, waiting for data to arrive from memory. The bottleneck
             is <strong className="text-[var(--color-text)]">memory bandwidth</strong>.
           </p>
