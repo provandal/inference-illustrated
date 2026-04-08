@@ -123,83 +123,90 @@ function LayerAnatomyPage() {
         </InfoBox>
       </Panel>
 
-      {/* Annotated block diagram */}
-      <div className="my-4 border border-[var(--color-border)] rounded-lg bg-[var(--color-surface)] overflow-hidden">
-        <div className="px-4 py-2 border-b border-[var(--color-border)] bg-[var(--color-surface-muted)]">
-          <span className="text-[11px] font-medium text-[var(--color-text-muted)] uppercase tracking-wider">
-            Single transformer layer &mdash; block diagram
-          </span>
-        </div>
-        <div className="p-4">
-          <div className="font-mono text-[12px] leading-[2] text-[var(--color-text-secondary)] space-y-0">
-            {/* Input */}
-            <div className="text-center text-[var(--color-text)]">
-              Input <span className="text-[var(--color-text-muted)] text-[11px]">(d_model-sized vector, one per token)</span>
-            </div>
-            <div className="text-center text-[var(--color-text-muted)]">&darr;</div>
+      {/* Annotated block diagram — showing the split/rejoin structure */}
+      <Panel className="my-4">
+        <PanelHeader>Single transformer layer &mdash; step by step</PanelHeader>
 
-            {/* Attention sub-block */}
-            <div className="border border-[var(--color-teal)] rounded-md p-3 my-1 bg-[var(--color-teal-bg)]">
-              <div className="flex items-center justify-between gap-2">
-                <div className="space-y-0.5">
-                  <div className="text-[12px]">
-                    <span className="text-[var(--color-text-muted)]">[RMSNorm]</span>
-                    {' '}&rarr;{' '}
-                    <span className="font-semibold text-[var(--color-teal-text)]">[Multi-Head Attention]</span>
-                    {' '}&rarr;{' '}
-                    <span className="text-[var(--color-text)]">+ residual</span>
-                  </div>
-                  <div className="text-[10px] text-[var(--color-text-muted)] not-italic font-sans">
-                    Residual path bypasses attention, preserving the original input
-                  </div>
-                </div>
-                <div className="flex-shrink-0 px-2 py-1 rounded bg-[var(--color-teal)] text-white text-[10px] font-sans font-medium">
-                  KV Cache
-                </div>
-              </div>
-              <div className="mt-1 text-[10px] text-[var(--color-text-muted)] not-italic font-sans">
-                K, V written in from current token &bull; K, V read out from all earlier tokens
-              </div>
+        <div className="p-4 space-y-4 text-[13px] leading-relaxed text-[var(--color-text-secondary)]">
+          {/* Step 1: Input */}
+          <div className="flex gap-3 items-start">
+            <span className="flex-shrink-0 w-6 h-6 rounded-full bg-[var(--color-surface-muted)] border border-[var(--color-border)] text-[var(--color-text-muted)] text-xs font-medium flex items-center justify-center">1</span>
+            <div>
+              <strong className="text-[var(--color-text)]">Input arrives</strong> &mdash;
+              a d_model-sized vector (8,192 numbers for Llama-3 70B) for each token being
+              processed. On the first layer, this comes from the embedding. On deeper layers,
+              it comes from the previous layer&rsquo;s output.
             </div>
+          </div>
 
-            <div className="text-center text-[var(--color-text-muted)]">
-              &darr; <span className="text-[10px] font-sans">d_model-sized vector</span>
+          {/* Step 2: Fork */}
+          <div className="flex gap-3 items-start">
+            <span className="flex-shrink-0 w-6 h-6 rounded-full bg-[var(--color-surface-muted)] border border-[var(--color-border)] text-[var(--color-text-muted)] text-xs font-medium flex items-center justify-center">2</span>
+            <div>
+              <strong className="text-[var(--color-text)]">The input splits into two paths.</strong> One
+              copy is saved aside unchanged &mdash; this is the <strong>residual path</strong> (from
+              Stop 7). The other copy continues forward to be processed.
             </div>
+          </div>
 
-            {/* FFN sub-block */}
-            <div className="border border-[var(--color-primary)] rounded-md p-3 my-1 bg-[var(--color-primary-bg)]">
-              <div className="space-y-0.5">
-                <div className="text-[12px]">
-                  <span className="text-[var(--color-text-muted)]">[RMSNorm]</span>
-                  {' '}&rarr;{' '}
-                  <span className="font-semibold text-[var(--color-primary-text)]">[FFN: W&#x2081; &rarr; SwiGLU &rarr; W&#x2082;]</span>
-                  {' '}&rarr;{' '}
-                  <span className="text-[var(--color-text)]">+ residual</span>
-                </div>
-                <div className="text-[10px] text-[var(--color-text-muted)] not-italic font-sans">
-                  Residual path bypasses FFN, preserving the attention-enriched signal
-                </div>
-              </div>
-              <div className="mt-1 text-[10px] text-[var(--color-text-muted)] not-italic font-sans">
-                No cache &bull; Each token processed independently &bull; Frozen weight matrices only
+          {/* Step 3: RMSNorm + Attention */}
+          <div className="flex gap-3 items-start">
+            <span className="flex-shrink-0 w-6 h-6 rounded-full bg-[var(--color-teal-bg)] border border-[var(--color-teal)] text-[var(--color-teal-text)] text-xs font-medium flex items-center justify-center">3</span>
+            <div>
+              <strong className="text-[var(--color-text)]">RMSNorm &rarr; Multi-Head Attention</strong> &mdash;
+              the forward copy is first normalized by <strong>RMSNorm</strong> (which stabilizes the
+              numbers across dimensions &mdash; without this, values would drift and overflow across 80
+              layers). Then it enters <strong>multi-head attention</strong> (Stops 3&ndash;8): the token
+              computes its Query, matches it against all cached Keys, and blends the corresponding Values.
+              <div className="mt-1.5 inline-flex items-center gap-1.5 px-2 py-1 rounded bg-[var(--color-teal)] text-white text-[11px] font-medium">
+                KV Cache: K and V written in for this token, K and V read out from all earlier tokens
               </div>
             </div>
+          </div>
 
-            <div className="text-center text-[var(--color-text-muted)]">&darr;</div>
+          {/* Step 4: Add residual */}
+          <div className="flex gap-3 items-start">
+            <span className="flex-shrink-0 w-6 h-6 rounded-full bg-[var(--color-surface-muted)] border border-[var(--color-border)] text-[var(--color-text-muted)] text-xs font-medium flex items-center justify-center">4</span>
+            <div>
+              <strong className="text-[var(--color-text)]">Add residual</strong> &mdash;
+              the attention output is added back to the saved copy from step 2. This
+              preserves the original signal while enriching it with context from other tokens.
+            </div>
+          </div>
 
-            {/* Output */}
-            <div className="text-center text-[var(--color-text)]">
-              Output <span className="text-[var(--color-text-muted)] text-[11px]">(d_model-sized vector &rarr; feeds into the next layer)</span>
+          {/* Step 5: Fork again */}
+          <div className="flex gap-3 items-start">
+            <span className="flex-shrink-0 w-6 h-6 rounded-full bg-[var(--color-surface-muted)] border border-[var(--color-border)] text-[var(--color-text-muted)] text-xs font-medium flex items-center justify-center">5</span>
+            <div>
+              <strong className="text-[var(--color-text)]">The result splits again</strong> &mdash;
+              same pattern. One copy saved aside (new residual path), the other continues forward.
+            </div>
+          </div>
+
+          {/* Step 6: RMSNorm + FFN */}
+          <div className="flex gap-3 items-start">
+            <span className="flex-shrink-0 w-6 h-6 rounded-full bg-[var(--color-primary-bg)] border border-[var(--color-primary)] text-[var(--color-primary-text)] text-xs font-medium flex items-center justify-center">6</span>
+            <div>
+              <strong className="text-[var(--color-text)]">RMSNorm &rarr; FFN</strong> &mdash;
+              the forward copy is normalized again, then processed by the <strong>feed-forward
+              network</strong>: expansion through W&#x2081;, SwiGLU activation, compression
+              through W&#x2082;. Each token is processed independently &mdash; no communication
+              between tokens, no cache involved. Only frozen weight matrices.
+            </div>
+          </div>
+
+          {/* Step 7: Add residual + Output */}
+          <div className="flex gap-3 items-start">
+            <span className="flex-shrink-0 w-6 h-6 rounded-full bg-[var(--color-surface-muted)] border border-[var(--color-border)] text-[var(--color-text-muted)] text-xs font-medium flex items-center justify-center">7</span>
+            <div>
+              <strong className="text-[var(--color-text)]">Add residual &rarr; Output</strong> &mdash;
+              the FFN output is added back to the saved copy from step 5. The result is a
+              d_model-sized vector that feeds into the next layer. After all layers, this final
+              vector is used to predict the next token.
             </div>
           </div>
         </div>
-
-        {/* Annotation footer */}
-        <div className="px-4 py-2 border-t border-[var(--color-border-light)] bg-[var(--color-surface-muted)] text-[11px] text-[var(--color-text-muted)]">
-          Every arrow between blocks carries a d_model-sized vector (8,192
-          numbers for Llama-3 70B), one per token being processed.
-        </div>
-      </div>
+      </Panel>
 
       <Callout
         type="good"
