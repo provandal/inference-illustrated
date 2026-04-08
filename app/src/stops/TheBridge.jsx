@@ -555,7 +555,7 @@ function CalculationPage() {
             </div>
             <div className="flex gap-2">
               <span className="font-mono text-[var(--color-text)] min-w-[90px] text-right">precision</span>
-              <span>= bytes per number (2 for FP16, 1 for FP8)</span>
+              <span>= bytes per number (2 for FP16, 1 for FP8, 0.5 for FP4)</span>
             </div>
           </div>
         </div>
