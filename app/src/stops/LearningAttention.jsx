@@ -13,26 +13,95 @@ function IntroPage() {
         <PanelHeader>The scale of the problem</PanelHeader>
         <InfoBox>
           Consider just one piece of the machinery we saw in Stop 3: the weight
-          matrix W<sub>Q</sub>, which transforms each word's embedding into a
-          Query vector. For Llama-3 70B, a single W<sub>Q</sub> matrix in one
-          layer contains roughly <strong>67 million numbers</strong>. The model
-          has 80 layers, and each layer has its own W<sub>Q</sub>, W<sub>K</sub>,
-          W<sub>V</sub>, feed-forward matrices, and more. Add them all up and you
-          reach <strong>70 billion parameters</strong> — that is what the
-          "70B" in the name means.
+          matrix W<sub>Q</sub>, which transforms each token&rsquo;s embedding into
+          a Query vector. For Llama-3 70B, W<sub>Q</sub> transforms a d_model-sized
+          vector (8,192 numbers) into a vector for all 64 Q heads (64 &times; 128 =
+          8,192 numbers). That makes W<sub>Q</sub> a grid of 8,192 &times; 8,192 ={' '}
+          <strong>67 million numbers</strong> in a single layer.
         </InfoBox>
         <InfoBox>
-          Those 67 million numbers in one W<sub>Q</sub> matrix are what allow
-          "faulty" to produce a Query that means "looking for the hardware
-          component I describe." They are what allow "controller" to produce a
-          Key that answers "I am a hardware component." No human chose these
-          numbers. No human could. Every one of them was learned.
+          But not all attention matrices are the same size. Because Llama-3 uses GQA
+          with only 8 KV head groups (from Stop 8), W<sub>K</sub> and W<sub>V</sub>{' '}
+          are much smaller &mdash; they transform 8,192 numbers into only 8 &times;
+          128 = 1,024 numbers. So W<sub>K</sub> and W<sub>V</sub> are each 8,192
+          &times; 1,024 = <strong>~8.4 million numbers</strong>. W<sub>O</sub> (the
+          output projection from Stop 8) is 8,192 &times; 8,192 ={' '}
+          <strong>67 million</strong>, the same size as W<sub>Q</sub>.
+        </InfoBox>
+        <InfoBox>
+          That&rsquo;s the attention side. But each layer also contains a{' '}
+          <strong>feed-forward network (FFN)</strong> &mdash; and it&rsquo;s actually
+          larger. Llama uses a variant called <strong>SwiGLU</strong>, which requires
+          three matrices instead of the usual two: W<sub>1</sub> (gate projection),
+          W<sub>2</sub> (down projection), and W<sub>3</sub> (up projection) &mdash;
+          each roughly <strong>235 million numbers</strong>.
+        </InfoBox>
+      </Panel>
+
+      <Panel className="mt-4">
+        <PanelHeader>Parameter count &mdash; one layer of Llama-3 70B</PanelHeader>
+        <div className="overflow-x-auto">
+          <table className="w-full text-[13px]">
+            <thead>
+              <tr className="border-b border-[var(--color-border)] text-[11px] font-medium text-[var(--color-text-muted)] uppercase tracking-wider">
+                <th className="px-4 py-2 text-left">Matrix</th>
+                <th className="px-4 py-2 text-left">Size</th>
+                <th className="px-4 py-2 text-right">Parameters</th>
+              </tr>
+            </thead>
+            <tbody className="text-[var(--color-text-secondary)]">
+              {[
+                ['W_Q', '8,192 × 8,192', '67.1M'],
+                ['W_K', '8,192 × 1,024', '8.4M'],
+                ['W_V', '8,192 × 1,024', '8.4M'],
+                ['W_O', '8,192 × 8,192', '67.1M'],
+                ['FFN W₁ (gate)', '8,192 × 28,672', '234.9M'],
+                ['FFN W₂ (down)', '28,672 × 8,192', '234.9M'],
+                ['FFN W₃ (up)', '8,192 × 28,672', '234.9M'],
+                ['RMSNorm', '~16K', 'negligible'],
+              ].map(([name, size, params], i) => (
+                <tr key={i} className="border-b border-[var(--color-border-light)]">
+                  <td className="px-4 py-2 font-mono text-[var(--color-text)]">{name}</td>
+                  <td className="px-4 py-2 font-mono">{size}</td>
+                  <td className="px-4 py-2 text-right font-mono">{params}</td>
+                </tr>
+              ))}
+              <tr className="border-t-2 border-[var(--color-border)] font-medium text-[var(--color-text)]">
+                <td className="px-4 py-2">Layer total</td>
+                <td className="px-4 py-2" />
+                <td className="px-4 py-2 text-right font-mono">~856M</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </Panel>
+
+      <Panel className="mt-4">
+        <PanelHeader>From one layer to 70 billion</PanelHeader>
+        <InfoBox>
+          The model has 80 layers, each with its own independent set of these
+          matrices: 856M &times; 80 = <strong>68.5 billion parameters</strong>{' '}
+          across all layers. On top of that, the model has an{' '}
+          <strong>embedding table</strong> that maps each of the 128,256 vocabulary
+          tokens to a d_model-sized vector: 128,256 &times; 8,192 ={' '}
+          <strong>~1.05 billion parameters</strong>.
+        </InfoBox>
+        <InfoBox>
+          Grand total: 68.5B + 1.05B &asymp;{' '}
+          <strong>~70 billion parameters</strong>. That is what the &ldquo;70B&rdquo;
+          in the name means &mdash; the total count of numbers across every matrix in
+          every layer, plus the embedding table.
         </InfoBox>
       </Panel>
 
       <Callout
         type="note"
-        message='<strong>The journey ahead.</strong> Every weight matrix starts as random noise — meaningless numbers that produce meaningless attention. Training reshapes those numbers over billions of examples until structured knowledge emerges. Then training stops, and the weights are frozen forever. This stop traces that full arc: random initialization, the training loop, and the frozen model that runs during inference.'
+        message='<strong>The FFN dominates.</strong> The three FFN matrices account for ~705 million of the ~856 million parameters per layer — roughly <strong>82%</strong> of each layer. The attention matrices (W<sub>Q</sub>, W<sub>K</sub>, W<sub>V</sub>, W<sub>O</sub>) account for only ~18%. This will matter when we discuss where the model&rsquo;s knowledge is stored (Stop 9) and the memory budget for model weights vs. KV cache.'
+      />
+
+      <Callout
+        type="note"
+        message='<strong>The journey ahead.</strong> No human chose these numbers. No human could. Every weight matrix starts as random noise — meaningless numbers that produce meaningless attention. Training reshapes them over billions of examples until structured knowledge emerges. Then training stops, and the weights are frozen forever. This stop traces that full arc: random initialization, the training loop, and the frozen model that runs during inference.'
       />
     </div>
   );

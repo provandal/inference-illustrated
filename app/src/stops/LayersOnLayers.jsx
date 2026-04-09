@@ -17,7 +17,7 @@ const NARRATIONS = {
     'We&rsquo;ll track the token &ldquo;faulty&rdquo; through six layers to see how its representation evolves from a generic adjective to an integrated contextual understanding. Each layer&rsquo;s attention and FFN progressively enrich the representation.',
 
   ffn:
-    'The FFN is the larger component in each layer &mdash; about 63% of all parameters. It stores factual knowledge in its frozen weight matrices, processes each token independently, and creates <strong>no cache</strong>.',
+    'The FFN is the dominant component in each layer &mdash; about 82% of all parameters with SwiGLU\u2019s three matrices. It stores factual knowledge in its frozen weight matrices, processes each token independently, and creates <strong>no cache</strong>.',
 
   'full-stack':
     'A production model repeats this two-component layer dozens or hundreds of times. Each layer maintains its own KV cache. Below, we put concrete numbers on the per-layer and per-model cache costs.',
@@ -403,20 +403,19 @@ function FfnPage() {
       <Panel>
         <PanelHeader>The FFN is larger than attention</PanelHeader>
         <InfoBox>
-          For Llama-3 70B, the FFN&rsquo;s expansion matrix W&#x2081; is
-          d_model &times; d_ff = 8,192 &times; 28,672, and the compression
-          matrix W&#x2082; is d_ff &times; d_model = 28,672 &times; 8,192.
-          Together, that&rsquo;s roughly{' '}
-          <strong>470 million parameters per layer</strong> &mdash; compared to
-          roughly 268 million for all the attention matrices (W<sub>Q</sub>,{' '}
-          W<sub>K</sub>, W<sub>V</sub>, W<sub>O</sub>) combined.{' '}
-          <strong>About 63% of the model&rsquo;s total parameters live in FFN
-          layers.</strong>
+          Llama-3 uses a variant called <strong>SwiGLU</strong>, which requires
+          three matrices instead of the usual two: W&#x2081; (gate projection),
+          W&#x2082; (down projection), and W&#x2083; (up projection). Each is
+          roughly 235 million numbers. Together, the three FFN matrices account
+          for <strong>~705 million parameters per layer</strong> &mdash; compared
+          to ~151 million for all the attention matrices (W<sub>Q</sub>,{' '}
+          W<sub>K</sub>, W<sub>V</sub>, W<sub>O</sub>) combined. That means{' '}
+          <strong>about 82% of each layer&rsquo;s parameters live in the FFN</strong>.
         </InfoBox>
         <InfoBox>
           The FFN isn&rsquo;t a minor appendage to attention &mdash; it&rsquo;s
-          the larger component. Across 80 layers, that&rsquo;s roughly 37 billion
-          parameters dedicated to feed-forward processing.
+          the dominant component. Across 80 layers, that&rsquo;s roughly 56 billion
+          parameters dedicated to feed-forward processing, out of ~70 billion total.
         </InfoBox>
       </Panel>
 
@@ -431,54 +430,55 @@ function FfnPage() {
             </div>
             <div className="text-[var(--color-text-muted)]">&darr;</div>
 
-            {/* W1 expansion */}
-            <div className="w-[340px] border border-[var(--color-primary)] rounded-lg bg-[var(--color-primary-bg)] p-3">
+            {/* W1 gate + W3 up — parallel expansion */}
+            <div className="w-[380px] border border-[var(--color-primary)] rounded-lg bg-[var(--color-primary-bg)] p-3">
               <div className="flex flex-col items-center gap-1">
-                <div className="px-3 py-1.5 rounded bg-[var(--color-primary)] text-white text-[11px] font-semibold">
-                  W&#x2081; &mdash; Expansion matrix
+                <div className="flex gap-2">
+                  <div className="px-3 py-1.5 rounded bg-[var(--color-primary)] text-white text-[11px] font-semibold">
+                    W&#x2081; (gate)
+                  </div>
+                  <div className="px-3 py-1.5 rounded bg-[var(--color-primary)] text-white text-[11px] font-semibold">
+                    W&#x2083; (up)
+                  </div>
                 </div>
                 <div className="text-[11px] text-[var(--color-primary-text)] text-center font-sans">
-                  The input is a vector of 8,192 numbers. W&#x2081; is a learned matrix
-                  with 8,192 rows and 28,672 columns. Matrix multiplication works like
-                  taking 28,672 separate dot products &mdash; one for each column &mdash;
-                  producing a new vector of <strong>28,672 numbers</strong>. The result is
-                  3.5&times; wider than the input, giving the network a larger internal
-                  workspace to represent complex patterns that don&rsquo;t fit in the
-                  original d_model dimensions.
+                  Two parallel expansions: both W&#x2081; and W&#x2083; are 8,192 &times;
+                  28,672 matrices. Each takes the 8,192-dimensional input and expands it to{' '}
+                  <strong>28,672 dimensions</strong> &mdash; 3.5&times; wider. Having two
+                  separate expansions is what makes SwiGLU different from a standard FFN.
                 </div>
               </div>
             </div>
-            <div className="text-[var(--color-text-muted)]">&darr; <span className="text-[10px] font-sans">28,672 dimensions</span></div>
+            <div className="text-[var(--color-text-muted)]">&darr; <span className="text-[10px] font-sans">two 28,672-dim vectors</span></div>
 
-            {/* SwiGLU */}
-            <div className="w-[340px] border border-[var(--color-amber)] rounded-lg bg-[var(--color-amber-bg)] p-3">
+            {/* SwiGLU gating */}
+            <div className="w-[380px] border border-[var(--color-amber)] rounded-lg bg-[var(--color-amber-bg)] p-3">
               <div className="flex flex-col items-center gap-1">
                 <div className="px-3 py-1.5 rounded bg-[var(--color-amber)] text-white text-[11px] font-semibold">
-                  SwiGLU activation
+                  SwiGLU: element-wise gate
                 </div>
                 <div className="text-[11px] text-[var(--color-amber-text)] text-center font-sans">
-                  A non-linear function applied element by element. This is what makes the FFN
-                  more than a simple matrix multiplication &mdash; without non-linearity, stacking
-                  layers would collapse into a single linear transformation. SwiGLU selectively
-                  gates which dimensions pass through, allowing the network to learn complex,
-                  non-linear patterns.
+                  The W&#x2081; output passes through a Swish activation, then is multiplied
+                  element-by-element with the W&#x2083; output. This acts as a learned gate
+                  &mdash; W&#x2081; decides which dimensions to let through, W&#x2083; provides
+                  the values. Without this non-linearity, stacking layers would collapse
+                  into a single linear transformation.
                 </div>
               </div>
             </div>
-            <div className="text-[var(--color-text-muted)]">&darr; <span className="text-[10px] font-sans">28,672 dimensions</span></div>
+            <div className="text-[var(--color-text-muted)]">&darr; <span className="text-[10px] font-sans">28,672 dimensions (gated)</span></div>
 
             {/* W2 compression */}
-            <div className="w-[340px] border border-[var(--color-primary)] rounded-lg bg-[var(--color-primary-bg)] p-3">
+            <div className="w-[380px] border border-[var(--color-primary)] rounded-lg bg-[var(--color-primary-bg)] p-3">
               <div className="flex flex-col items-center gap-1">
                 <div className="px-3 py-1.5 rounded bg-[var(--color-primary)] text-white text-[11px] font-semibold">
-                  W&#x2082; &mdash; Compression matrix
+                  W&#x2082; (down)
                 </div>
                 <div className="text-[11px] text-[var(--color-primary-text)] text-center font-sans">
-                  The reverse operation: W&#x2082; has 28,672 rows and 8,192 columns.
-                  It takes the 28,672-dimensional expanded result and compresses it back
-                  to <strong>d_model = 8,192</strong> through another matrix multiplication.
-                  The output must be the same size as the original input so it can be
-                  added back via the residual connection and fed into the next layer.
+                  W&#x2082; has 28,672 rows and 8,192 columns. It compresses the gated
+                  result back to <strong>d_model = 8,192</strong>. The output must be the
+                  same size as the original input so it can be added back via the residual
+                  connection and fed into the next layer.
                 </div>
               </div>
             </div>
@@ -509,19 +509,21 @@ function FfnPage() {
           context. The FFN supplies the answer from its learned weights.
         </InfoBox>
         <InfoBox>
-          <strong>The two-matrix structure:</strong> W&#x2081; expands the
-          token&rsquo;s representation into a larger internal workspace (28,672
-          dimensions for 70B). A non-linear activation function
-          (<strong>SwiGLU</strong>) is applied. Then W&#x2082; compresses the
-          result back to d_model. Like all weight matrices we&rsquo;ve seen
-          &mdash; W<sub>Q</sub>, W<sub>K</sub>, W<sub>V</sub>, W<sub>O</sub>
-          &mdash; these are learned during training and frozen during inference.
+          <strong>The three-matrix SwiGLU structure:</strong> W&#x2081; (gate)
+          and W&#x2083; (up) each expand the token&rsquo;s representation into a
+          larger internal workspace (28,672 dimensions for 70B). SwiGLU combines
+          the two expanded results through element-wise multiplication, which acts
+          as a learned gate &mdash; selectively allowing or suppressing dimensions.
+          Then W&#x2082; (down) compresses the result back to d_model. Like all
+          weight matrices we&rsquo;ve seen &mdash; W<sub>Q</sub>, W<sub>K</sub>,
+          W<sub>V</sub>, W<sub>O</sub> &mdash; these are learned during training
+          and frozen during inference.
         </InfoBox>
       </Panel>
 
       <Callout
         type="note"
-        message="<strong>Critical for the KV cache story: the FFN creates no cache.</strong> It processes each token independently using only its frozen weight matrices &mdash; W&#x2081; and W&#x2082;, the same two matrices for every token in every conversation. No per-conversation state. No per-token storage. The memory cost of the FFN is in the model weights themselves (contributing to the ~140 GB weight footprint), not in anything that grows during a conversation. The KV cache is purely an attention-side phenomenon. The FFN&rsquo;s weight matrices are loaded once and shared across all users and all conversations."
+        message="<strong>Critical for the KV cache story: the FFN creates no cache.</strong> It processes each token independently using only its frozen weight matrices &mdash; W&#x2081;, W&#x2082;, and W&#x2083; &mdash; the same three matrices for every token in every conversation. No per-conversation state. No per-token storage. The memory cost of the FFN is in the model weights themselves (contributing to the ~140 GB weight footprint), not in anything that grows during a conversation. The KV cache is purely an attention-side phenomenon. The FFN&rsquo;s weight matrices are loaded once and shared across all users and all conversations."
       />
     </div>
   );
