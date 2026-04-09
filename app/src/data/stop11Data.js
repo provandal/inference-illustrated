@@ -2,6 +2,7 @@
 // All data for every visual, table, interactive control, and calculation
 
 export const PAGES = [
+  { id: 'act2-intro',         label: 'Welcome to Act 2',              type: 'static' },
   { id: 'math-works',         label: 'The Math Says It Should Work',   type: 'static' },
   { id: 'math-lies',          label: 'Why the Math Lies',              type: 'static' },
   { id: 'batching-why',       label: 'Why Batching Is Non-Negotiable', type: 'static' },
@@ -14,8 +15,11 @@ export const PAGES = [
 
 // --- Narration text for each page ---
 export const NARRATIONS = {
+  'act2-intro':
+    '<strong>Welcome to Act 2: KV Cache &amp; The Network.</strong> In Act 1, we built the transformer from the ground up and discovered why the KV cache exists. Now we turn to the question that matters to infrastructure engineers: <strong>how do you actually serve this at scale?</strong>',
+
   'math-works':
-    'In our scenario, we\u2019re serving 32 concurrent users on 8\u00d7 H100 GPUs with Llama-3 70B. Let\u2019s check the arithmetic from Stop 10.\n\nModel weights (FP4 quantized): ~35 GB. That fits on a single H100 with 45 GB left over. But we have 8 GPUs \u2014 we could shard the weights across them, or replicate the model and serve users in parallel.\n\nKV cache per user at 8K tokens: 320 KB/token \u00d7 8,000 = 2.5 GB. For 32 users: 32 \u00d7 2.5 GB = 80 GB of KV cache.\n\nTotal: 35 GB weights + 80 GB cache = 115 GB. Across 8 GPUs (640 GB), that\u2019s only 18% utilization. The math says we have room to spare.\n\nSo why is this hard?',
+    'With the scenario established, let\u2019s check the arithmetic from Stop 10. Do we have enough memory? The answer looks deceptively simple.',
 
   'math-lies':
     'The calculation on the previous page assumed every conversation uses exactly 8K tokens. In reality, right now across those 32 users: one is asking a quick question (200 tokens). Another uploaded a 40-page spec and asked for a summary (28,000 tokens). Most are somewhere in between. And you don\u2019t know in advance how long any response will be \u2014 the model generates tokens until it produces an end-of-sequence token, which could happen after 10 tokens or 10,000.',

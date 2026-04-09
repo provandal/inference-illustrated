@@ -29,7 +29,79 @@ import PageNav from '../components/PageNav';
 import { useStore } from '../store';
 
 /* ================================================================
-   PAGE 1 — "The math says it should work"
+   ACT 2 INTRO — "Welcome to Act 2"
+   Sets up the running scenario that threads through Stops 11-17
+   ================================================================ */
+
+function Act2IntroPage() {
+  return (
+    <div>
+      <Panel>
+        <PanelHeader>The scenario</PanelHeader>
+        <InfoBox>
+          Every concept in Act 2 is grounded in a single concrete deployment
+          scenario that will thread through all seven remaining stops. Here it is:
+        </InfoBox>
+        <div className="px-4 py-4 border-b border-[var(--color-border-light)]">
+          <div className="p-4 rounded-lg border-2 border-[var(--color-primary)] bg-[var(--color-primary-bg)]">
+            <div className="text-[14px] leading-relaxed text-[var(--color-text)]">
+              <strong>Your company is deploying Llama-3 70B</strong> to serve an
+              internal AI assistant for 500 engineers. Peak concurrent usage is{' '}
+              <strong>32 simultaneous conversations</strong>. Average context length
+              is <strong>8K tokens</strong>, with spikes to 32K for document analysis.
+              You have a budget of <strong>8&times; H100 GPUs</strong> (640 GB total HBM).
+            </div>
+            <div className="mt-3 text-[14px] font-medium text-[var(--color-primary-text)]">
+              How do you serve this workload?
+            </div>
+          </div>
+        </div>
+        <InfoBox>
+          Each stop adds a new dimension to this scenario. By Stop 17, you will
+          have designed a complete inference infrastructure.
+        </InfoBox>
+      </Panel>
+
+      <Panel className="mt-4">
+        <PanelHeader>What each stop contributes</PanelHeader>
+        <div className="overflow-x-auto">
+          <table className="w-full text-[13px]">
+            <thead>
+              <tr className="border-b border-[var(--color-border)] text-[11px] font-medium text-[var(--color-text-muted)] uppercase tracking-wider">
+                <th className="px-4 py-2 text-left">Stop</th>
+                <th className="px-4 py-2 text-left">Adds</th>
+              </tr>
+            </thead>
+            <tbody className="text-[var(--color-text-secondary)]">
+              {[
+                ['11 (this stop)', 'Users + GPU memory management + batching'],
+                ['12', 'Split into prefill + decode pools + network pipe'],
+                ['13', 'KV cache tier column (HBM \u2192 DRAM \u2192 SSD \u2192 network storage)'],
+                ['14', 'Compression controls (GQA/MLA toggle, quantization slider)'],
+                ['15', 'Network pipe labeled with protocols (RDMA, CXL, NVMe-oF)'],
+                ['16', 'Routing and scheduling layer'],
+                ['17', 'Full simulator with all layers connected'],
+              ].map(([stop, adds], i) => (
+                <tr key={i} className={`border-b border-[var(--color-border-light)] ${i === 0 ? 'bg-[var(--color-primary-bg)] font-medium text-[var(--color-text)]' : ''}`}>
+                  <td className="px-4 py-2 whitespace-nowrap">{stop}</td>
+                  <td className="px-4 py-2">{adds}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Panel>
+
+      <Callout
+        type="note"
+        message="<strong>Act 2 is where your expertise kicks in.</strong> The concepts ahead \u2014 memory tiering, paging, batching, network fabric, routing \u2014 are the same problems you solve in storage and networking infrastructure, applied to a new domain. The vocabulary is different, but the engineering principles are the same."
+      />
+    </div>
+  );
+}
+
+/* ================================================================
+   PAGE 2 — "The math says it should work"
    Interactive calculator, green indicator, false sense of security
    ================================================================ */
 
@@ -1588,6 +1660,7 @@ export default function MemoryWall() {
 
       {/* Page content */}
       <div className="min-h-[200px]">
+        {page.id === 'act2-intro' && <Act2IntroPage />}
         {page.id === 'math-works' && <MathWorksPage />}
         {page.id === 'math-lies' && <MathLiesPage />}
         {page.id === 'batching-why' && <BatchingWhyPage />}
