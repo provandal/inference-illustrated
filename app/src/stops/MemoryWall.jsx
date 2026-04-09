@@ -229,7 +229,7 @@ function MathWorksPage() {
       {fits && (
         <Callout
           type="warn"
-          message="<strong>But paper is not production.</strong> The next page reveals three problems that turn this comfortable margin into a crisis."
+          message="<strong>But paper is not production.</strong> Try moving the context slider above to 64K and watch the utilization change. Even the simple arithmetic starts to strain &mdash; and that&rsquo;s before we account for real-world complexity. The next page reveals three problems that turn this comfortable margin into a crisis."
         />
       )}
     </div>
