@@ -14,6 +14,7 @@ import TheBridge from '../stops/TheBridge';
 import MemoryWall from '../stops/MemoryWall';
 import SplittingWork from '../stops/SplittingWork';
 import MemoryHierarchy from '../stops/MemoryHierarchy';
+import CompressingCache from '../stops/CompressingCache';
 
 const STOP_COMPONENTS = {
   TelephoneProblem,
@@ -29,6 +30,7 @@ const STOP_COMPONENTS = {
   MemoryWall,
   SplittingWork,
   MemoryHierarchy,
+  CompressingCache,
 };
 
 export default function TourView() {

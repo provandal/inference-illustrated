@@ -129,4 +129,14 @@ export const tourSteps = [
     act: 2,
     stopNumber: 13,
   },
+  {
+    id: 'compressing-cache',
+    shortTitle: 'Compressing the Cache',
+    title: 'Stop 14: Compressing the Cache \u2014 Making It Smaller',
+    narration:
+      'Three families of compression attack the cache from different angles \u2014 architectural changes, quantization, and token eviction. Each trades accuracy for memory, and they can be combined.',
+    component: 'CompressingCache',
+    act: 2,
+    stopNumber: 14,
+  },
 ];
