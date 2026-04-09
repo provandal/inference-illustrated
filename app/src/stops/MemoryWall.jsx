@@ -1637,13 +1637,6 @@ export default function MemoryWall() {
 
   // Format narration: replace \n\n with paragraph breaks
   const narrationHtml = narration
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/\u2019/g, '&rsquo;')
-    .replace(/\u2014/g, '&mdash;')
-    .replace(/\u00d7/g, '&times;')
-    .replace(/\u2013/g, '&ndash;')
     .replace(/\n\n/g, '</p><p style="margin-top:0.5em">')
     .replace(/^/, '<p>')
     .replace(/$/, '</p>');
