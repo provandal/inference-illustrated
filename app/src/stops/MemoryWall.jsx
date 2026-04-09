@@ -94,7 +94,7 @@ function Act2IntroPage() {
 
       <Callout
         type="note"
-        message="<strong>Act 2 is where your expertise kicks in.</strong> The concepts ahead \u2014 memory tiering, paging, batching, network fabric, routing \u2014 are the same problems you solve in storage and networking infrastructure, applied to a new domain. The vocabulary is different, but the engineering principles are the same."
+        message="<strong>Act 2 is where your expertise kicks in.</strong> The concepts ahead &mdash; memory tiering, paging, batching, network fabric, routing &mdash; are the same problems you solve in storage and networking infrastructure, applied to a new domain. The vocabulary is different, but the engineering principles are the same."
       />
     </div>
   );

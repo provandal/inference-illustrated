@@ -16,7 +16,7 @@ export const PAGES = [
 // --- Narration text for each page ---
 export const NARRATIONS = {
   'act2-intro':
-    '<strong>Welcome to Act 2: KV Cache &amp; The Network.</strong> In Act 1, we built the transformer from the ground up and discovered why the KV cache exists. Now we turn to the question that matters to infrastructure engineers: <strong>how do you actually serve this at scale?</strong>',
+    '<strong>Welcome to Act 2: KV Cache & The Network.</strong> In Act 1, we built the transformer from the ground up and discovered why the KV cache exists. Now we turn to the question that matters to infrastructure engineers: <strong>how do you actually serve this at scale?</strong>',
 
   'math-works':
     'With the scenario established, let\u2019s check the arithmetic from Stop 10. Do we have enough memory? The answer looks deceptively simple.',
