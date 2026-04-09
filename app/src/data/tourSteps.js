@@ -139,4 +139,14 @@ export const tourSteps = [
     act: 2,
     stopNumber: 14,
   },
+  {
+    id: 'the-fabric',
+    shortTitle: 'The Fabric',
+    title: 'Stop 15: The Fabric \u2014 How the Cache Moves',
+    narration:
+      'What network protocols and interconnects physically carry KV cache data between GPUs, memory tiers, and storage \u2014 and what are the tradeoffs?',
+    component: 'TheFabric',
+    act: 2,
+    stopNumber: 15,
+  },
 ];
