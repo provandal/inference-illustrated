@@ -99,4 +99,34 @@ export const tourSteps = [
     act: 1,
     stopNumber: 10,
   },
+  {
+    id: 'memory-wall',
+    shortTitle: 'The Memory Wall',
+    title: 'Stop 11: The Memory Wall \u2014 Up Close',
+    narration:
+      'How do production systems manage KV cache memory when serving many users simultaneously?',
+    component: 'MemoryWall',
+    act: 2,
+    stopNumber: 11,
+  },
+  {
+    id: 'splitting-work',
+    shortTitle: 'Splitting the Work',
+    title: 'Stop 12: Splitting the Work \u2014 Parallelism & Disaggregated Inference',
+    narration:
+      'How do you spread a model across multiple GPUs, and what happens when you separate prefill from decode?',
+    component: 'SplittingWork',
+    act: 2,
+    stopNumber: 12,
+  },
+  {
+    id: 'memory-hierarchy',
+    shortTitle: 'Memory Hierarchy',
+    title: 'Stop 13: The Memory Hierarchy \u2014 Where Caches Live',
+    narration:
+      'HBM is fast but scarce. DRAM is abundant but slower. The memory hierarchy determines where KV caches live and how fast they can move.',
+    component: 'MemoryHierarchy',
+    act: 2,
+    stopNumber: 13,
+  },
 ];

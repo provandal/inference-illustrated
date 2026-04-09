@@ -11,6 +11,9 @@ import BlendingValues from '../stops/BlendingValues';
 import MultipleHeads from '../stops/MultipleHeads';
 import LayersOnLayers from '../stops/LayersOnLayers';
 import TheBridge from '../stops/TheBridge';
+import MemoryWall from '../stops/MemoryWall';
+import SplittingWork from '../stops/SplittingWork';
+import MemoryHierarchy from '../stops/MemoryHierarchy';
 
 const STOP_COMPONENTS = {
   TelephoneProblem,
@@ -23,6 +26,9 @@ const STOP_COMPONENTS = {
   MultipleHeads,
   LayersOnLayers,
   TheBridge,
+  MemoryWall,
+  SplittingWork,
+  MemoryHierarchy,
 };
 
 export default function TourView() {
