@@ -149,4 +149,14 @@ export const tourSteps = [
     act: 2,
     stopNumber: 15,
   },
+  {
+    id: 'intelligent-routing',
+    shortTitle: 'Intelligent Routing',
+    title: 'Stop 16: Intelligent Routing \u2014 Where Should This Request Go?',
+    narration:
+      'When a request arrives at an inference cluster, how does the system decide which GPU should handle it \u2014 and why does the KV cache make this decision fundamentally different from traditional load balancing?',
+    component: 'IntelligentRouting',
+    act: 2,
+    stopNumber: 16,
+  },
 ];
