@@ -159,4 +159,14 @@ export const tourSteps = [
     act: 2,
     stopNumber: 16,
   },
+  {
+    id: 'complete-picture',
+    shortTitle: 'The Complete Picture',
+    title: 'Stop 17: The Complete Picture \u2014 Inference Illustrated',
+    narration:
+      'How do all the pieces work together as a system? This capstone assembles every component from Stops 1\u201316 into one interactive system diagram.',
+    component: 'CompletePicture',
+    act: 2,
+    stopNumber: 17,
+  },
 ];

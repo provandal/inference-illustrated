@@ -17,6 +17,7 @@ import MemoryHierarchy from '../stops/MemoryHierarchy';
 import CompressingCache from '../stops/CompressingCache';
 import TheFabric from '../stops/TheFabric';
 import IntelligentRouting from '../stops/IntelligentRouting';
+import CompletePicture from '../stops/CompletePicture';
 
 const STOP_COMPONENTS = {
   TelephoneProblem,
@@ -35,6 +36,7 @@ const STOP_COMPONENTS = {
   CompressingCache,
   TheFabric,
   IntelligentRouting,
+  CompletePicture,
 };
 
 export default function TourView() {
