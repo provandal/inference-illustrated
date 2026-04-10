@@ -124,25 +124,25 @@ export const STATIC_BATCHING_USERS = [
 ];
 
 export const STATIC_UTILIZATION_STEPS = [
-  { range: 'Steps 1\u201320',   active: 4, total: 4, pct: 100 },
-  { range: 'Steps 21\u201330',  active: 3, total: 4, pct: 75 },
-  { range: 'Steps 31\u201350',  active: 2, total: 4, pct: 50 },
-  { range: 'Steps 51\u2013500', active: 1, total: 4, pct: 25 },
+  { range: 'Tokens 1\u201320',   active: 4, total: 4, pct: 100 },
+  { range: 'Tokens 21\u201330',  active: 3, total: 4, pct: 75 },
+  { range: 'Tokens 31\u201350',  active: 2, total: 4, pct: 50 },
+  { range: 'Tokens 51\u2013500', active: 1, total: 4, pct: 25 },
 ];
 
 export const STATIC_BATCHING_WASTE = {
-  totalSlotSteps: { label: 'Total slot-steps available', value: '4 \u00d7 500 = 2,000', num: 2000 },
-  usedSlotSteps:  { label: 'Total slot-steps used',      value: '20 + 50 + 500 + 30 = 600', num: 600 },
+  totalSlotSteps: { label: 'Total slot-tokens available', value: '4 \u00d7 500 = 2,000', num: 2000 },
+  usedSlotSteps:  { label: 'Total slot-tokens used',      value: '20 + 50 + 500 + 30 = 600', num: 600 },
   waste:          { label: 'Waste',                       value: '70%', num: 70 },
 };
 
 // --- Page 5: Continuous batching ---
 export const CONTINUOUS_BATCHING_EVENTS = [
-  { step: 0,   label: 'Steps 1\u201320',  slots: ['A', 'B', 'C', 'D'], note: 'All active. 4/4 slots used.', active: 4 },
-  { step: 20,  label: 'Step 20',          slots: ['E', 'B', 'C', 'D'], note: 'User A finishes. Cache freed. User E immediately takes the slot. 4/4.', active: 4, exit: 'A', enter: 'E' },
-  { step: 30,  label: 'Step 30',          slots: ['E', 'B', 'C', 'F'], note: 'User D finishes. User F takes the slot. Still 4/4.', active: 4, exit: 'D', enter: 'F' },
-  { step: 50,  label: 'Step 50',          slots: ['E', 'G', 'C', 'F'], note: 'User B finishes. User G takes the slot. Still 4/4.', active: 4, exit: 'B', enter: 'G' },
-  { step: 500, label: 'Step 500',         slots: ['E', 'G', 'H', 'F'], note: 'User C finishes. User H takes the slot. Still 4/4.', active: 4, exit: 'C', enter: 'H' },
+  { step: 0,   label: 'Tokens 1\u201320',  slots: ['A', 'B', 'C', 'D'], note: 'All active. 4/4 slots used.', active: 4 },
+  { step: 20,  label: 'Token 20',          slots: ['E', 'B', 'C', 'D'], note: 'User A finishes. Cache freed. User E immediately takes the slot. 4/4.', active: 4, exit: 'A', enter: 'E' },
+  { step: 30,  label: 'Token 30',          slots: ['E', 'B', 'C', 'F'], note: 'User D finishes. User F takes the slot. Still 4/4.', active: 4, exit: 'D', enter: 'F' },
+  { step: 50,  label: 'Token 50',          slots: ['E', 'G', 'C', 'F'], note: 'User B finishes. User G takes the slot. Still 4/4.', active: 4, exit: 'B', enter: 'G' },
+  { step: 500, label: 'Token 500',         slots: ['E', 'G', 'H', 'F'], note: 'User C finishes. User H takes the slot. Still 4/4.', active: 4, exit: 'C', enter: 'H' },
 ];
 
 export const CONTINUOUS_VS_STATIC = [

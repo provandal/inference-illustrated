@@ -619,7 +619,7 @@ function StaticBatchingPage() {
                     User {user.id}
                   </span>
                   <span className="text-[var(--color-text-muted)]">
-                    {user.generateTokens} tokens &mdash; finishes at step {user.finishStep}
+                    {user.generateTokens} tokens &mdash; finishes at token {user.finishStep}
                     {isFinished && ' \u2713'}
                   </span>
                 </div>
@@ -684,7 +684,7 @@ function StaticBatchingPage() {
                 className="anim-scrubber flex-1"
               />
               <span className="text-[11px] font-mono text-[var(--color-text-muted)] min-w-[80px] text-right">
-                Step {Math.round(animatedTime)} / {maxStep}
+                Token {Math.round(animatedTime)} / {maxStep}
               </span>
             </div>
           </div>
@@ -694,7 +694,7 @@ function StaticBatchingPage() {
       {/* Narrative explanation between timeline and utilization */}
       <Callout
         type="note"
-        message="<strong>Watch what happens.</strong> All four users start together and the GPU is fully busy at step 1. After step 20, User A is done &mdash; but their slot sits idle for 480 more steps. User D finishes at step 30, then User B at step 50. Now three slots are idle. The GPU spends the next 450 steps generating tokens only for User C while three slots waste memory and compute."
+        message="<strong>Watch what happens.</strong> All four users start together and the GPU is fully busy at token 1. After token 20, User A is done &mdash; but their slot sits idle for 480 more tokens. User D finishes at token 30, then User B at token 50. Now three slots are idle. The GPU spends the next 450 tokens generating only for User C while three slots waste memory and compute."
       />
 
       {/* Utilization meter */}
