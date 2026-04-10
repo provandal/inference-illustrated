@@ -954,7 +954,7 @@ function ContinuousBatchingPage() {
 
       <Callout
         type="note"
-        message="<strong>[Forward ref: Stop 12]</strong> When requests finish, their freed KV cache memory can also be used by <em>chunked prefill</em> &mdash; processing new arrivals&rsquo; prompts in pieces, interleaved with ongoing decode. This avoids a latency spike from a large prefill blocking the decode batch."
+        message="<strong>Coming up in Stop 12:</strong> When requests finish, their freed KV cache memory can also be used by <em>chunked prefill</em> &mdash; processing new arrivals&rsquo; prompts in pieces, interleaved with ongoing decode. This avoids a latency spike from a large prefill blocking the decode batch."
       />
     </div>
   );
@@ -1383,12 +1383,12 @@ function MemoryRunsOutPage() {
                   <div className="flex gap-2 pt-1 flex-wrap">
                     {opt.forwardRef && (
                       <span className="text-[10px] px-2 py-0.5 rounded bg-[var(--color-blue-bg)] border border-[var(--color-blue)] text-[var(--color-blue-text)]">
-                        Forward ref: {opt.forwardRef}
+                        Coming up in {opt.forwardRef}
                       </span>
                     )}
                     {opt.forwardRefExtra && (
                       <span className="text-[10px] px-2 py-0.5 rounded bg-[var(--color-blue-bg)] border border-[var(--color-blue)] text-[var(--color-blue-text)]">
-                        Forward ref: {opt.forwardRefExtra}
+                        Coming up in {opt.forwardRefExtra}
                       </span>
                     )}
                   </div>
@@ -1401,7 +1401,7 @@ function MemoryRunsOutPage() {
 
       <Callout
         type="note"
-        message="<strong>[Forward ref: Stop 13]</strong> The offload option extends to multiple tiers: HBM &rarr; CPU DRAM &rarr; NVMe SSD &rarr; networked storage. Each tier offers more capacity at higher latency. NVIDIA Dynamo&rsquo;s KV Block Manager orchestrates this hierarchy, and companies like WEKA and VAST are building RDMA-based storage that can serve KV cache back to GPUs at up to 270 GB/s aggregate throughput."
+        message="<strong>Coming up in Stop 13:</strong> The offload option extends to multiple tiers: HBM &rarr; CPU DRAM &rarr; NVMe SSD &rarr; networked storage. Each tier offers more capacity at higher latency. NVIDIA Dynamo&rsquo;s KV Block Manager orchestrates this hierarchy, and companies like WEKA and VAST are building RDMA-based storage that can serve KV cache back to GPUs at up to 270 GB/s aggregate throughput."
       />
 
       <Callout
