@@ -691,6 +691,12 @@ function StaticBatchingPage() {
         </div>
       </Panel>
 
+      {/* Narrative explanation between timeline and utilization */}
+      <Callout
+        type="note"
+        message="<strong>Watch what happens.</strong> All four users start together and the GPU is fully busy at step 1. After step 20, User A is done &mdash; but their slot sits idle for 480 more steps. User D finishes at step 30, then User B at step 50. Now three slots are idle. The GPU spends the next 450 steps generating tokens only for User C while three slots waste memory and compute."
+      />
+
       {/* Utilization meter */}
       <Panel className="mt-4">
         <PanelHeader>GPU utilization over time</PanelHeader>
