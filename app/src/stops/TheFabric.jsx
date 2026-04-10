@@ -579,34 +579,49 @@ function NvmePage() {
         </div>
       </Panel>
 
-      {/* Patch 6: I/O granularity */}
+      {/* Storage workload profile for KV cache (revised per Correction 5) */}
       <Panel className="mt-4">
         <PanelHeader>Storage workload profile for KV cache</PanelHeader>
         <div className="p-4 space-y-3 text-[13px] text-[var(--color-text-secondary)] leading-relaxed">
           <p>
-            <strong className="text-[var(--color-text)]">I/O granularity:</strong> KV cache
-            blocks in the KVBM are organized as [num_layers] &times; [page_size &times;
-            inner_dim]. While a full block for one page of tokens spans all
-            layers (~2.5&ndash;5 MB), individual layers within a
-            block <strong className="text-[var(--color-text)]">are independently addressable
-            and transferable</strong>. This is essential: as we discussed in Stop 13,
-            layer-parallel promotion allows the inference engine to begin processing
-            early layers while later layers are still being fetched. A single monolithic
-            5 MB I/O would defeat this pipelining.
+            <strong className="text-[var(--color-text)]">Aggregated chunks, not per-page transfers.</strong>{' '}
+            Early prefill/decode disaggregation systems (vLLM&rsquo;s original PD pattern)
+            transferred the KV cache one page at a time at the inference engine&rsquo;s
+            native page size (16&ndash;32 tokens, tens of KB per I/O). This pattern{' '}
+            <strong>underutilized network bandwidth</strong>. LMCache benchmarks
+            documented the problem, and production systems &mdash; NVIDIA KVBM, WEKA,
+            VAST, LMCache &mdash; have all converged on a different approach:{' '}
+            <strong>aggregate many pages and all model layers into a single large
+            sequential transfer</strong>.
           </p>
           <p>
-            In practice, NIXL can issue parallel reads for different layer ranges within
-            the same block, allowing the storage system to serve them concurrently. The
-            optimal I/O unit for the storage system is therefore per-layer-per-page:
-            ~64 KB for Llama-3 70B with GQA (8 KV heads &times; 128 d<sub>head</sub> &times;
-            2 (K+V) &times; 2 bytes &times; 16 tokens). The storage system should optimize
-            for streaming many 64 KB reads in parallel, not for single large sequential reads.
+            <strong className="text-[var(--color-text)]">Chunk composition.</strong> A
+            production chunk combines (tokens per chunk) &times; (all model layers) &times;
+            (KV size per token per layer) into one sequential transfer unit. LMCache&rsquo;s
+            default is <strong>256 tokens per chunk</strong>. For Llama-3 70B at FP8 with
+            256-token chunks, that&rsquo;s roughly <strong>~5 MB per chunk</strong>. KVBM&rsquo;s
+            eviction path writes &ldquo;all model layers of the block size&rdquo; as a single
+            unit. Production chunks range from hundreds of KB to multiple MB.
           </p>
           <p>
-            For pipeline parallelism (Stop 12), where different GPUs hold different layer
-            ranges, each GPU&rsquo;s storage I/O naturally targets only its assigned
-            layers &mdash; the per-layer addressability maps directly to the pipeline
-            stage structure.
+            <strong className="text-[var(--color-text)]">Why aggregation matters.</strong>{' '}
+            Page-by-page transfers at the engine&rsquo;s native size (tens of KB) cannot
+            saturate modern fabric bandwidth. Aggregating pages and layers into larger
+            sequential chunks lets RDMA hit line rate. VAST demonstrated{' '}
+            <strong>99% of 200 Gbps line rate</strong> using this aggregated pattern in
+            collaboration with NVIDIA Dynamo engineering.
+          </p>
+          <p>
+            <strong className="text-[var(--color-text)]">Aggregate volume vs. chunk count.</strong>{' '}
+            A conversation&rsquo;s total KV cache is 1&ndash;10 GB depending on context length
+            and model. In the production pattern, this transfers as <strong>tens to low
+            hundreds of large chunks</strong>, not thousands of small pages.
+          </p>
+          <p>
+            <strong className="text-[var(--color-text)]">Networking implication.</strong>{' '}
+            KV cache transfers are <strong>bandwidth-dominated large sequential flows</strong>,
+            not many small concurrent flows. The fabric&rsquo;s aggregate bandwidth matters
+            more than small-flow handling or fine-grained adaptive routing.
           </p>
         </div>
       </Panel>

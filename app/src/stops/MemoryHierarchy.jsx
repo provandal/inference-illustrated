@@ -422,19 +422,24 @@ function StorageIOPage() {
         <div className="p-4 space-y-3 text-[13px] text-[var(--color-text-secondary)] leading-relaxed">
           <div>
             <strong className="text-[var(--color-text)]">Write pattern (demotion):</strong>{' '}
-            Batch of KV blocks, not individual tokens. An 8,000-token conversation at 16 tokens
-            per page = 500 pages. Each page is ~5.2 MB (Llama-3 70B with GQA). Total write: ~2.6 GB.
-            Writes are sequential but source pages may be scattered (PagedAttention). Writes are{' '}
-            <strong className="text-[var(--color-text)]">not latency-critical</strong> &mdash; the
-            conversation is already idle. Throughput matters more than latency.
+            Aggregated chunks combining multiple pages across all model layers. KVBM&rsquo;s
+            eviction path writes &ldquo;all model layers of the block size&rdquo; as a single
+            sequential transfer. For an 8,000-token conversation on Llama-3 70B at FP8 with
+            LMCache-style 256-token chunks, that&rsquo;s roughly{' '}
+            <strong className="text-[var(--color-text)]">~32 chunks at ~5 MB each = ~160 MB
+            per chunk batch</strong>, with ~2.5 GB total. Writes are large and sequential.
+            Writes are <strong className="text-[var(--color-text)]">not latency-critical</strong> &mdash;
+            the conversation is already idle. Throughput matters more than latency.
           </div>
           <div>
             <strong className="text-[var(--color-text)]">Read pattern (promotion):</strong>{' '}
-            Full conversation&rsquo;s cache &mdash; all pages, all layers. Same ~2.6 GB for 8K tokens.
-            The read IS <strong className="text-[var(--color-text)]">latency-critical</strong>: the
-            user is waiting for their first token. With layer-parallel promotion, the system reads
-            layers in parallel and feeds them to the GPU as they arrive &mdash; more like a streaming
-            read than a single large I/O.
+            Full conversation&rsquo;s cache transferred as <strong>tens to low hundreds of large
+            sequential chunks</strong>, not thousands of small per-page reads. Same ~2.5 GB for
+            8K tokens on 70B. The read IS{' '}
+            <strong className="text-[var(--color-text)]">latency-critical</strong>: the user is
+            waiting for their first token. Production systems aggregate pages and layers into
+            large chunks specifically to saturate the fabric &mdash; VAST demonstrated 99% of
+            200 Gbps line rate using this pattern.
           </div>
           <div>
             <strong className="text-[var(--color-text)]">Concurrency:</strong>{' '}
@@ -504,8 +509,8 @@ function StorageIOPage() {
                 <th className="px-3 py-2 text-right">KV Heads</th>
                 <th className="px-3 py-2 text-right">d_head</th>
                 <th className="px-3 py-2 text-right">Layers</th>
-                <th className="px-3 py-2 text-right">Per-layer/page</th>
-                <th className="px-3 py-2 text-right">Block Size</th>
+                <th className="px-3 py-2 text-right">KV / layer / page</th>
+                <th className="px-3 py-2 text-right">Full block</th>
               </tr>
             </thead>
             <tbody>
@@ -530,11 +535,21 @@ function StorageIOPage() {
           At FP8 (1 byte per number): all values halve. Llama-3 70B: 2.56 MB per block.
           At INT4 (0.5 bytes): all values quarter. Llama-3 70B: 1.28 MB per block.
         </InfoBox>
+        <InfoBox>
+          <strong>The columns above describe structural decomposition</strong> &mdash; how
+          one block of 16 tokens (the KVBM page size) breaks down per layer. They are{' '}
+          <em>not</em> network transfer units. Production systems (KVBM, WEKA, VAST,
+          LMCache) aggregate multiple pages and all model layers into much larger
+          sequential chunks. LMCache&rsquo;s default is 256 tokens per chunk &mdash; tens
+          to low hundreds of large chunks per conversation, not thousands of small
+          per-layer-per-page reads. We&rsquo;ll see why this matters in Stop 15 (the
+          fabric).
+        </InfoBox>
       </Panel>
 
       <Callout
         type="note"
-        message="<strong>Key observation:</strong> The per-layer-per-page contribution (64 KB for GQA-8 models) is identical across Llama-3 8B, 70B, and 405B. The block size difference comes entirely from the number of layers (32 vs 80 vs 126). This mirrors the KV cache per-token finding from Stop 8: bigger models have bigger caches because of depth, not wider heads. <strong>DeepSeek-V3 (MLA)</strong> is notably different: its Multi-Head Latent Attention compresses K,V into a smaller latent space, producing blocks roughly 2.5x smaller &mdash; the compression approach we will explore in Stop 14."
+        message="<strong>Key observation:</strong> The block size difference across Llama-3 8B, 70B, and 405B comes entirely from the number of layers (32 vs 80 vs 126). The KV-per-layer contribution is identical across the three sizes because they share the same GQA configuration (8 KV heads, 128 d_head). This mirrors the KV cache per-token finding from Stop 8: bigger models have bigger caches because of depth, not wider heads. <strong>DeepSeek-V3 (MLA)</strong> is notably different: its Multi-Head Latent Attention compresses K,V into a smaller latent space, producing blocks roughly 2.5x smaller &mdash; the compression approach we will explore in Stop 14."
       />
 
       {/* Block size calculator */}
@@ -596,7 +611,7 @@ function StorageIOPage() {
           </div>
           <div className="flex flex-wrap gap-4 text-[13px]">
             <div>
-              <span className="text-[var(--color-text-muted)]">Per-layer per page: </span>
+              <span className="text-[var(--color-text-muted)]">KV per layer per page: </span>
               <strong className="text-[var(--color-text)] font-mono">{formatBytes(perLayerPerPage)}</strong>
             </div>
             <div>
@@ -609,6 +624,12 @@ function StorageIOPage() {
                 {fullBlockSize > 0 ? Math.floor((1024 * 1024 * 1024) / fullBlockSize).toLocaleString() : '\u2014'}
               </strong>
             </div>
+          </div>
+          <div className="mt-3 text-[11px] text-[var(--color-text-muted)] italic leading-relaxed">
+            Note: these are <strong>structural decomposition values</strong>, not transfer
+            units. Production systems aggregate multiple pages and all layers into much
+            larger sequential chunks (LMCache default: 256 tokens per chunk, ~5 MB for
+            Llama-3 70B at FP8) to saturate network bandwidth.
           </div>
         </div>
       </Panel>
