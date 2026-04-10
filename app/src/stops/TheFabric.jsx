@@ -25,10 +25,10 @@ const NARRATIONS = {
     'Every KV cache transfer we&rsquo;ve discussed in Stops 12 and 13 &mdash; disaggregated P/D handoff, tier promotion, tier demotion, cache sharing &mdash; travels over a physical interconnect using a specific protocol. The choice of protocol determines the transfer latency, which directly impacts the user&rsquo;s Time-to-First-Token. In our scenario (8&times; H100, Llama-3 70B, FP8), a 28,000-token cache is 4.48 GB (after FP8 compression from Stop 14). Here&rsquo;s what that transfer looks like over each protocol family:',
 
   'nvlink-domains':
-    'NVLink is the highest-bandwidth interconnect in the AI infrastructure stack. But it&rsquo;s not limited to a single server node &mdash; and this is one of the most important and often misunderstood aspects of modern AI architecture. NVIDIA has been steadily expanding the reach of NVLink from 8 GPUs in a single node to hundreds of GPUs across multiple racks. We&rsquo;ll use the term <strong>NVLink domain</strong> to describe the set of GPUs connected by NVLink fabric with all-to-all bandwidth. Everything within an NVLink domain communicates at NVLink speed. Everything outside must use Ethernet or InfiniBand.',
+    'The highest-bandwidth interconnect in the AI infrastructure stack is the vendor&rsquo;s <strong>scale-up fabric</strong>. A <strong>scale-up domain</strong> is the set of GPUs interconnected by a high-bandwidth all-to-all fabric &mdash; NVIDIA&rsquo;s NVLink, AMD&rsquo;s Infinity Fabric, or future interconnects. Everything inside a scale-up domain communicates at memory-semantic speeds; everything outside must use Ethernet or InfiniBand. This is one of the most important and often misunderstood aspects of modern AI architecture. NVIDIA has been steadily expanding the reach of NVLink from 2&ndash;4 GPUs on a single board, through 8-GPU nodes, to hundreds of GPUs across multiple racks.',
 
   rdma:
-    'When KV cache must move <strong>between NVLink domains</strong> &mdash; for disaggregated P/D where prefill and decode are in different racks, for ICMS access, or for cache sharing across domains &mdash; it travels over RDMA (Remote Direct Memory Access). RDMA allows one GPU to write directly into another machine&rsquo;s memory without involving either machine&rsquo;s CPU. If RDMA is new to you, this <a href="https://www.youtube.com/watch?v=GnBy5F1TCoQ" target="_blank" rel="noopener noreferrer" class="underline text-[var(--color-primary)]">8-minute video</a> provides an excellent visual explanation. RDMA comes in two flavors: InfiniBand and RoCEv2. Both provide the same RDMA verbs (the same programming interface), but they differ in the underlying fabric.',
+    'When KV cache must move <strong>between scale-up domains</strong> &mdash; for disaggregated P/D where prefill and decode are in different racks, for ICMS access, or for cache sharing across domains &mdash; it travels over RDMA (Remote Direct Memory Access). RDMA allows one GPU to write directly into another machine&rsquo;s memory without involving either machine&rsquo;s CPU. If RDMA is new to you, this <a href="https://www.youtube.com/watch?v=GnBy5F1TCoQ" target="_blank" rel="noopener noreferrer" class="underline text-[var(--color-primary)]">8-minute video</a> provides an excellent visual explanation. RDMA comes in two flavors: InfiniBand and RoCEv2. Both provide the same RDMA verbs (the same programming interface), but they differ in the underlying fabric.',
 
   cxl:
     'CXL (Compute Express Link) represents a fundamentally different approach to KV cache data movement. Instead of networking protocols that copy data between machines, CXL extends the memory address space &mdash; making remote DRAM appear as local memory to the GPU or CPU. For KV cache, this is transformative: instead of &ldquo;transfer 4.48 GB from node A to node B,&rdquo; CXL enables &ldquo;GPU on node B reads cache directly from a shared memory pool as if it were local DRAM.&rdquo; No copy. No NIC involvement. Memory-semantic access with sub-100 ns latency.',
@@ -162,7 +162,7 @@ function NvlinkDomainsPage() {
   return (
     <div>
       <Panel>
-        <PanelHeader>NVLink domain sizes (current and announced)</PanelHeader>
+        <PanelHeader>NVIDIA scale-up domain sizes (current and announced)</PanelHeader>
         <div className="overflow-x-auto">
           <table className="w-full text-[13px]">
             <thead>
@@ -195,7 +195,7 @@ function NvlinkDomainsPage() {
       </Panel>
 
       <InfoBox>
-        The trend is clear: NVIDIA is aggressively expanding the NVLink domain.
+        The trend is clear: NVIDIA is aggressively expanding the scale-up domain.
         The NVL72 connected 72 GPUs within a single rack. The NVL576 will
         use <strong>NVIDIA Kyber</strong> &mdash; silicon photonics-based rack-to-rack
         optical interconnects &mdash; to extend NVLink across multiple racks while
@@ -203,13 +203,18 @@ function NvlinkDomainsPage() {
       </InfoBox>
 
       <Callout
-        type="good"
-        message="<strong>Why this matters for KV cache:</strong> Within an NVLink domain, P/D transfer is essentially free. Our 4.48 GB cache at 3.6 TB/s (NVLink 6) transfers in ~1.2 ms &mdash; compared to ~90 ms over RDMA. That&rsquo;s a 75&times; difference. Every GPU that can be kept within the NVLink domain avoids the inter-domain transfer penalty."
+        type="note"
+        message="<strong>Note on NVL144 CPX:</strong> NVIDIA&rsquo;s original plan for NVL144 CPX paired Rubin SXM GPUs (decode) with Rubin CPX accelerators (GDDR7-based, prefill-optimized) in a single rack. Only the Rubin SXM GPUs (~48) were on the NVLink fabric; the CPX accelerators connected separately. This configuration was NOT a 144-GPU all-to-all scale-up domain. At GTC 2026, NVIDIA effectively shelved CPX. Ian Buck confirmed the pivot: &ldquo;scratch Rubin CPX.&rdquo; NVIDIA&rsquo;s $20B acquisition of Groq (Christmas Eve 2025) produced the Groq 3 LPU (LP30), which replaces CPX&rsquo;s role. The new architecture flips the original plan: <strong>Rubin GPUs handle prefill, Groq LPUs handle decode.</strong> The Groq 3 LPX rack (256 LPUs, 500 MB SRAM per die, 150 TB/s memory bandwidth per die &mdash; 7&times; Rubin&rsquo;s HBM4) sits ALONGSIDE the Vera Rubin NVL72, not inside the NVLink domain. NVIDIA claims 35&times; higher throughput per megawatt vs. Blackwell NVL72 alone. Shipping Q3 2026. Because CPX has been de-prioritized, this curriculum does not focus on the NVL144 CPX configuration. The Groq 3 LPU / LPX architecture is more representative of NVIDIA&rsquo;s near-term direction for inference acceleration."
       />
 
-      {/* NVLink domain architecture diagram */}
+      <Callout
+        type="good"
+        message="<strong>Why this matters for KV cache:</strong> Within a scale-up domain, P/D transfer is essentially free. Our 4.48 GB cache at 3.6 TB/s (NVLink 6) transfers in ~1.2 ms &mdash; compared to ~90 ms over RDMA. That&rsquo;s a 75&times; difference. Every GPU that can be kept within the scale-up domain avoids the inter-domain transfer penalty."
+      />
+
+      {/* Scale-up domain architecture diagram */}
       <Panel className="mt-4">
-        <PanelHeader>NVLink domain with external connectivity</PanelHeader>
+        <PanelHeader>Scale-up domain with external connectivity</PanelHeader>
         <div className="p-4">
           <div
             className="rounded-lg border-2 p-4 space-y-3"
@@ -251,7 +256,7 @@ function NvlinkDomainsPage() {
       </Panel>
 
       <InfoBox>
-        Within the NVLink domain: 3.6 TB/s per GPU, all-to-all, nanosecond latency.
+        Within the scale-up domain: 3.6 TB/s per GPU, all-to-all, nanosecond latency.
         Outside the domain: ConnectX-9 SuperNICs provide 1.6 Tbps (200 GB/s)
         per GPU for scale-out networking via Spectrum-X or Quantum-X800. BlueField-4
         DPUs connect to ICMS/CMX storage. These are the cross-domain interconnects
@@ -260,10 +265,10 @@ function NvlinkDomainsPage() {
 
       <InfoBox>
         For disaggregated inference (Stop 12), if both the prefill GPU and the decode
-        GPU are within the same NVLink domain, the KV cache transfer adds ~1.2 ms to
+        GPU are within the same scale-up domain, the KV cache transfer adds ~1.2 ms to
         TTFT. If they&rsquo;re in different domains (connected by Ethernet/IB), it
         adds ~90 ms. This is why NVIDIA&rsquo;s rack-scale systems are so valuable
-        for inference: the larger the NVLink domain, the more flexibility you have to
+        for inference: the larger the scale-up domain, the more flexibility you have to
         place prefill and decode without paying the cross-domain penalty.
       </InfoBox>
     </div>
@@ -733,14 +738,14 @@ function FabricContentionPage() {
         </div>
       </Panel>
 
-      {/* Patch 8: P/D NVLink domain note */}
+      {/* Patch 8: P/D scale-up domain note */}
       <InfoBox>
         <strong>Note:</strong> P/D KV transfer uses NVLink if the prefill and decode GPUs
-        are within the same NVLink domain &mdash; which is the fastest possible path
-        (~1.2 ms). If they are in different NVLink domains (e.g., different racks in a
+        are within the same scale-up domain &mdash; which is the fastest possible path
+        (~1.2 ms). If they are in different scale-up domains (e.g., different racks in a
         multi-rack deployment), the transfer falls to RDMA over Spectrum-X or InfiniBand
         (~90 ms). This 75&times; latency difference is a primary reason why keeping prefill
-        and decode within the same NVLink domain is strongly preferred when the domain
+        and decode within the same scale-up domain is strongly preferred when the domain
         size allows it.
       </InfoBox>
 

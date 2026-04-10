@@ -253,7 +253,7 @@ export const CASCADING_EFFECTS = [
   { change: 'Switch FP16 \u2192 FP8 KV cache', effects: 'All cache sizes halve \u2192 2\u00d7 users per tier \u2192 all transfer times halve \u2192 hit rate improves \u2192 TTFT drops' },
   { change: 'Enable disaggregation',         effects: 'GPUs split into P/D pools \u2192 P/D transfer appears \u2192 prefill latency isolated \u2192 decode TPOT stabilizes' },
   { change: 'Increase context length',       effects: 'Cache per user grows \u2192 fewer users per GPU \u2192 more demotions \u2192 TTFT for returning users increases' },
-  { change: 'Switch to larger NVLink domain', effects: 'P/D transfer latency drops dramatically \u2192 more flexibility for GPU assignment \u2192 routing improves' },
+  { change: 'Switch to larger scale-up domain', effects: 'P/D transfer latency drops dramatically \u2192 more flexibility for GPU assignment \u2192 routing improves' },
   { change: 'Enable ICMS tier',              effects: 'G3.5 appears in hierarchy \u2192 cache sharing enabled \u2192 any GPU can serve any user \u2192 routing flexibility increases' },
 ];
 

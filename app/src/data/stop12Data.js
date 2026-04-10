@@ -26,10 +26,10 @@ export const DATA_PARALLEL_GPUS = [
 
 // Tensor-parallel memory layout (TP=4, Llama-3 70B FP16)
 export const TENSOR_PARALLEL_GPUS = [
-  { gpu: 'GPU 0', weights: '35 GB', cacheDesc: '1/4 of cache (heads 1-16)', kvGroups: '2 KV groups', communication: '160 all-reduce/pass' },
-  { gpu: 'GPU 1', weights: '35 GB', cacheDesc: '1/4 of cache (heads 17-32)', kvGroups: '2 KV groups', communication: '160 all-reduce/pass' },
-  { gpu: 'GPU 2', weights: '35 GB', cacheDesc: '1/4 of cache (heads 33-48)', kvGroups: '2 KV groups', communication: '160 all-reduce/pass' },
-  { gpu: 'GPU 3', weights: '35 GB', cacheDesc: '1/4 of cache (heads 49-64)', kvGroups: '2 KV groups', communication: '160 all-reduce/pass' },
+  { gpu: 'GPU 0', weights: '35 GB', cacheDesc: '1/4 of cache (heads 1-16)', kvGroups: '2 KV groups', communication: '160 all-reduce/pass (70B, 80 layers)' },
+  { gpu: 'GPU 1', weights: '35 GB', cacheDesc: '1/4 of cache (heads 17-32)', kvGroups: '2 KV groups', communication: '160 all-reduce/pass (70B, 80 layers)' },
+  { gpu: 'GPU 2', weights: '35 GB', cacheDesc: '1/4 of cache (heads 33-48)', kvGroups: '2 KV groups', communication: '160 all-reduce/pass (70B, 80 layers)' },
+  { gpu: 'GPU 3', weights: '35 GB', cacheDesc: '1/4 of cache (heads 49-64)', kvGroups: '2 KV groups', communication: '160 all-reduce/pass (70B, 80 layers)' },
 ];
 
 // Pipeline-parallel memory layout (PP=4, Llama-3 70B FP16)
@@ -110,7 +110,7 @@ export const SCENARIO_CONFIGS = [
     description: '4 GPUs run one model instance (tensor parallel). The other 4 run a second instance. Two copies serving 16 users each.',
     totalCache: '360 GB',
     maxUsersAt8K: '144',
-    communication: '160 all-reduce/pass per instance',
+    communication: '160 all-reduce/pass per instance (70B, 80 layers)',
     tradeoff: 'Lower latency \u2014 each token processed by 4 GPUs in parallel.',
   },
   {
@@ -253,8 +253,18 @@ export const TP_ANIMATION_STEPS = [
     step: 6,
     label: 'Layer complete',
     description: 'The token\u2019s representation after this layer is now identical on all 4 GPUs. It enters the next layer. The same sequence repeats for all 80 layers.',
-    gpuWork: ['160 all-reduce operations total (2 per layer \u00d7 80 layers)'],
+    gpuWork: ['2 per layer \u00d7 80 layers = 160 all-reduces (Llama-3 70B)'],
   },
+];
+
+// All-reduce count by model (Correction 4 parameterization)
+// 2 all-reduces per layer per forward pass when TP > 1.
+// TP=1 inference = ZERO all-reduces (each GPU holds the full model).
+export const ALL_REDUCE_BY_MODEL = [
+  { model: 'TP=1 (any model, inference)', layers: '\u2014',  perPass: '0',   note: 'Zero all-reduces \u2014 each GPU runs the full forward pass independently' },
+  { model: 'Llama-3 8B (TP>1)',            layers: 32,     perPass: '64',  note: '2 \u00d7 32 layers' },
+  { model: 'Llama-3 70B (TP>1)',           layers: 80,     perPass: '160', note: '2 \u00d7 80 layers' },
+  { model: 'Llama-3 405B (TP>1)',          layers: 126,    perPass: '252', note: '2 \u00d7 126 layers' },
 ];
 
 // Super-linear KV cache scaling data

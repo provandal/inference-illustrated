@@ -848,7 +848,7 @@ function SummaryPage() {
           </p>
           <p>
             Stop 17 assembles the full picture and looks forward: where is this going in the next 1,
-            2, and 5 years? What happens when NVLink domains span 576+ GPUs? When CXL pools reach
+            2, and 5 years? What happens when scale-up domains span 576+ GPUs? When CXL pools reach
             petabytes? When KV cache becomes a first-class network service? And what does all of this
             mean for the infrastructure professionals building these systems?
           </p>

@@ -132,7 +132,7 @@ export const ROUTING_SCENARIOS = [
     description: 'User 501 uploads a 28K-token document. No cache exists anywhere.',
     routerDecision: 'No cache match on any GPU. This is a pure prefill request.',
     action: 'Route to Prefill Pool (disaggregated from Stop 12).',
-    dataMovement: 'Full prefill: 28K tokens, ~500 ms. KV cache transfers to Decode Pool via NIXL (~90 ms or ~1.2 ms depending on NVLink domain).',
+    dataMovement: 'Full prefill: 28K tokens, ~500 ms. KV cache transfers to Decode Pool via NIXL (~90 ms or ~1.2 ms depending on scale-up domain).',
     ttft: '~590\u2013500 ms',
     roundRobinTtft: '~590\u2013500 ms',
   },

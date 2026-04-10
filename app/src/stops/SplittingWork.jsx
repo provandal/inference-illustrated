@@ -14,6 +14,7 @@ import {
   SUMMARY_TABLE,
   TP_ANIMATION_STEPS,
   SUPER_LINEAR_SCALING,
+  ALL_REDUCE_BY_MODEL,
 } from '../data/stop12Data';
 import { Panel, PanelHeader, InfoBox, Callout } from '../components/ui';
 import PageNav from '../components/PageNav';
@@ -264,13 +265,51 @@ function TensorParallelPage() {
       </Panel>
 
       <Panel className="mt-4">
-        <PanelHeader>Key number</PanelHeader>
+        <PanelHeader>All-reduce count scales with layer depth</PanelHeader>
+        <div className="p-4 space-y-3 text-[13px] text-[var(--color-text-secondary)] leading-relaxed">
+          <p>
+            With tensor parallelism (TP &gt; 1), there are <strong>2 all-reduce operations per
+            layer per forward pass</strong> &mdash; one after the attention block, one after the
+            FFN block. The total per forward pass depends on the model&rsquo;s layer count.
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-[12px]">
+              <thead>
+                <tr className="border-b border-[var(--color-border)] text-[11px] font-medium text-[var(--color-text-muted)] uppercase tracking-wider">
+                  <th className="px-3 py-2 text-left">Configuration</th>
+                  <th className="px-3 py-2 text-right">Layers</th>
+                  <th className="px-3 py-2 text-right">All-reduces / pass</th>
+                  <th className="px-3 py-2 text-left">Breakdown</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ALL_REDUCE_BY_MODEL.map((row) => (
+                  <tr
+                    key={row.model}
+                    className="border-b border-[var(--color-border-light)] last:border-b-0"
+                  >
+                    <td className="px-3 py-2 font-medium text-[var(--color-text)]">{row.model}</td>
+                    <td className="px-3 py-2 text-right font-mono text-[var(--color-text-secondary)]">{row.layers}</td>
+                    <td className="px-3 py-2 text-right font-mono font-medium text-[var(--color-text)]">{row.perPass}</td>
+                    <td className="px-3 py-2 text-[var(--color-text-secondary)]">{row.note}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p>
+            <strong className="text-[var(--color-text)]">At TP=1, there are ZERO all-reduce
+            operations during inference.</strong> Each GPU holds the complete model and runs the
+            forward pass independently. This is the default configuration for models that fit
+            in a single GPU&rsquo;s HBM (e.g., Llama-3 70B at FP4 on H100/B200/Rubin, or
+            Llama-3 8B at any precision on any modern GPU). <em>Training always requires
+            all-reduce for gradient synchronization, regardless of TP setting.</em>
+          </p>
+        </div>
         <InfoBox>
-          For Llama-3 70B with TP=4 across 80 layers:{' '}
-          <strong>160 all-reduce operations per forward pass</strong> (2 per layer &times; 80
-          layers). At NVLink speeds (900 GB/s within a node), each all-reduce is fast.
-          Cross-node (InfiniBand at ~400 Gbps = 50 GB/s), it&rsquo;s 18&times; slower &mdash;
-          which is why <strong>tensor parallelism should stay within a single node</strong>.
+          At NVLink speeds (900 GB/s within a node), each all-reduce is fast. Cross-node
+          (InfiniBand at ~400 Gbps = 50 GB/s), it&rsquo;s 18&times; slower &mdash; which is
+          why <strong>tensor parallelism should stay within a single node</strong>.
         </InfoBox>
       </Panel>
 
@@ -327,8 +366,9 @@ function TensorParallelPage() {
               Weakness
             </div>
             <div className="text-[13px] text-[var(--color-text-secondary)] leading-relaxed">
-              Massive communication. 160 all-reduce operations per forward pass. This is fine
-              over NVLink (900 GB/s) within a node, but across nodes it becomes the bottleneck.
+              Massive communication. 160 all-reduce operations per forward pass for Llama-3 70B
+              (2 &times; 80 layers); 64 for the 8B, 252 for the 405B. This is fine over NVLink
+              (900 GB/s) within a node, but across nodes it becomes the bottleneck.
             </div>
           </div>
         </div>
@@ -414,7 +454,7 @@ function PipelineParallelPage() {
             {
               num: '5',
               label: 'Total latency',
-              text: 'The token must traverse ALL 4 stages sequentially. Pipeline latency = sum of all stage compute times + 3 handoff latencies. This is SLOWER than tensor parallelism for a single token (where all GPUs work in parallel). The advantage is in total communication volume: 3 handoffs of 16 KB each = 48 KB total, vs. 160 all-reduce operations for tensor parallelism.',
+              text: 'The token must traverse ALL 4 stages sequentially. Pipeline latency = sum of all stage compute times + 3 handoff latencies. This is SLOWER than tensor parallelism for a single token (where all GPUs work in parallel). The advantage is in total communication volume: 3 handoffs of 16 KB each = 48 KB total, vs. 160 all-reduces per pass for tensor parallelism (Llama-3 70B with TP>1; the count scales with layer depth).',
             },
           ].map((step) => (
             <div key={step.num} className="flex gap-3 items-start text-[13px]">

@@ -2,7 +2,7 @@
 
 export const PAGES = [
   { id: 'four-protocols',    label: 'Four Protocols, Four Distances',    type: 'static' },
-  { id: 'nvlink-domains',    label: 'NVLink Domains',                   type: 'static' },
+  { id: 'nvlink-domains',    label: 'Scale-Up Domains',                 type: 'static' },
   { id: 'rdma',              label: 'RDMA — Crossing the Boundary',     type: 'static' },
   { id: 'cxl',               label: 'CXL — Memory, Not Network',        type: 'static' },
   { id: 'nvme',              label: 'NVMe-oF — Reaching Storage',       type: 'static' },
@@ -18,7 +18,7 @@ export const PROTOCOL_OVERVIEW = [
     bandwidth: '3.6 TB/s per GPU',
     transferTime: '~1.2 ms',
     latencyClass: 'Nanoseconds',
-    distance: 'Within NVLink domain (NVL8 to NVL576+)',
+    distance: 'Within scale-up domain (NVL8 to NVL576+)',
     primaryUse: 'TP all-reduce, P/D transfer within domain',
   },
   {
@@ -35,7 +35,7 @@ export const PROTOCOL_OVERVIEW = [
     transferTime: '~90 ms',
     latencyClass: '1\u20132 \u00b5s',
     distance: 'Inter-domain / inter-pod',
-    primaryUse: 'P/D transfer across NVLink domains',
+    primaryUse: 'P/D transfer across scale-up domains',
   },
   {
     protocol: 'RoCEv2 / Spectrum-X',
@@ -55,8 +55,24 @@ export const PROTOCOL_OVERVIEW = [
   },
 ];
 
-// Page 2: NVLink domain sizes (Patch 2)
+// Page 2: Scale-up domain sizes (Patch 2)
 export const NVLINK_DOMAINS = [
+  {
+    config: 'NVL2',
+    gpus: 2,
+    scope: 'NVLink bridge (2-GPU workstation/HPC)',
+    bwPerGpu: '600 GB/s (NVLink 4 bridge)',
+    totalBw: '1.2 TB/s',
+    status: 'Legacy (A100/H100 workstation)',
+  },
+  {
+    config: 'GB200 NVL4',
+    gpus: 4,
+    scope: 'Superchip board (4 Blackwell + 2 Grace)',
+    bwPerGpu: '1.8 TB/s (NVLink 5)',
+    totalBw: '7.2 TB/s',
+    status: 'Production (2025, HPC/AI)',
+  },
   {
     config: 'HGX NVL8',
     gpus: 8,
@@ -82,12 +98,12 @@ export const NVLINK_DOMAINS = [
     status: 'H2 2026',
   },
   {
-    config: 'Vera Rubin NVL144',
+    config: 'Vera Rubin NVL144 CPX',
     gpus: 144,
-    scope: 'Single rack (CPX variant)',
+    scope: 'Rubin SXM + CPX accelerators (only ~48 on NVLink fabric)',
     bwPerGpu: '3.6 TB/s (NVLink 6)',
-    totalBw: '520 TB/s',
-    status: 'H2 2026',
+    totalBw: 'N/A (not a 144-GPU all-to-all domain)',
+    status: 'De-prioritized (see note below)',
   },
   {
     config: 'Vera Rubin Ultra NVL576',
@@ -234,8 +250,8 @@ export const DATA_PATH_STEPS = [
 
 // Page 6: Protocol summary by tier transition (Patch 7 applied)
 export const TIER_PROTOCOL_SUMMARY = [
-  { transition: 'G1 \u2194 G1 (within NVLink domain)', protocol: 'NVLink 6',             bandwidth: '3.6 TB/s per GPU', transferTime: '~1.2 ms' },
-  { transition: 'G1 \u2194 G1 (across NVLink domains)', protocol: 'RDMA (RoCEv2/IB)',     bandwidth: '50\u2013100 GB/s',  transferTime: '~45\u201390 ms' },
+  { transition: 'G1 \u2194 G1 (within scale-up domain)', protocol: 'NVLink 6',             bandwidth: '3.6 TB/s per GPU', transferTime: '~1.2 ms' },
+  { transition: 'G1 \u2194 G1 (across scale-up domains)', protocol: 'RDMA (RoCEv2/IB)',     bandwidth: '50\u2013100 GB/s',  transferTime: '~45\u201390 ms' },
   { transition: 'G1 \u2194 G2',                          protocol: 'PCIe Gen5 DMA',        bandwidth: '64 GB/s',           transferTime: '~70 ms' },
   { transition: 'G1/G2 \u2194 G3',                       protocol: 'NVMe/PCIe (local)',    bandwidth: '14\u201360 GB/s',   transferTime: '~75\u2013320 ms' },
   { transition: 'G1/G2 \u2194 G3.5',                     protocol: 'NVMe/RoCE',            bandwidth: '50+ GB/s',          transferTime: '~90\u2013100 ms' },
@@ -245,8 +261,8 @@ export const TIER_PROTOCOL_SUMMARY = [
 
 // Page 7: Traffic types on inference fabric (Patch 8 applied)
 export const FABRIC_TRAFFIC = [
-  { type: 'TP all-reduce',                 protocol: 'RDMA (NVLink intra, IB/RoCE inter)', pattern: 'Frequent, small (16\u201332 KB)',  latencySensitivity: 'Very high (blocks decode)', bandwidth: 'Moderate' },
-  { type: 'P/D KV transfer',               protocol: 'NVLink (within domain) or RDMA (across domains)', pattern: 'Occasional, large (GB)', latencySensitivity: 'High (adds to TTFT)', bandwidth: 'High burst' },
+  { type: 'TP all-reduce (TP>1 only)',     protocol: 'RDMA (NVLink intra, IB/RoCE inter)', pattern: '2 per layer per pass (64/160/252 for 8B/70B/405B). Zero at TP=1.', latencySensitivity: 'Very high (blocks decode)', bandwidth: 'Moderate' },
+  { type: 'P/D KV transfer',               protocol: 'NVLink (within scale-up domain) or RDMA (across scale-up domains)', pattern: 'Occasional, large (GB)', latencySensitivity: 'High (adds to TTFT)', bandwidth: 'High burst' },
   { type: 'Cache promotion (G3.5\u2192G1)', protocol: 'NVMe/RoCE',                         pattern: 'Occasional, large (GB)',          latencySensitivity: 'High (adds to TTFT)',        bandwidth: 'High burst' },
   { type: 'Cache demotion (G1\u2192G3.5)',  protocol: 'NVMe/RoCE',                         pattern: 'Occasional, large (GB)',          latencySensitivity: 'Low (background)',            bandwidth: 'Moderate' },
   { type: 'Model weight loading',           protocol: 'RDMA or GDS',                        pattern: 'Rare, very large (35\u2013140 GB)', latencySensitivity: 'Low (startup only)',        bandwidth: 'Very high burst' },
