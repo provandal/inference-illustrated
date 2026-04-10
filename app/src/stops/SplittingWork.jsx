@@ -1,58 +1,65 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import {
   PAGES,
+  NARRATIONS,
+  SPLIT_AXES,
+  DP_STEPS,
   DATA_PARALLEL_GPUS,
+  TP_ANIMATION_STEPS,
   TENSOR_PARALLEL_GPUS,
+  ALL_REDUCE_BY_MODEL,
+  SUPER_LINEAR_SCALING,
+  PP_STAGES,
+  PP_SINGLE_TOKEN_FRAMES,
+  PP_MICROBATCH_TIMELINE,
   PIPELINE_PARALLEL_GPUS,
-  MICRO_BATCH_TIMELINE,
   PARALLELISM_COMPARISON,
   SCENARIO_CONFIGS,
+  AGGREGATED_TIMELINE,
+  DISAGGREGATED_TIMELINE,
   TRANSFER_TIMES,
   DYNAMO_COMPONENTS,
+  DYNAMO_STEADY_STATE,
+  LIFECYCLE_FRAMES,
   CACHE_LIFECYCLE,
   LIFECYCLE_STOP_MAP,
   SUMMARY_TABLE,
-  TP_ANIMATION_STEPS,
-  SUPER_LINEAR_SCALING,
-  ALL_REDUCE_BY_MODEL,
+  BRIDGE_CALC,
 } from '../data/stop12Data';
 import { Panel, PanelHeader, InfoBox, Callout } from '../components/ui';
 import PageNav from '../components/PageNav';
-import { useStore } from '../store';
 
-// --- Narration text for each page ---
+/* ================================================================
+   Shared animation control strip (play/pause + scrubber)
+   ================================================================ */
+function AnimControls({ isPlaying, onPlayToggle, value, max, onChange, label, labelMax }) {
+  return (
+    <div className="pt-3 border-t border-[var(--color-border-light)] flex items-center gap-3">
+      <button
+        onClick={onPlayToggle}
+        className="px-3 py-1 text-[11px] rounded border border-[var(--color-border)] hover:bg-[var(--color-surface-alt)] transition-colors cursor-pointer text-[var(--color-text-secondary)]"
+      >
+        {isPlaying ? 'Pause' : value >= max ? 'Replay' : 'Play'}
+      </button>
+      <input
+        type="range"
+        min={0}
+        max={max}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="anim-scrubber flex-1"
+      />
+      <span className="text-[11px] font-mono text-[var(--color-text-muted)] min-w-[110px] text-right">
+        {label} / {labelMax}
+      </span>
+    </div>
+  );
+}
 
-const NARRATIONS = {
-  'one-gpu':
-    'In Stop 11, we treated each of our 8 H100 GPUs as independent &mdash; each running its own copy of Llama-3 70B, each serving its own subset of users. That works when the model fits on one GPU (35 GB at FP4). But what if we want to run at FP16 for better quality? Llama-3 70B at FP16 is 140 GB &mdash; nearly two full H100s just for the weights, before any KV cache. And Llama-3 405B at FP4 is still ~100 GB &mdash; more than one H100 can hold. When a model doesn&rsquo;t fit on one GPU, you must split it. But HOW you split it determines everything: where the KV cache lives, what data moves between GPUs, how much bandwidth you need, and how many users you can serve. There are three fundamental ways to split a model across GPUs. Each one cuts along a different dimension &mdash; and the KV cache follows the cut differently.',
-
-  'data-parallel':
-    'The simplest approach: make complete copies of the model. Each GPU gets the full model and serves different users independently. This is what we were doing in Stop 11 &mdash; we just didn&rsquo;t name it. For our scenario with Llama-3 70B at FP4 (35 GB): each of our 8 H100s holds one complete copy. Each GPU serves 4 of our 32 users (32 &divide; 8 = 4 per GPU). No GPU needs to talk to any other GPU during inference.',
-
-  'tensor-parallel':
-    'What if the model doesn&rsquo;t fit on one GPU? Tensor parallelism splits each layer&rsquo;s weight matrices across GPUs. Every GPU holds a SLICE of every layer &mdash; and all GPUs work together to process every single token. For Llama-3 70B at FP16 (140 GB): split across 4 GPUs, each holds 35 GB of weights. But now all 4 GPUs must collaborate on every computation &mdash; and they must synchronize after every layer.',
-
-  'pipeline-parallel':
-    'Pipeline parallelism takes a different approach: instead of splitting each layer, it splits the STACK of layers. GPU 0 gets layers 1&ndash;20, GPU 1 gets layers 21&ndash;40, GPU 2 gets layers 41&ndash;60, GPU 3 gets layers 61&ndash;80. Each GPU runs its assigned layers sequentially &mdash; then passes the result to the next GPU. The communication pattern is completely different from tensor parallelism: instead of all-reduce between all GPUs at every layer, you have a simple point-to-point send from one GPU to the next, once per stage boundary.',
-
-  'choosing':
-    'In practice, production systems combine these strategies. The rule of thumb used by every major inference framework: tensor parallelism WITHIN a node (where NVLink provides 900 GB/s), pipeline parallelism ACROSS nodes (where network bandwidth is 50&ndash;400 GB/s). Data parallelism on top of both for multi-user throughput.',
-
-  'disaggregated':
-    'All three parallelism strategies split the MODEL. Disaggregated inference splits the WORKLOAD &mdash; separating the prefill phase and the decode phase onto different GPU pools, each optimized for its computational profile. In our scenario, consider what happens when User 17 submits a 28,000-token document for analysis while Users 1&ndash;16 are mid-conversation. On a shared GPU, User 17&rsquo;s prefill &mdash; processing 28,000 tokens through all 80 layers &mdash; takes several seconds of intense computation, during which all 16 decode users on that GPU see their token generation stall. Disaggregated inference eliminates this interference.',
-
-  'dynamo':
-    'NVIDIA Dynamo, released at GTC 2025, is the open-source framework that turns a GPU cluster into a coordinated disaggregated inference system. It doesn&rsquo;t replace the inference engine (vLLM, TensorRT-LLM, SGLang) &mdash; it orchestrates above them. For our scenario, here&rsquo;s how Dynamo would organize our 8 H100 GPUs:',
-
-  'lifecycle':
-    'Let&rsquo;s trace the complete lifecycle of one user&rsquo;s KV cache through a disaggregated system &mdash; from the moment they send a message to the moment they receive a response. This is the data path that every optimization in Act 2 will touch.',
-
-  'summary':
-    'We&rsquo;ve seen four ways to split inference work across GPUs. Three split the model (data, tensor, pipeline). One splits the workload (prefill vs. decode). Production systems combine all four.',
-};
-
-// --- Page Content Components ---
-
+/* ================================================================
+   PAGE 1 — One GPU Isn't Enough
+   3D block + three axes diagram
+   ================================================================ */
 function OneGpuPage() {
   return (
     <div>
@@ -60,71 +67,188 @@ function OneGpuPage() {
         <PanelHeader>The size problem</PanelHeader>
         <div className="p-4 space-y-3 text-[13px] text-[var(--color-text-secondary)] leading-relaxed">
           <p>
-            Llama-3 70B has 70 billion parameters. At FP16 (2 bytes each), the model
-            weights alone consume <strong className="text-[var(--color-text)]">140 GB</strong> &mdash;
-            nearly two full H100 GPUs (80 GB each) just for the weights, before any KV cache.
-            Even at FP4 quantization (0.5 bytes each), the model is 35 GB &mdash; it fits, but
-            leaves only 45 GB for cache.
+            Llama-3 70B has 70 billion parameters. At FP16 (2 bytes each), the weights alone
+            consume <strong className="text-[var(--color-text)]">140 GB</strong> — nearly two
+            full H100s (80 GB each), before any KV cache. At FP4 (0.5 bytes each), the model
+            is 35 GB: it fits, but leaves only 45 GB per GPU for cache.
           </p>
           <p>
-            Llama-3 405B at FP4 is still ~100 GB &mdash; more than one H100 can hold.
-            When a model doesn&rsquo;t fit on one GPU, you must split it.
+            Llama-3 405B at FP4 is still ~100 GB — more than one H100 can hold. When a model
+            doesn&rsquo;t fit on one GPU, you must split it.
           </p>
+        </div>
+
+        {/* Memory fit visual */}
+        <div className="px-4 pb-4">
+          <div className="text-[11px] text-[var(--color-text-muted)] mb-1">Single H100 (80 GB)</div>
+          <div className="rounded-lg border border-[var(--color-border-light)] overflow-hidden mb-2">
+            <div className="flex items-center h-8">
+              <div
+                className="h-full flex items-center justify-center text-[10px] font-medium text-white"
+                style={{ width: `${(140 / 80) * 50}%`, background: 'var(--color-red)' }}
+              >
+                Llama-3 70B FP16 = 140 GB (OVERFLOW)
+              </div>
+            </div>
+          </div>
+          <div className="rounded-lg border border-[var(--color-border-light)] overflow-hidden mb-2">
+            <div className="flex items-center h-8">
+              <div
+                className="h-full flex items-center justify-center text-[10px] font-medium text-white"
+                style={{ width: `${(100 / 80) * 50}%`, background: 'var(--color-red)' }}
+              >
+                Llama-3 405B FP4 = 100 GB (OVERFLOW)
+              </div>
+            </div>
+          </div>
+          <div className="rounded-lg border border-[var(--color-border-light)] overflow-hidden">
+            <div className="flex items-center h-8">
+              <div
+                className="h-full flex items-center justify-center text-[10px] font-medium text-white"
+                style={{ width: `${(35 / 80) * 100}%`, background: 'var(--color-teal)' }}
+              >
+                Llama-3 70B FP4 = 35 GB
+              </div>
+              <div
+                className="h-full flex items-center justify-center text-[10px]"
+                style={{ width: `${(45 / 80) * 100}%`, background: 'var(--color-surface-muted)', color: 'var(--color-text-muted)' }}
+              >
+                45 GB for cache
+              </div>
+            </div>
+          </div>
         </div>
       </Panel>
 
       <Panel className="mt-4">
-        <PanelHeader>Three axes of splitting</PanelHeader>
-        <div className="p-4 space-y-3">
-          <div className="text-[13px] text-[var(--color-text-secondary)] leading-relaxed mb-3">
-            Think of the full model as a 3D block. Three colored planes show where each
-            parallelism type cuts:
+        <PanelHeader>Three axes of splitting (3D block)</PanelHeader>
+        <div className="p-4">
+          <div className="text-[13px] text-[var(--color-text-secondary)] leading-relaxed mb-4">
+            Think of the full model as a 3D block. Three colored planes cut it three different ways.
+            Each parallelism type cuts along a different axis — and the KV cache follows the cut
+            differently.
           </div>
-          {[
-            {
-              color: 'var(--color-red)',
-              bgColor: 'var(--color-red-bg)',
-              textColor: 'var(--color-red-text)',
-              axis: 'Width (horizontal)',
-              cut: 'Vertical slice through weight matrices within each layer',
-              name: 'Tensor Parallelism',
-            },
-            {
-              color: 'var(--color-blue)',
-              bgColor: 'var(--color-blue-bg)',
-              textColor: 'var(--color-blue-text)',
-              axis: 'Depth (vertical)',
-              cut: 'Horizontal slice through the stack of 80 layers',
-              name: 'Pipeline Parallelism',
-            },
-            {
-              color: 'var(--color-teal)',
-              bgColor: 'var(--color-teal-bg)',
-              textColor: 'var(--color-teal-text)',
-              axis: 'Users (into the screen)',
-              cut: 'Replicates the entire block for different conversations',
-              name: 'Data Parallelism',
-            },
-          ].map((item) => (
+
+          {/* 3D perspective box */}
+          <div className="relative mx-auto my-4" style={{ width: '280px', height: '240px', perspective: '800px' }}>
             <div
-              key={item.name}
-              className="flex gap-3 items-start p-3 rounded-lg border"
-              style={{ background: item.bgColor, borderColor: item.color }}
+              className="absolute"
+              style={{
+                width: '180px',
+                height: '180px',
+                top: '30px',
+                left: '30px',
+                transformStyle: 'preserve-3d',
+                transform: 'rotateX(-20deg) rotateY(-30deg)',
+              }}
             >
+              {/* Front face — Width axis (TP, red) */}
               <div
-                className="flex-shrink-0 w-3 h-12 rounded-sm"
-                style={{ background: item.color }}
+                className="absolute inset-0 flex items-center justify-center text-[10px] font-medium"
+                style={{
+                  background: 'linear-gradient(90deg, rgba(239,68,68,0.45), rgba(239,68,68,0.15))',
+                  border: '2px solid var(--color-red)',
+                  color: 'var(--color-red-text)',
+                  transform: 'translateZ(60px)',
+                }}
+              >
+                Width → TP
+              </div>
+              {/* Back face */}
+              <div
+                className="absolute inset-0"
+                style={{
+                  background: 'rgba(100,116,139,0.15)',
+                  border: '1px dashed var(--color-border)',
+                  transform: 'translateZ(-60px)',
+                }}
               />
-              <div className="min-w-0">
-                <div className="text-[13px] font-medium" style={{ color: item.textColor }}>
-                  {item.name}
-                </div>
-                <div className="text-[12px] text-[var(--color-text-secondary)] leading-relaxed mt-0.5">
-                  <strong className="text-[var(--color-text)]">{item.axis}:</strong> {item.cut}
-                </div>
+              {/* Top face — Depth (PP, blue) */}
+              <div
+                className="absolute"
+                style={{
+                  width: '180px',
+                  height: '120px',
+                  top: 0,
+                  left: 0,
+                  background: 'linear-gradient(180deg, rgba(59,130,246,0.45), rgba(59,130,246,0.15))',
+                  border: '2px solid var(--color-blue)',
+                  color: 'var(--color-blue-text)',
+                  transform: 'rotateX(90deg) translateZ(60px)',
+                  transformOrigin: 'top',
+                  fontSize: '10px',
+                  fontWeight: 500,
+                  textAlign: 'center',
+                  paddingTop: '6px',
+                }}
+              >
+                Depth → PP
+              </div>
+              {/* Right face — Users (DP, teal) */}
+              <div
+                className="absolute"
+                style={{
+                  width: '120px',
+                  height: '180px',
+                  top: 0,
+                  right: 0,
+                  background: 'linear-gradient(90deg, rgba(20,184,166,0.45), rgba(20,184,166,0.15))',
+                  border: '2px solid var(--color-teal)',
+                  color: 'var(--color-teal-text)',
+                  transform: 'rotateY(90deg) translateZ(60px)',
+                  transformOrigin: 'right',
+                  fontSize: '10px',
+                  fontWeight: 500,
+                  textAlign: 'center',
+                  paddingTop: '80px',
+                }}
+              >
+                Users → DP
               </div>
             </div>
-          ))}
+
+            {/* Axis labels */}
+            <div
+              className="absolute text-[10px] font-medium"
+              style={{ bottom: '8px', left: '50%', transform: 'translateX(-50%)', color: 'var(--color-red-text)' }}
+            >
+              ← Width (d_model) →
+            </div>
+            <div
+              className="absolute text-[10px] font-medium"
+              style={{ top: '50%', left: '-4px', transform: 'rotate(-90deg) translateY(-50%)', color: 'var(--color-blue-text)', transformOrigin: 'left' }}
+            >
+              ↑ Depth (80 layers)
+            </div>
+            <div
+              className="absolute text-[10px] font-medium"
+              style={{ top: '16px', right: '0', color: 'var(--color-teal-text)' }}
+            >
+              ↗ Users
+            </div>
+          </div>
+
+          <div className="space-y-2 mt-4">
+            {SPLIT_AXES.map((item) => (
+              <div
+                key={item.id}
+                className="flex gap-3 items-start p-3 rounded-lg border"
+                style={{ background: item.bgColor, borderColor: item.color }}
+              >
+                <div className="flex-shrink-0 w-3 h-12 rounded-sm" style={{ background: item.color }} />
+                <div className="min-w-0 flex-1">
+                  <div className="text-[13px] font-medium" style={{ color: item.textColor }}>
+                    {item.name}
+                  </div>
+                  <div className="text-[12px] text-[var(--color-text-secondary)] leading-relaxed mt-0.5">
+                    <strong className="text-[var(--color-text)]">{item.axis}</strong> — {item.direction}.
+                    <br />
+                    <em>{item.cut}.</em>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </Panel>
 
@@ -136,24 +260,141 @@ function OneGpuPage() {
   );
 }
 
+/* ================================================================
+   PAGE 2 — Data Parallelism (animated 5-step sequence)
+   ================================================================ */
 function DataParallelPage() {
+  const [stepIdx, setStepIdx] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const intervalRef = useRef(null);
+
+  const maxIdx = DP_STEPS.length - 1;
+  const step = DP_STEPS[stepIdx];
+
+  useEffect(() => {
+    if (isPlaying) {
+      intervalRef.current = setInterval(() => {
+        setStepIdx((prev) => {
+          if (prev >= maxIdx) {
+            setIsPlaying(false);
+            return maxIdx;
+          }
+          return prev + 1;
+        });
+      }, 1500);
+    }
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, [isPlaying, maxIdx]);
+
+  function handlePlay() {
+    if (stepIdx >= maxIdx) setStepIdx(0);
+    setIsPlaying(!isPlaying);
+  }
+
   return (
     <div>
       <Panel>
-        <PanelHeader>Data parallelism in action</PanelHeader>
-        <div className="p-4 space-y-3 text-[13px] text-[var(--color-text-secondary)] leading-relaxed">
-          <p>
-            32 user requests arrive. A router distributes them: Users 1&ndash;4 to GPU 0,
-            Users 5&ndash;8 to GPU 1, and so on through Users 29&ndash;32 to GPU 7. Each GPU
-            processes its 4 users&rsquo; prompts independently &mdash; all 8 GPUs prefill
-            simultaneously. No data moves between GPUs.
-          </p>
-          <p>
-            Each GPU builds its own KV cache for its 4 users, then generates tokens
-            independently. The result: 8 independent inference engines, each with 45 GB
-            available for KV cache (80 &minus; 35). At 2.5 GB per user (8K tokens), that
-            fits 18 users per GPU. We&rsquo;re only using 4 &mdash; plenty of headroom.
-          </p>
+        <PanelHeader>Data parallelism in action — 5-step animation</PanelHeader>
+        <div className="p-4 space-y-4">
+          {/* Current step label + description */}
+          <div className="p-3 rounded-lg bg-[var(--color-primary-bg)] border border-[var(--color-primary)]">
+            <div className="text-[11px] font-medium text-[var(--color-primary-text)] uppercase tracking-wider">
+              Step {step.id + 1} of {DP_STEPS.length} — {step.label}
+            </div>
+            <div className="text-[12px] text-[var(--color-text-secondary)] leading-relaxed mt-1">
+              {step.description}
+            </div>
+          </div>
+
+          {/* Router + 8 GPUs layout */}
+          <div className="space-y-2">
+            {step.arrows && (
+              <div className="text-center text-[11px] font-medium text-[var(--color-text-muted)] mb-1">
+                Router distributing 32 users →
+              </div>
+            )}
+
+            <div className="grid grid-cols-4 md:grid-cols-8 gap-2">
+              {DATA_PARALLEL_GPUS.map((gpu, i) => {
+                const userGroupStart = i * 4 + 1;
+                const userGroupEnd = i * 4 + 4;
+                return (
+                  <div
+                    key={gpu.gpu}
+                    className="rounded-lg border-2 p-2"
+                    style={{
+                      borderColor: step.usersActive ? 'var(--color-teal)' : 'var(--color-border)',
+                      background: 'var(--color-surface)',
+                      transition: 'border-color 300ms ease',
+                    }}
+                  >
+                    <div className="text-[9px] font-medium text-[var(--color-text)] text-center">
+                      {gpu.gpu}
+                    </div>
+
+                    {/* Weights bar (always full) */}
+                    <div className="h-12 rounded mt-1 flex flex-col overflow-hidden border border-[var(--color-border-light)]">
+                      <div
+                        className="flex items-center justify-center text-[8px] font-medium text-white"
+                        style={{
+                          height: `${(35 / 80) * 100}%`,
+                          background: 'var(--color-primary)',
+                        }}
+                      >
+                        35GB
+                      </div>
+                      {/* Cache grows with step */}
+                      <div
+                        className="flex items-center justify-center text-[8px] font-medium text-white"
+                        style={{
+                          height: `${(10 / 80) * 100 * step.cacheFill}%`,
+                          background: 'var(--color-teal)',
+                          transition: 'height 600ms ease',
+                        }}
+                      >
+                        {step.cacheFill > 0.3 ? 'KV' : ''}
+                      </div>
+                      <div className="flex-1" style={{ background: 'var(--color-surface-muted)' }} />
+                    </div>
+
+                    {/* Users assigned */}
+                    <div
+                      className="text-[8px] text-center mt-1 font-mono"
+                      style={{
+                        color: step.usersAssigned ? 'var(--color-teal-text)' : 'var(--color-text-muted)',
+                        opacity: step.usersAssigned ? 1 : 0.4,
+                        transition: 'opacity 300ms ease',
+                      }}
+                    >
+                      U{userGroupStart}-{userGroupEnd}
+                    </div>
+
+                    {/* Active indicator */}
+                    {step.usersActive && (
+                      <div
+                        className="text-[8px] text-center mt-0.5"
+                        style={{ color: 'var(--color-teal-text)' }}
+                      >
+                        ● active
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <AnimControls
+            isPlaying={isPlaying}
+            onPlayToggle={handlePlay}
+            value={stepIdx}
+            max={maxIdx}
+            onChange={(v) => { setIsPlaying(false); setStepIdx(v); }}
+            label={`Step ${stepIdx + 1}`}
+            labelMax={DP_STEPS.length}
+          />
         </div>
       </Panel>
 
@@ -182,7 +423,7 @@ function DataParallelPage() {
               ))}
               <tr className="border-t-2 border-[var(--color-border)] font-medium text-[var(--color-text)]">
                 <td className="px-4 py-2">Total</td>
-                <td className="px-4 py-2 text-right font-mono">280 GB</td>
+                <td className="px-4 py-2 text-right font-mono" style={{ color: 'var(--color-red-text)' }}>280 GB (8 copies)</td>
                 <td className="px-4 py-2 text-right font-mono">80 GB</td>
                 <td className="px-4 py-2 text-right font-mono">280 GB</td>
                 <td className="px-4 py-2">Zero</td>
@@ -192,85 +433,190 @@ function DataParallelPage() {
         </div>
       </Panel>
 
-      <Panel className="mt-4">
-        <PanelHeader>Strengths and weaknesses</PanelHeader>
-        <div className="p-4 space-y-3">
-          <div className="p-3 rounded-lg bg-[var(--color-teal-bg)] border border-[var(--color-teal)]">
-            <div className="text-[11px] font-medium text-[var(--color-teal-text)] uppercase tracking-wider mb-2">
-              Strengths
-            </div>
-            <div className="text-[13px] text-[var(--color-text-secondary)] leading-relaxed space-y-1">
-              <p>No inter-GPU communication. Each GPU is fully independent. Simple to operate.
-                Scales linearly &mdash; add GPUs, serve more users.</p>
-            </div>
-          </div>
-          <div className="p-3 rounded-lg bg-[var(--color-red-bg)] border border-[var(--color-red)]">
-            <div className="text-[11px] font-medium text-[var(--color-red-text)] uppercase tracking-wider mb-2">
-              Weaknesses
-            </div>
-            <div className="text-[13px] text-[var(--color-text-secondary)] leading-relaxed space-y-1">
-              <p>Every GPU stores a complete copy of the weights. With 8 GPUs, we&rsquo;re storing
-                280 GB of weights total &mdash; the same 35 GB repeated 8 times. That&rsquo;s memory
-                that could be used for KV cache.</p>
-              <p>Doesn&rsquo;t help when the model doesn&rsquo;t FIT on one GPU. If the model is
-                140 GB (FP16), data parallelism alone can&rsquo;t help &mdash; you need to split
-                the model itself.</p>
-            </div>
-          </div>
-        </div>
-      </Panel>
+      <Callout
+        type="warn"
+        message="<strong>Weight duplication:</strong> With 8 GPUs running data parallel, 280 GB of HBM is the same 35 GB of weights repeated 8 times. That is memory that could have been KV cache. And it doesn&rsquo;t help when the model doesn&rsquo;t fit on one GPU &mdash; if the model is 140 GB (FP16), data parallelism alone can&rsquo;t save you."
+      />
 
       <Callout
         type="note"
-        message="<strong>KV cache implication:</strong> Each GPU holds the COMPLETE cache for its users. The cache never moves between GPUs. If a user is assigned to GPU 3, all their KV data lives on GPU 3 for the duration of the conversation. This is simple but inflexible &mdash; if GPU 3 runs out of cache space while GPU 5 has plenty, there&rsquo;s no way to rebalance."
+        message="<strong>KV cache implication:</strong> Each GPU holds the COMPLETE cache for its users. The cache never moves between GPUs. If a user is assigned to GPU 3, all their KV data lives on GPU 3 for the duration of the conversation. This is simple but inflexible &mdash; if GPU 3 runs out of cache space while GPU 5 has plenty, there&rsquo;s no way to rebalance. <em>Stop 16 addresses this imbalance with cache-aware routing.</em>"
       />
     </div>
   );
 }
 
+/* ================================================================
+   PAGE 3 — Tensor Parallelism (6-step animation)
+   ================================================================ */
 function TensorParallelPage() {
+  const [stepIdx, setStepIdx] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const intervalRef = useRef(null);
+
+  const maxIdx = TP_ANIMATION_STEPS.length - 1;
+  const step = TP_ANIMATION_STEPS[stepIdx];
+
+  useEffect(() => {
+    if (isPlaying) {
+      intervalRef.current = setInterval(() => {
+        setStepIdx((prev) => {
+          if (prev >= maxIdx) {
+            setIsPlaying(false);
+            return maxIdx;
+          }
+          return prev + 1;
+        });
+      }, 2000);
+    }
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, [isPlaying, maxIdx]);
+
+  function handlePlay() {
+    if (stepIdx >= maxIdx) setStepIdx(0);
+    setIsPlaying(!isPlaying);
+  }
+
+  const stateColor = {
+    wait: { bg: 'var(--color-surface-muted)', border: 'var(--color-border)', label: 'waiting' },
+    compute: { bg: 'var(--color-teal-bg)', border: 'var(--color-teal)', label: 'computing' },
+    comm: { bg: 'var(--color-amber-bg)', border: 'var(--color-amber)', label: 'all-reduce' },
+    done: { bg: 'var(--color-primary-bg)', border: 'var(--color-primary)', label: 'done' },
+  };
+
   return (
     <div>
       <Panel>
-        <PanelHeader>Tensor parallelism &mdash; one layer, one token</PanelHeader>
-        <div className="p-4 space-y-2">
-          {TP_ANIMATION_STEPS.map((step) => (
-            <div
-              key={step.step}
-              className="p-3 rounded-lg bg-[var(--color-surface-muted)] border border-[var(--color-border-light)]"
-            >
-              <div className="flex gap-3 items-start">
-                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-[var(--color-primary-bg)] border border-[var(--color-primary)] text-[var(--color-primary-text)] text-xs font-medium flex items-center justify-center">
-                  {step.step}
-                </span>
-                <div className="min-w-0">
-                  <div className="text-[13px] font-medium text-[var(--color-text)]">
-                    {step.label}
-                  </div>
-                  <div className="text-[12px] text-[var(--color-text-secondary)] leading-relaxed mt-1">
-                    {step.description}
-                  </div>
-                  <div className="mt-2 space-y-0.5">
-                    {step.gpuWork.map((work, i) => (
-                      <div key={i} className="text-[11px] font-mono text-[var(--color-text-muted)]">
-                        {work}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
+        <PanelHeader>Tensor parallelism — one layer, one token, across 4 GPUs</PanelHeader>
+        <div className="p-4 space-y-4">
+          {/* Step label + description */}
+          <div className="p-3 rounded-lg bg-[var(--color-primary-bg)] border border-[var(--color-primary)]">
+            <div className="text-[11px] font-medium text-[var(--color-primary-text)] uppercase tracking-wider">
+              Step {step.step} of 6 — {step.label}
             </div>
-          ))}
+            <div className="text-[12px] text-[var(--color-text-secondary)] leading-relaxed mt-1">
+              {step.description}
+            </div>
+          </div>
+
+          {/* 4 GPUs visual */}
+          <div className="relative">
+            {/* All-reduce arrows overlay */}
+            {step.arrows === 'all-reduce' && (
+              <div
+                className="absolute inset-x-0 top-1/2 h-1 pointer-events-none"
+                style={{
+                  background: 'linear-gradient(90deg, var(--color-amber) 0%, var(--color-amber) 50%, var(--color-amber) 100%)',
+                  transform: 'translateY(-50%)',
+                  opacity: 0.6,
+                  animation: 'pulse 1s ease-in-out infinite',
+                }}
+              />
+            )}
+            {step.arrows === 'broadcast' && (
+              <div className="text-center text-[11px] font-medium text-[var(--color-blue-text)] mb-1">
+                ↓ Token embedding broadcast to all 4 GPUs ↓
+              </div>
+            )}
+
+            <div className="grid grid-cols-4 gap-3 relative z-10">
+              {[0, 1, 2, 3].map((gpuIdx) => {
+                const state = step.gpuState[gpuIdx];
+                const style = stateColor[state];
+                return (
+                  <div
+                    key={gpuIdx}
+                    className="rounded-lg border-2 p-3"
+                    style={{
+                      background: style.bg,
+                      borderColor: style.border,
+                      transition: 'all 400ms ease',
+                    }}
+                  >
+                    <div className="text-[10px] font-mono text-center text-[var(--color-text)]">
+                      GPU {gpuIdx}
+                    </div>
+                    {/* Weight slice visual */}
+                    <div className="mt-2 h-16 rounded flex flex-col border border-[var(--color-border-light)] overflow-hidden">
+                      <div
+                        className="flex-1 flex items-center justify-center text-[8px] text-white font-medium"
+                        style={{ background: 'var(--color-primary)' }}
+                      >
+                        W 1/4
+                      </div>
+                      <div
+                        className="h-5 flex items-center justify-center text-[8px] text-white font-medium"
+                        style={{ background: 'var(--color-teal)' }}
+                      >
+                        KV 1/4
+                      </div>
+                    </div>
+                    {/* Token indicator */}
+                    {step.tokenOn[gpuIdx] && (
+                      <div
+                        className="mt-1 text-[8px] text-center rounded px-1 py-0.5 font-mono"
+                        style={{
+                          background: 'var(--color-blue-bg)',
+                          color: 'var(--color-blue-text)',
+                          border: '1px solid var(--color-blue)',
+                        }}
+                      >
+                        token
+                      </div>
+                    )}
+                    {/* State label */}
+                    <div
+                      className="mt-1 text-[9px] text-center font-medium"
+                      style={{ color: style.border }}
+                    >
+                      {style.label}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* NVLink ring indicator */}
+            <div className="mt-3 text-center text-[10px] text-[var(--color-text-muted)]">
+              ←—— NVLink mesh (900 GB/s) ——→
+            </div>
+          </div>
+
+          {/* GPU work bullets */}
+          <div className="rounded-lg bg-[var(--color-surface-muted)] border border-[var(--color-border-light)] p-3">
+            <div className="text-[10px] font-medium text-[var(--color-text-muted)] uppercase tracking-wider mb-1">
+              What each GPU is doing
+            </div>
+            {step.gpuWork.map((work, i) => (
+              <div key={i} className="text-[11px] font-mono text-[var(--color-text-secondary)]">
+                • {work}
+              </div>
+            ))}
+          </div>
+
+          <AnimControls
+            isPlaying={isPlaying}
+            onPlayToggle={handlePlay}
+            value={stepIdx}
+            max={maxIdx}
+            onChange={(v) => { setIsPlaying(false); setStepIdx(v); }}
+            label={`Step ${stepIdx + 1}`}
+            labelMax={TP_ANIMATION_STEPS.length}
+          />
         </div>
       </Panel>
 
+      {/* Correction 4 — All-reduce count by model */}
       <Panel className="mt-4">
         <PanelHeader>All-reduce count scales with layer depth</PanelHeader>
         <div className="p-4 space-y-3 text-[13px] text-[var(--color-text-secondary)] leading-relaxed">
           <p>
-            With tensor parallelism (TP &gt; 1), there are <strong>2 all-reduce operations per
-            layer per forward pass</strong> &mdash; one after the attention block, one after the
-            FFN block. The total per forward pass depends on the model&rsquo;s layer count.
+            With tensor parallelism (TP &gt; 1), there are{' '}
+            <strong className="text-[var(--color-text)]">2 all-reduce operations per layer per
+            forward pass</strong> — one after the attention block, one after the FFN block. The
+            total per forward pass depends on the model&rsquo;s layer count.
           </p>
           <div className="overflow-x-auto">
             <table className="w-full text-[12px]">
@@ -284,10 +630,7 @@ function TensorParallelPage() {
               </thead>
               <tbody>
                 {ALL_REDUCE_BY_MODEL.map((row) => (
-                  <tr
-                    key={row.model}
-                    className="border-b border-[var(--color-border-light)] last:border-b-0"
-                  >
+                  <tr key={row.model} className="border-b border-[var(--color-border-light)] last:border-b-0">
                     <td className="px-3 py-2 font-medium text-[var(--color-text)]">{row.model}</td>
                     <td className="px-3 py-2 text-right font-mono text-[var(--color-text-secondary)]">{row.layers}</td>
                     <td className="px-3 py-2 text-right font-mono font-medium text-[var(--color-text)]">{row.perPass}</td>
@@ -300,19 +643,20 @@ function TensorParallelPage() {
           <p>
             <strong className="text-[var(--color-text)]">At TP=1, there are ZERO all-reduce
             operations during inference.</strong> Each GPU holds the complete model and runs the
-            forward pass independently. This is the default configuration for models that fit
-            in a single GPU&rsquo;s HBM (e.g., Llama-3 70B at FP4 on H100/B200/Rubin, or
-            Llama-3 8B at any precision on any modern GPU). <em>Training always requires
-            all-reduce for gradient synchronization, regardless of TP setting.</em>
+            forward pass independently. This is the default configuration for models that fit in a
+            single GPU&rsquo;s HBM (Llama-3 70B at FP4 on H100/B200, or Llama-3 8B at any
+            precision). <em>Training always requires all-reduce for gradient synchronization,
+            regardless of TP setting.</em>
           </p>
         </div>
         <InfoBox>
           At NVLink speeds (900 GB/s within a node), each all-reduce is fast. Cross-node
-          (InfiniBand at ~400 Gbps = 50 GB/s), it&rsquo;s 18&times; slower &mdash; which is
-          why <strong>tensor parallelism should stay within a single node</strong>.
+          (InfiniBand at ~400 Gbps = 50 GB/s), it&rsquo;s 18&times; slower &mdash; which is why{' '}
+          <strong>tensor parallelism should stay within a single node</strong>.
         </InfoBox>
       </Panel>
 
+      {/* Memory layout */}
       <Panel className="mt-4">
         <PanelHeader>Memory layout (TP=4)</PanelHeader>
         <div className="overflow-x-auto">
@@ -333,12 +677,12 @@ function TensorParallelPage() {
                   <td className="px-4 py-2 text-right font-mono text-[var(--color-text-secondary)]">{row.weights}</td>
                   <td className="px-4 py-2 text-[var(--color-text-secondary)]">{row.cacheDesc}</td>
                   <td className="px-4 py-2 text-[var(--color-text-secondary)]">{row.kvGroups}</td>
-                  <td className="px-4 py-2 font-mono text-[var(--color-text-secondary)]">{row.communication}</td>
+                  <td className="px-4 py-2 text-[var(--color-text-secondary)]">{row.communication}</td>
                 </tr>
               ))}
               <tr className="border-t-2 border-[var(--color-border)] font-medium text-[var(--color-text)]">
                 <td className="px-4 py-2">Total</td>
-                <td className="px-4 py-2 text-right font-mono">140 GB</td>
+                <td className="px-4 py-2 text-right font-mono">140 GB (no duplication)</td>
                 <td className="px-4 py-2">Distributed</td>
                 <td className="px-4 py-2">All 8 KV groups</td>
                 <td className="px-4 py-2 font-mono">Heavy</td>
@@ -348,34 +692,9 @@ function TensorParallelPage() {
         </div>
       </Panel>
 
+      {/* Super-linear scaling */}
       <Panel className="mt-4">
-        <PanelHeader>Strengths and weaknesses</PanelHeader>
-        <div className="p-4 space-y-3">
-          <div className="p-3 rounded-lg bg-[var(--color-teal-bg)] border border-[var(--color-teal)]">
-            <div className="text-[11px] font-medium text-[var(--color-teal-text)] uppercase tracking-wider mb-2">
-              Strengths
-            </div>
-            <div className="text-[13px] text-[var(--color-text-secondary)] leading-relaxed">
-              The model fits! 140 GB split across 4 GPUs = 35 GB each. Each GPU now has
-              45 GB free for KV cache. Lower latency per token &mdash; 4 GPUs computing in
-              parallel finish faster than 1.
-            </div>
-          </div>
-          <div className="p-3 rounded-lg bg-[var(--color-red-bg)] border border-[var(--color-red)]">
-            <div className="text-[11px] font-medium text-[var(--color-red-text)] uppercase tracking-wider mb-2">
-              Weakness
-            </div>
-            <div className="text-[13px] text-[var(--color-text-secondary)] leading-relaxed">
-              Massive communication. 160 all-reduce operations per forward pass for Llama-3 70B
-              (2 &times; 80 layers); 64 for the 8B, 252 for the 405B. This is fine over NVLink
-              (900 GB/s) within a node, but across nodes it becomes the bottleneck.
-            </div>
-          </div>
-        </div>
-      </Panel>
-
-      <Panel className="mt-4">
-        <PanelHeader>Bonus &mdash; super-linear KV cache scaling</PanelHeader>
+        <PanelHeader>Bonus — super-linear KV cache scaling</PanelHeader>
         <div className="p-4 space-y-3 text-[13px] text-[var(--color-text-secondary)] leading-relaxed">
           <p>
             This is a non-obvious effect that surprises most engineers. Consider what happens to
@@ -387,119 +706,346 @@ function TensorParallelPage() {
               <div className="text-[11px] font-medium text-[var(--color-text-muted)] uppercase tracking-wider mb-2">
                 {SUPER_LINEAR_SCALING.tp1.label}
               </div>
-              <div className="font-mono text-[12px]">
+              <div className="font-mono text-[12px] space-y-0.5">
                 <div>Weights: <span className="text-[var(--color-text)]">{SUPER_LINEAR_SCALING.tp1.weightsMem}</span></div>
                 <div>Free for cache: <span className="text-[var(--color-text)]">{SUPER_LINEAR_SCALING.tp1.freeMem}</span></div>
               </div>
+              {/* Mini bar */}
+              <div className="mt-2 h-4 rounded overflow-hidden bg-[var(--color-surface)] border border-[var(--color-border-light)] flex">
+                <div style={{ width: '87.5%', background: 'var(--color-primary)' }} />
+                <div style={{ width: '12.5%', background: 'var(--color-teal)' }} />
+              </div>
+              <div className="text-[9px] text-[var(--color-text-muted)] mt-0.5">70 GB weights | 10 GB cache</div>
             </div>
             <div className="p-3 rounded-lg bg-[var(--color-teal-bg)] border border-[var(--color-teal)]">
               <div className="text-[11px] font-medium text-[var(--color-teal-text)] uppercase tracking-wider mb-2">
                 {SUPER_LINEAR_SCALING.tp2.label}
               </div>
-              <div className="font-mono text-[12px]">
+              <div className="font-mono text-[12px] space-y-0.5">
                 <div>Weights: <span className="text-[var(--color-text)]">{SUPER_LINEAR_SCALING.tp2.weightsMem}</span></div>
                 <div>Free for cache: <span className="text-[var(--color-text)]">{SUPER_LINEAR_SCALING.tp2.freeMem}</span></div>
               </div>
+              {/* Mini bar showing 2 GPUs */}
+              <div className="mt-2 flex gap-1">
+                <div className="flex-1 h-4 rounded overflow-hidden bg-[var(--color-surface)] border border-[var(--color-border-light)] flex">
+                  <div style={{ width: '43.75%', background: 'var(--color-primary)' }} />
+                  <div style={{ width: '56.25%', background: 'var(--color-teal)' }} />
+                </div>
+                <div className="flex-1 h-4 rounded overflow-hidden bg-[var(--color-surface)] border border-[var(--color-border-light)] flex">
+                  <div style={{ width: '43.75%', background: 'var(--color-primary)' }} />
+                  <div style={{ width: '56.25%', background: 'var(--color-teal)' }} />
+                </div>
+              </div>
+              <div className="text-[9px] text-[var(--color-text-muted)] mt-0.5">35 GB weights + 45 GB cache per GPU</div>
             </div>
           </div>
           <p>
-            You added 1 GPU (2&times; hardware), but cache capacity went from 10 GB to 90 GB &mdash;
-            a <strong className="text-[var(--color-text)]">9&times; increase</strong>. The reason: the weights
-            were consuming most of the memory, and splitting them freed a disproportionately larger
-            fraction of each GPU for cache. In practice, vLLM measured{' '}
-            <strong className="text-[var(--color-text)]">13.9&times; more KV cache blocks</strong> at TP=2
-            vs. TP=1 (even higher than our simplified calculation because distributing the model also
-            reduces activation memory and internal buffers). That 13.9&times; more cache enabled{' '}
-            <strong className="text-[var(--color-text)]">3.9&times; higher throughput</strong> &mdash; because
-            more cache means larger batches, and larger batches mean better GPU utilization.
+            You added 1 GPU (2&times; hardware), but cache capacity went from{' '}
+            <strong className="text-[var(--color-text)]">10 GB to 90 GB — a{' '}
+            <span style={{ color: 'var(--color-teal-text)' }}>{SUPER_LINEAR_SCALING.increase}{' '}increase</span></strong>.
+            The reason: the weights were consuming most of the memory, and splitting them freed a
+            disproportionately larger fraction of each GPU for cache.
           </p>
+          <p>
+            In practice, vLLM measured{' '}
+            <strong className="text-[var(--color-text)]">{SUPER_LINEAR_SCALING.vllmBlocks}</strong>{' '}
+            at TP=2 vs. TP=1 (even higher than our simplified calculation because distributing the
+            model also reduces activation memory and internal buffers). That 13.9&times; more cache
+            enabled <strong className="text-[var(--color-text)]">{SUPER_LINEAR_SCALING.vllmThroughput}</strong>{' '}
+            &mdash; more cache means larger batches, and larger batches mean better GPU
+            utilization. The &ldquo;expected 2&times;&rdquo; is the naive linear assumption; the
+            actual 3.9&times; exceeds it because the freed memory compounds through the batching
+            effect.
+          </p>
+        </div>
+      </Panel>
+
+      <Panel className="mt-4">
+        <PanelHeader>Strengths and weaknesses</PanelHeader>
+        <div className="p-4 space-y-3">
+          <div className="p-3 rounded-lg bg-[var(--color-teal-bg)] border border-[var(--color-teal)]">
+            <div className="text-[11px] font-medium text-[var(--color-teal-text)] uppercase tracking-wider mb-2">
+              Strengths
+            </div>
+            <div className="text-[13px] text-[var(--color-text-secondary)] leading-relaxed">
+              The model fits! 140 GB split across 4 GPUs = 35 GB each. Each GPU now has 45 GB free
+              for KV cache. Lower latency per token — 4 GPUs computing in parallel finish faster than 1.
+            </div>
+          </div>
+          <div className="p-3 rounded-lg bg-[var(--color-red-bg)] border border-[var(--color-red)]">
+            <div className="text-[11px] font-medium text-[var(--color-red-text)] uppercase tracking-wider mb-2">
+              Weakness
+            </div>
+            <div className="text-[13px] text-[var(--color-text-secondary)] leading-relaxed">
+              Massive communication. 160 all-reduce operations per forward pass for Llama-3 70B
+              (2 &times; 80 layers). Fine over NVLink within a node, but across nodes it becomes
+              the bottleneck.
+            </div>
+          </div>
         </div>
       </Panel>
 
       <Callout
         type="note"
-        message='<strong>KV cache implication:</strong> The cache is split across the <strong>heads dimension</strong>. Each GPU stores K,V for only its assigned attention heads. For GQA with 8 KV groups and TP=4: each GPU stores 2 KV groups. A token&rsquo;s complete cache (all heads, all layers) is distributed across all 4 GPUs. If you need to move this cache (e.g., for disaggregated inference), you must gather it from all TP GPUs &mdash; a coordination challenge.'
+        message="<strong>KV cache implication:</strong> The cache is split across the <strong>heads dimension</strong>. Each GPU stores K,V for only its assigned attention heads. For GQA with 8 KV groups and TP=4: each GPU stores 2 KV groups. A token&rsquo;s complete cache (all heads, all layers) is distributed across all 4 GPUs. If you need to move this cache (e.g., for disaggregated inference), you must gather it from all TP GPUs &mdash; a coordination challenge."
       />
     </div>
   );
 }
 
+/* ================================================================
+   PAGE 4 — Pipeline Parallelism (animated)
+   Single-token animation + micro-batching animation
+   ================================================================ */
 function PipelineParallelPage() {
+  // Single-token animation
+  const [frameIdx, setFrameIdx] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const intervalRef = useRef(null);
+
+  // Micro-batch animation
+  const [mbIdx, setMbIdx] = useState(0);
+  const [mbPlaying, setMbPlaying] = useState(false);
+  const mbIntervalRef = useRef(null);
+
+  const maxFrame = PP_SINGLE_TOKEN_FRAMES.length - 1;
+  const frame = PP_SINGLE_TOKEN_FRAMES[frameIdx];
+
+  const maxMb = PP_MICROBATCH_TIMELINE.length - 1;
+  const mbStep = PP_MICROBATCH_TIMELINE[mbIdx];
+
+  useEffect(() => {
+    if (isPlaying) {
+      intervalRef.current = setInterval(() => {
+        setFrameIdx((prev) => {
+          if (prev >= maxFrame) { setIsPlaying(false); return maxFrame; }
+          return prev + 1;
+        });
+      }, 1200);
+    }
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
+  }, [isPlaying, maxFrame]);
+
+  useEffect(() => {
+    if (mbPlaying) {
+      mbIntervalRef.current = setInterval(() => {
+        setMbIdx((prev) => {
+          if (prev >= maxMb) { setMbPlaying(false); return maxMb; }
+          return prev + 1;
+        });
+      }, 1500);
+    }
+    return () => { if (mbIntervalRef.current) clearInterval(mbIntervalRef.current); };
+  }, [mbPlaying, maxMb]);
+
+  // Colors for micro-batch tokens
+  const tokenColors = {
+    A: 'var(--color-primary)',
+    B: 'var(--color-teal)',
+    C: 'var(--color-amber)',
+    D: 'var(--color-red)',
+    E: 'var(--color-blue)',
+  };
+
   return (
     <div>
+      {/* Single-token animation */}
       <Panel>
-        <PanelHeader>Pipeline parallelism &mdash; one token through the stack</PanelHeader>
-        <div className="p-4 space-y-2">
-          {[
-            {
-              num: '1',
-              label: 'Stage 1 (GPU 0, Layers 1-20)',
-              text: 'The token enters GPU 0. It processes through layers 1\u201320 (attention + FFN at each layer). The KV cache for layers 1\u201320 is stored on GPU 0. GPUs 1, 2, 3 are idle.',
-            },
-            {
-              num: '2',
-              label: 'Handoff 1\u21922',
-              text: 'After layer 20, GPU 0 sends the token\u2019s representation (one d_model-sized vector = 8,192 \u00d7 2 bytes = 16 KB) to GPU 1. This is tiny \u2014 16 KB vs. the megabytes moved in tensor parallelism\u2019s all-reduce.',
-            },
-            {
-              num: '3',
-              label: 'Stage 2 (GPU 1, Layers 21-40)',
-              text: 'GPU 1 processes layers 21\u201340. KV cache for these layers is stored on GPU 1. GPU 0 is now idle (unless processing another token \u2014 see micro-batching below).',
-            },
-            {
-              num: '4',
-              label: 'Stages 3\u20134',
-              text: 'Same pattern repeats. 16 KB handoff to GPU 2 (layers 41\u201360), then 16 KB to GPU 3 (layers 61\u201380). After layer 80: output projection \u2192 softmax \u2192 sampling \u2192 next token selected.',
-            },
-            {
-              num: '5',
-              label: 'Total latency',
-              text: 'The token must traverse ALL 4 stages sequentially. Pipeline latency = sum of all stage compute times + 3 handoff latencies. This is SLOWER than tensor parallelism for a single token (where all GPUs work in parallel). The advantage is in total communication volume: 3 handoffs of 16 KB each = 48 KB total, vs. 160 all-reduces per pass for tensor parallelism (Llama-3 70B with TP>1; the count scales with layer depth).',
-            },
-          ].map((step) => (
-            <div key={step.num} className="flex gap-3 items-start text-[13px]">
-              <span className="flex-shrink-0 w-6 h-6 rounded-full bg-[var(--color-primary-bg)] border border-[var(--color-primary)] text-[var(--color-primary-text)] text-xs font-medium flex items-center justify-center">
-                {step.num}
-              </span>
-              <div className="text-[var(--color-text-secondary)] leading-relaxed">
-                <strong className="text-[var(--color-text)]">{step.label}.</strong>{' '}
-                {step.text}
-              </div>
+        <PanelHeader>One token traversing 4 pipeline stages</PanelHeader>
+        <div className="p-4 space-y-4">
+          <div className="p-3 rounded-lg bg-[var(--color-primary-bg)] border border-[var(--color-primary)]">
+            <div className="text-[11px] font-medium text-[var(--color-primary-text)] uppercase tracking-wider">
+              Frame {frameIdx + 1} of {PP_SINGLE_TOKEN_FRAMES.length} — {frame.label}
             </div>
-          ))}
+            <div className="text-[12px] text-[var(--color-text-secondary)] leading-relaxed mt-1">
+              {frame.description}
+            </div>
+          </div>
+
+          {/* Vertical pipeline with token moving */}
+          <div className="relative mx-auto" style={{ maxWidth: '500px' }}>
+            {PP_STAGES.map((stage, i) => {
+              const isActiveCompute = frame.action === 'compute' && Math.floor(frame.tokenAt) === i;
+              const isHandoffFrom = frame.action === 'handoff' && Math.floor(frame.tokenAt) === i;
+              const isComplete = frame.action === 'complete' && i === 3;
+              return (
+                <div key={stage.id}>
+                  {/* Stage card */}
+                  <div
+                    className="rounded-lg border-2 p-3 flex items-center gap-3"
+                    style={{
+                      borderColor: (isActiveCompute || isComplete) ? 'var(--color-teal)' : 'var(--color-border)',
+                      background: (isActiveCompute || isComplete) ? 'var(--color-teal-bg)' : 'var(--color-surface)',
+                      transition: 'all 400ms ease',
+                    }}
+                  >
+                    <div className="text-[11px] font-mono font-medium text-[var(--color-text)] min-w-[60px]">
+                      {stage.gpu}
+                    </div>
+                    <div className="text-[11px] text-[var(--color-text-secondary)] flex-1">
+                      {stage.layers}
+                      <span className="text-[var(--color-text-muted)] ml-2">({stage.weights})</span>
+                    </div>
+                    {(isActiveCompute || isComplete) && (
+                      <div
+                        className="text-[10px] font-mono px-2 py-0.5 rounded"
+                        style={{ background: 'var(--color-teal)', color: 'white' }}
+                      >
+                        ● token here
+                      </div>
+                    )}
+                    {!isActiveCompute && !isComplete && frame.action !== 'handoff' && Math.floor(frame.tokenAt) !== i && (
+                      <div className="text-[10px] text-[var(--color-text-muted)] italic">idle</div>
+                    )}
+                  </div>
+
+                  {/* Handoff arrow (between stages) */}
+                  {i < 3 && (
+                    <div className="flex justify-center items-center h-8 relative">
+                      <div
+                        className="w-0.5 h-full"
+                        style={{ background: 'var(--color-border)' }}
+                      />
+                      {isHandoffFrom && (
+                        <div
+                          className="absolute px-2 py-0.5 rounded text-[10px] font-mono font-medium"
+                          style={{
+                            background: 'var(--color-amber)',
+                            color: 'white',
+                            animation: 'pulse 0.8s ease-in-out infinite',
+                          }}
+                        >
+                          16 KB ↓
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          <AnimControls
+            isPlaying={isPlaying}
+            onPlayToggle={() => {
+              if (frameIdx >= maxFrame) setFrameIdx(0);
+              setIsPlaying(!isPlaying);
+            }}
+            value={frameIdx}
+            max={maxFrame}
+            onChange={(v) => { setIsPlaying(false); setFrameIdx(v); }}
+            label={`Frame ${frameIdx + 1}`}
+            labelMax={PP_SINGLE_TOKEN_FRAMES.length}
+          />
         </div>
       </Panel>
 
+      {/* Micro-batching animation */}
       <Panel className="mt-4">
         <PanelHeader>Micro-batching fills the pipeline</PanelHeader>
-        <div className="p-4 space-y-3 text-[13px] text-[var(--color-text-secondary)] leading-relaxed">
-          <p>
-            With multiple tokens from different users, all stages stay busy simultaneously:
-          </p>
-        </div>
-        <div className="overflow-x-auto px-4 pb-4">
-          <table className="w-full text-[13px]">
-            <thead>
-              <tr className="border-b border-[var(--color-border)] text-[11px] font-medium text-[var(--color-text-muted)] uppercase tracking-wider">
-                <th className="px-3 py-2 text-left">Time</th>
-                <th className="px-3 py-2 text-center">Stage 1 (L1-20)</th>
-                <th className="px-3 py-2 text-center">Stage 2 (L21-40)</th>
-                <th className="px-3 py-2 text-center">Stage 3 (L41-60)</th>
-                <th className="px-3 py-2 text-center">Stage 4 (L61-80)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {MICRO_BATCH_TIMELINE.map((row) => (
-                <tr key={row.time} className="border-b border-[var(--color-border-light)] last:border-b-0">
-                  <td className="px-3 py-2 font-mono font-medium text-[var(--color-text)]">{row.time}</td>
-                  <td className="px-3 py-2 text-center font-mono text-[var(--color-text-secondary)]">{row.stage1}</td>
-                  <td className="px-3 py-2 text-center font-mono text-[var(--color-text-secondary)]">{row.stage2}</td>
-                  <td className="px-3 py-2 text-center font-mono text-[var(--color-text-secondary)]">{row.stage3}</td>
-                  <td className="px-3 py-2 text-center font-mono text-[var(--color-text-secondary)]">{row.stage4}</td>
+        <div className="p-4 space-y-4">
+          <div className="text-[13px] text-[var(--color-text-secondary)] leading-relaxed">
+            With multiple tokens from different users, all stages stay busy simultaneously. Watch
+            the pipeline fill up over time.
+          </div>
+
+          {/* Current state label */}
+          <div className="p-3 rounded-lg bg-[var(--color-surface-muted)] border border-[var(--color-border-light)]">
+            <div className="text-[11px] font-mono font-medium text-[var(--color-text)]">{mbStep.time}</div>
+            <div className="text-[11px] text-[var(--color-text-secondary)] mt-0.5">{mbStep.note}</div>
+          </div>
+
+          {/* Stage grid showing current tokens */}
+          <div className="grid grid-cols-4 gap-2">
+            {[0, 1, 2, 3].map((stageIdx) => {
+              const token = mbStep.stages[stageIdx];
+              return (
+                <div
+                  key={stageIdx}
+                  className="rounded-lg border-2 p-3 text-center"
+                  style={{
+                    borderColor: token ? tokenColors[token] : 'var(--color-border)',
+                    background: token ? 'var(--color-surface)' : 'var(--color-surface-muted)',
+                    transition: 'all 400ms ease',
+                  }}
+                >
+                  <div className="text-[9px] font-mono text-[var(--color-text-muted)]">
+                    Stage {stageIdx + 1}
+                  </div>
+                  <div className="text-[9px] text-[var(--color-text-muted)]">
+                    L{stageIdx * 20 + 1}-{(stageIdx + 1) * 20}
+                  </div>
+                  <div
+                    className="mt-2 mx-auto rounded-full flex items-center justify-center font-bold text-white text-[14px]"
+                    style={{
+                      width: '32px',
+                      height: '32px',
+                      background: token ? tokenColors[token] : 'var(--color-border-light)',
+                      opacity: token ? 1 : 0.3,
+                      transition: 'all 400ms ease',
+                    }}
+                  >
+                    {token || '—'}
+                  </div>
+                  <div className="text-[9px] text-[var(--color-text-muted)] mt-1">
+                    {token ? 'busy' : 'bubble'}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Full timeline table */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-[12px]">
+              <thead>
+                <tr className="border-b border-[var(--color-border)] text-[10px] font-medium text-[var(--color-text-muted)] uppercase tracking-wider">
+                  <th className="px-3 py-1 text-left">Time</th>
+                  <th className="px-3 py-1 text-center">Stage 1</th>
+                  <th className="px-3 py-1 text-center">Stage 2</th>
+                  <th className="px-3 py-1 text-center">Stage 3</th>
+                  <th className="px-3 py-1 text-center">Stage 4</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {PP_MICROBATCH_TIMELINE.map((row, i) => (
+                  <tr
+                    key={row.time}
+                    className="border-b border-[var(--color-border-light)] last:border-b-0 cursor-pointer"
+                    style={{
+                      background: i === mbIdx ? 'var(--color-teal-bg)' : 'transparent',
+                      transition: 'background 300ms ease',
+                    }}
+                    onClick={() => { setMbPlaying(false); setMbIdx(i); }}
+                  >
+                    <td className="px-3 py-1 font-mono font-medium text-[var(--color-text)]">{row.time}</td>
+                    {row.stages.map((cell, j) => (
+                      <td key={j} className="px-3 py-1 text-center font-mono">
+                        {cell ? (
+                          <span style={{ color: tokenColors[cell], fontWeight: 600 }}>{cell}</span>
+                        ) : (
+                          <span className="text-[var(--color-text-muted)]">—</span>
+                        )}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <AnimControls
+            isPlaying={mbPlaying}
+            onPlayToggle={() => {
+              if (mbIdx >= maxMb) setMbIdx(0);
+              setMbPlaying(!mbPlaying);
+            }}
+            value={mbIdx}
+            max={maxMb}
+            onChange={(v) => { setMbPlaying(false); setMbIdx(v); }}
+            label={`${mbStep.time}`}
+            labelMax={PP_MICROBATCH_TIMELINE[maxMb].time}
+          />
         </div>
         <InfoBox>
           Once the pipeline is full (T4 onward), all 4 GPUs are busy simultaneously &mdash; each
@@ -552,8 +1098,8 @@ function PipelineParallelPage() {
             </div>
             <div className="text-[13px] text-[var(--color-text-secondary)] leading-relaxed">
               Minimal communication &mdash; just one point-to-point send of ~16 KB per stage
-              boundary per token. Works across nodes (doesn&rsquo;t need NVLink). Good for
-              memory &mdash; each GPU stores only 1/4 of the layers.
+              boundary per token. Works across nodes (doesn&rsquo;t need NVLink). Good for memory
+              &mdash; each GPU stores only 1/4 of the layers.
             </div>
           </div>
           <div className="p-3 rounded-lg bg-[var(--color-red-bg)] border border-[var(--color-red)]">
@@ -577,11 +1123,14 @@ function PipelineParallelPage() {
   );
 }
 
+/* ================================================================
+   PAGE 5 — Choosing and combining (static)
+   ================================================================ */
 function ChoosingPage() {
   return (
     <div>
       <Panel>
-        <PanelHeader>Side-by-side comparison</PanelHeader>
+        <PanelHeader>Side-by-side comparison (7 dimensions)</PanelHeader>
         <div className="overflow-x-auto">
           <table className="w-full text-[13px]">
             <thead>
@@ -650,46 +1199,215 @@ function ChoosingPage() {
   );
 }
 
+/* ================================================================
+   PAGE 6 — Disaggregated inference (two-panel animation)
+   ================================================================ */
 function DisaggregatedPage() {
+  const [tick, setTick] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const intervalRef = useRef(null);
+
+  const maxTick = Math.max(AGGREGATED_TIMELINE.length, DISAGGREGATED_TIMELINE.length) - 1;
+
+  useEffect(() => {
+    if (isPlaying) {
+      intervalRef.current = setInterval(() => {
+        setTick((prev) => {
+          if (prev >= maxTick) { setIsPlaying(false); return maxTick; }
+          return prev + 1;
+        });
+      }, 1400);
+    }
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
+  }, [isPlaying, maxTick]);
+
+  const aggCurrent = AGGREGATED_TIMELINE[Math.min(tick, AGGREGATED_TIMELINE.length - 1)];
+  const disCurrent = DISAGGREGATED_TIMELINE[Math.min(tick, DISAGGREGATED_TIMELINE.length - 1)];
+
   return (
     <div>
       <Panel>
-        <PanelHeader>Aggregated vs. disaggregated</PanelHeader>
-        <div className="p-4 space-y-3">
-          <div className="p-3 rounded-lg bg-[var(--color-red-bg)] border border-[var(--color-red)]">
-            <div className="text-[11px] font-medium text-[var(--color-red-text)] uppercase tracking-wider mb-2">
-              Aggregated (current)
+        <PanelHeader>Aggregated vs. disaggregated — side by side</PanelHeader>
+        <div className="p-4 space-y-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* LEFT PANEL — Aggregated */}
+            <div className="p-3 rounded-lg border-2 border-[var(--color-red)] bg-[var(--color-red-bg)]">
+              <div className="text-[11px] font-medium text-[var(--color-red-text)] uppercase tracking-wider mb-2">
+                Aggregated (shared GPU)
+              </div>
+
+              {/* Shared GPU box */}
+              <div
+                className="rounded-lg border-2 p-3 mb-2"
+                style={{
+                  borderColor: aggCurrent.phase === 'prefill' ? 'var(--color-red)' : 'var(--color-teal)',
+                  background: 'var(--color-surface)',
+                  transition: 'border-color 400ms ease',
+                }}
+              >
+                <div className="text-[10px] font-mono text-[var(--color-text-muted)]">Shared GPU</div>
+                <div
+                  className="mt-1 text-center font-medium text-[11px] py-2 rounded"
+                  style={{
+                    background: aggCurrent.phase === 'prefill' ? 'var(--color-red)' : 'var(--color-teal)',
+                    color: 'white',
+                    transition: 'background 400ms ease',
+                  }}
+                >
+                  {aggCurrent.phase === 'prefill' ? '▓▓▓ PREFILL BURST ▓▓▓' : '● decode steady'}
+                </div>
+              </div>
+
+              {/* Users affected */}
+              <div className="space-y-1">
+                {['User 1', 'User 2', 'User 3', 'User 4'].map((u) => (
+                  <div key={u} className="flex items-center gap-2 text-[10px]">
+                    <div className="font-mono text-[var(--color-text-muted)] min-w-[45px]">{u}</div>
+                    <div className="flex-1 h-3 rounded overflow-hidden bg-[var(--color-surface-muted)]">
+                      <div
+                        className="h-full"
+                        style={{
+                          width: aggCurrent.stalled ? '10%' : '100%',
+                          background: aggCurrent.stalled ? 'var(--color-red)' : 'var(--color-teal)',
+                          transition: 'width 500ms ease, background 500ms ease',
+                        }}
+                      />
+                    </div>
+                    <div
+                      className="text-[9px] font-mono min-w-[45px]"
+                      style={{ color: aggCurrent.stalled ? 'var(--color-red-text)' : 'var(--color-teal-text)' }}
+                    >
+                      {aggCurrent.stalled ? 'STALL' : 'flowing'}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div
+                className="mt-3 p-2 rounded text-[11px]"
+                style={{ background: 'var(--color-surface)' }}
+              >
+                <div className="font-medium text-[var(--color-text)]">{aggCurrent.label}</div>
+                <div className="text-[var(--color-text-secondary)] mt-0.5">{aggCurrent.description}</div>
+              </div>
             </div>
-            <div className="text-[13px] text-[var(--color-text-secondary)] leading-relaxed space-y-2">
-              <p>
-                One GPU handling both prefill and decode. When User 17&rsquo;s 28,000-token
-                document arrives for prefill, the GPU is fully occupied for several seconds.
-                Users 1&ndash;4 on that GPU see their token generation stall &mdash; no new
-                tokens until the prefill completes.
-              </p>
-              <div className="text-[11px] text-[var(--color-text-muted)] italic">
-                Prefill blocks decode. Users see latency spikes.
+
+            {/* RIGHT PANEL — Disaggregated */}
+            <div className="p-3 rounded-lg border-2 border-[var(--color-teal)] bg-[var(--color-teal-bg)]">
+              <div className="text-[11px] font-medium text-[var(--color-teal-text)] uppercase tracking-wider mb-2">
+                Disaggregated (separate pools)
+              </div>
+
+              {/* Prefill Pool */}
+              <div className="grid grid-cols-2 gap-2">
+                {/* Prefill */}
+                <div
+                  className="rounded-lg border-2 p-2"
+                  style={{
+                    borderColor: disCurrent.prefillActive ? 'var(--color-primary)' : 'var(--color-border)',
+                    background: 'var(--color-surface)',
+                    transition: 'border-color 400ms ease',
+                  }}
+                >
+                  <div className="text-[9px] font-mono text-[var(--color-text-muted)]">Prefill Pool (2 GPU)</div>
+                  <div
+                    className="mt-1 text-center text-[10px] py-1 rounded"
+                    style={{
+                      background: disCurrent.prefillActive ? 'var(--color-primary)' : 'var(--color-surface-muted)',
+                      color: disCurrent.prefillActive ? 'white' : 'var(--color-text-muted)',
+                      transition: 'all 400ms ease',
+                    }}
+                  >
+                    {disCurrent.prefillActive ? '▓ prefilling' : '○ idle'}
+                  </div>
+                </div>
+
+                {/* Decode */}
+                <div
+                  className="rounded-lg border-2 p-2"
+                  style={{
+                    borderColor: 'var(--color-teal)',
+                    background: 'var(--color-surface)',
+                  }}
+                >
+                  <div className="text-[9px] font-mono text-[var(--color-text-muted)]">Decode Pool (6 GPU)</div>
+                  <div
+                    className="mt-1 text-center text-[10px] py-1 rounded"
+                    style={{
+                      background: 'var(--color-teal)',
+                      color: 'white',
+                    }}
+                  >
+                    ● decode steady
+                  </div>
+                </div>
+              </div>
+
+              {/* NIXL transfer pipe */}
+              <div className="my-2 relative h-6 rounded overflow-hidden border border-[var(--color-border-light)] bg-[var(--color-surface)]">
+                <div className="absolute inset-0 flex items-center justify-center text-[9px] font-mono text-[var(--color-text-muted)]">
+                  NIXL / RDMA pipe — 8.96 GB KV cache
+                </div>
+                {disCurrent.transferActive && (
+                  <div
+                    className="absolute inset-y-0 left-0"
+                    style={{
+                      width: '100%',
+                      background: 'linear-gradient(90deg, transparent, var(--color-blue) 50%, transparent)',
+                      animation: 'slide 1.5s linear infinite',
+                      opacity: 0.5,
+                    }}
+                  />
+                )}
+              </div>
+
+              {/* Users affected */}
+              <div className="space-y-1">
+                {['User 1', 'User 2', 'User 3', 'User 4'].map((u) => (
+                  <div key={u} className="flex items-center gap-2 text-[10px]">
+                    <div className="font-mono text-[var(--color-text-muted)] min-w-[45px]">{u}</div>
+                    <div className="flex-1 h-3 rounded overflow-hidden bg-[var(--color-surface-muted)]">
+                      <div
+                        className="h-full"
+                        style={{
+                          width: '100%',
+                          background: 'var(--color-teal)',
+                          transition: 'width 500ms ease',
+                        }}
+                      />
+                    </div>
+                    <div
+                      className="text-[9px] font-mono min-w-[45px]"
+                      style={{ color: 'var(--color-teal-text)' }}
+                    >
+                      flowing
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div
+                className="mt-3 p-2 rounded text-[11px]"
+                style={{ background: 'var(--color-surface)' }}
+              >
+                <div className="font-medium text-[var(--color-text)]">{disCurrent.label}</div>
+                <div className="text-[var(--color-text-secondary)] mt-0.5">{disCurrent.description}</div>
               </div>
             </div>
           </div>
 
-          <div className="p-3 rounded-lg bg-[var(--color-teal-bg)] border border-[var(--color-teal)]">
-            <div className="text-[11px] font-medium text-[var(--color-teal-text)] uppercase tracking-wider mb-2">
-              Disaggregated
-            </div>
-            <div className="text-[13px] text-[var(--color-text-secondary)] leading-relaxed space-y-2">
-              <p>
-                Two separate GPU pools. The <strong className="text-[var(--color-text)]">Prefill Pool</strong> (2
-                GPUs, optimized for compute throughput) processes User 17&rsquo;s prompt with all
-                compute cores busy. The <strong className="text-[var(--color-text)]">Decode Pool</strong> (6
-                GPUs, optimized for memory bandwidth) gives Users 1&ndash;16 steady token
-                generation with no prefill bursts to stall them.
-              </p>
-              <div className="text-[11px] text-[var(--color-text-muted)] italic">
-                Prefill and decode run independently. No interference.
-              </div>
-            </div>
-          </div>
+          <AnimControls
+            isPlaying={isPlaying}
+            onPlayToggle={() => {
+              if (tick >= maxTick) setTick(0);
+              setIsPlaying(!isPlaying);
+            }}
+            value={tick}
+            max={maxTick}
+            onChange={(v) => { setIsPlaying(false); setTick(v); }}
+            label={`Tick ${tick + 1}`}
+            labelMax={maxTick + 1}
+          />
         </div>
       </Panel>
 
@@ -697,12 +1415,11 @@ function DisaggregatedPage() {
         <PanelHeader>What transfers between pools</PanelHeader>
         <div className="p-4 space-y-3 text-[13px] text-[var(--color-text-secondary)] leading-relaxed">
           <p>
-            The KV cache is the <strong className="text-[var(--color-text)]">ONLY artifact that must
-            transfer</strong> between prefill and decode. The model weights don&rsquo;t move (both
-            pools have their own copies or shards). The token embeddings don&rsquo;t move
-            (they&rsquo;re recreated from the token IDs). Only the K and V vectors &mdash; the
-            pre-computed results stored at every layer &mdash; must travel from the prefill GPU
-            to the decode GPU.
+            The KV cache is the <strong className="text-[var(--color-text)]">ONLY artifact that
+            must transfer</strong> between prefill and decode. The model weights don&rsquo;t move
+            (both pools have their own copies or shards). The token embeddings don&rsquo;t move
+            (they&rsquo;re recreated from the token IDs). Only the K and V vectors must travel from
+            the prefill GPU to the decode GPU.
           </p>
           <div className="p-3 rounded-lg bg-[var(--color-surface-muted)] border border-[var(--color-border-light)] font-mono text-[12px] text-[var(--color-text)] text-center leading-loose">
             28,000 tokens &times; 320 KB/token = <strong>8.96 GB</strong>
@@ -710,8 +1427,8 @@ function DisaggregatedPage() {
           <p>
             This is a substantial network transfer. The time it takes directly impacts{' '}
             <strong className="text-[var(--color-text)]">Time-to-First-Token (TTFT)</strong> &mdash;
-            the delay between the user submitting their prompt and seeing the first word of
-            the response.
+            the delay between the user submitting their prompt and seeing the first word of the
+            response.
           </p>
         </div>
       </Panel>
@@ -725,16 +1442,37 @@ function DisaggregatedPage() {
                 <th className="px-4 py-2 text-left">Network</th>
                 <th className="px-4 py-2 text-right">Bandwidth</th>
                 <th className="px-4 py-2 text-right">Transfer time</th>
+                <th className="px-4 py-2 text-left">Relative speed</th>
               </tr>
             </thead>
             <tbody>
-              {TRANSFER_TIMES.map((row) => (
-                <tr key={row.network} className="border-b border-[var(--color-border-light)] last:border-b-0">
-                  <td className="px-4 py-2 text-[var(--color-text)]">{row.network}</td>
-                  <td className="px-4 py-2 text-right font-mono text-[var(--color-text-secondary)]">{row.bandwidth}</td>
-                  <td className="px-4 py-2 text-right font-mono font-medium text-[var(--color-text)]">{row.time}</td>
-                </tr>
-              ))}
+              {TRANSFER_TIMES.map((row) => {
+                const maxT = 358;
+                const widthPct = Math.min((row.timeNum / maxT) * 100, 100);
+                return (
+                  <tr
+                    key={row.network}
+                    className="border-b border-[var(--color-border-light)] last:border-b-0"
+                    style={{ background: row.highlight ? 'var(--color-teal-bg)' : 'transparent' }}
+                  >
+                    <td className="px-4 py-2 text-[var(--color-text)]">{row.network}</td>
+                    <td className="px-4 py-2 text-right font-mono text-[var(--color-text-secondary)]">{row.bandwidth}</td>
+                    <td className="px-4 py-2 text-right font-mono font-medium text-[var(--color-text)]">{row.time}</td>
+                    <td className="px-4 py-2">
+                      <div className="h-3 rounded-full bg-[var(--color-surface-muted)] overflow-hidden">
+                        <div
+                          className="h-full rounded-full"
+                          style={{
+                            width: `${widthPct}%`,
+                            background: row.timeNum < 100 ? 'var(--color-teal)' : row.timeNum < 200 ? 'var(--color-amber)' : 'var(--color-red)',
+                            transition: 'width 300ms ease',
+                          }}
+                        />
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -748,28 +1486,135 @@ function DisaggregatedPage() {
   );
 }
 
+/* ================================================================
+   PAGE 7 — Dynamo orchestration (architecture diagram)
+   ================================================================ */
 function DynamoPage() {
   return (
     <div>
       <Panel>
-        <PanelHeader>NVIDIA Dynamo architecture</PanelHeader>
+        <PanelHeader>NVIDIA Dynamo architecture — 8× H100 cluster</PanelHeader>
+        <div className="p-4">
+          {/* Architecture diagram */}
+          <div className="space-y-3">
+            {/* Router row */}
+            <div
+              className="p-3 rounded-lg border-2 text-center"
+              style={{
+                borderColor: 'var(--color-amber)',
+                background: 'var(--color-amber-bg)',
+              }}
+            >
+              <div className="text-[10px] font-mono text-[var(--color-amber-text)]">Smart Router (control plane)</div>
+              <div className="text-[11px] text-[var(--color-text)] mt-0.5">
+                KV-cache-aware routing: new conversations → prefill, ongoing → the decode GPU that has the user&rsquo;s cache
+              </div>
+            </div>
+
+            {/* Arrow down */}
+            <div className="text-center text-[var(--color-text-muted)]">↓</div>
+
+            {/* Prefill / Decode row */}
+            <div className="grid grid-cols-2 gap-3">
+              <div
+                className="p-3 rounded-lg border-2"
+                style={{ borderColor: 'var(--color-primary)', background: 'var(--color-primary-bg)' }}
+              >
+                <div className="text-[11px] font-medium text-[var(--color-primary-text)] uppercase tracking-wider">
+                  Prefill Pool
+                </div>
+                <div className="text-[11px] font-mono text-[var(--color-text)] mt-1">2 GPUs — TP=2</div>
+                {/* GPU icons */}
+                <div className="flex gap-1 mt-2">
+                  {[0, 1].map((i) => (
+                    <div
+                      key={i}
+                      className="flex-1 h-8 rounded border text-[9px] flex items-center justify-center font-mono text-white"
+                      style={{ background: 'var(--color-primary)', borderColor: 'var(--color-primary)' }}
+                    >
+                      GPU {i}
+                    </div>
+                  ))}
+                </div>
+                <div className="text-[10px] text-[var(--color-text-secondary)] mt-2">
+                  Handles all incoming prompts. Computes KV cache for entire prompt in parallel.
+                </div>
+              </div>
+
+              <div
+                className="p-3 rounded-lg border-2"
+                style={{ borderColor: 'var(--color-teal)', background: 'var(--color-teal-bg)' }}
+              >
+                <div className="text-[11px] font-medium text-[var(--color-teal-text)] uppercase tracking-wider">
+                  Decode Pool
+                </div>
+                <div className="text-[11px] font-mono text-[var(--color-text)] mt-1">6 GPUs — TP=1, DP=6</div>
+                {/* GPU icons */}
+                <div className="flex gap-1 mt-2">
+                  {[2, 3, 4, 5, 6, 7].map((i) => (
+                    <div
+                      key={i}
+                      className="flex-1 h-8 rounded border text-[9px] flex items-center justify-center font-mono text-white"
+                      style={{ background: 'var(--color-teal)', borderColor: 'var(--color-teal)' }}
+                    >
+                      G{i}
+                    </div>
+                  ))}
+                </div>
+                <div className="text-[10px] text-[var(--color-text-secondary)] mt-2">
+                  Ongoing token generation. PagedAttention. Receives cache via NIXL.
+                </div>
+              </div>
+            </div>
+
+            {/* NIXL pipe */}
+            <div
+              className="p-2 rounded-lg border-2 text-center"
+              style={{ borderColor: 'var(--color-blue)', background: 'var(--color-blue-bg)' }}
+            >
+              <div className="text-[10px] font-mono text-[var(--color-blue-text)]">NIXL (transfer layer) — RDMA / NVLink / InfiniBand / PCIe</div>
+              <div className="text-[10px] text-[var(--color-text-secondary)] mt-0.5">
+                Moves KV cache between pools. Asynchronous, non-blocking, can overlap transfer with computation.
+              </div>
+            </div>
+
+            {/* Arrow down */}
+            <div className="text-center text-[var(--color-text-muted)]">↑ monitors ↑</div>
+
+            {/* Planner */}
+            <div
+              className="p-3 rounded-lg border-2 text-center"
+              style={{ borderColor: 'var(--color-red)', background: 'var(--color-red-bg)' }}
+            >
+              <div className="text-[10px] font-mono text-[var(--color-red-text)]">Dynamo Planner (orchestrator)</div>
+              <div className="text-[11px] text-[var(--color-text)] mt-0.5">
+                Monitors GPU utilization + queue depths. Dynamically adjusts prefill/decode ratio.
+                Reassigns GPUs between pools based on demand.
+              </div>
+            </div>
+          </div>
+        </div>
+      </Panel>
+
+      <Panel className="mt-4">
+        <PanelHeader>Component roles in detail</PanelHeader>
         <div className="p-4 space-y-3">
           {DYNAMO_COMPONENTS.map((comp) => (
             <div
               key={comp.name}
-              className="p-3 rounded-lg bg-[var(--color-surface-muted)] border border-[var(--color-border-light)]"
+              className="p-3 rounded-lg border"
+              style={{ borderColor: comp.color, background: comp.bgColor }}
             >
-              <div className="flex items-center gap-2 mb-1">
-                <span className="text-[13px] font-medium text-[var(--color-text)]">
+              <div className="flex items-center gap-2 mb-1 flex-wrap">
+                <span className="text-[13px] font-medium" style={{ color: comp.textColor }}>
                   {comp.name}
                 </span>
-                {comp.gpus !== '\u2014' && (
-                  <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-[var(--color-primary-bg)] border border-[var(--color-primary)] text-[var(--color-primary-text)]">
-                    {comp.gpus} &mdash; {comp.config}
+                {comp.gpus !== '—' ? (
+                  <span className="px-2 py-0.5 rounded text-[10px] font-mono" style={{ background: 'var(--color-surface)', color: comp.textColor, border: `1px solid ${comp.color}` }}>
+                    {comp.gpus} — {comp.config}
                   </span>
-                )}
-                {comp.gpus === '\u2014' && (
-                  <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-[var(--color-surface-muted)] border border-[var(--color-border)] text-[var(--color-text-muted)]">
+                ) : (
+                  <span className="px-2 py-0.5 rounded text-[10px] font-mono" style={{ background: 'var(--color-surface)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border)' }}>
                     {comp.config}
                   </span>
                 )}
@@ -783,20 +1628,31 @@ function DynamoPage() {
       </Panel>
 
       <Panel className="mt-4">
-        <PanelHeader>Dynamic pool sizing</PanelHeader>
+        <PanelHeader>Steady state for our scenario</PanelHeader>
         <div className="p-4 space-y-3 text-[13px] text-[var(--color-text-secondary)] leading-relaxed">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="p-3 rounded-lg bg-[var(--color-surface-muted)] border border-[var(--color-border-light)] text-center">
+              <div className="text-[20px] font-bold text-[var(--color-text)]">{DYNAMO_STEADY_STATE.users}</div>
+              <div className="text-[10px] text-[var(--color-text-muted)]">concurrent users</div>
+            </div>
+            <div className="p-3 rounded-lg bg-[var(--color-surface-muted)] border border-[var(--color-border-light)] text-center">
+              <div className="text-[20px] font-bold text-[var(--color-text)]">{DYNAMO_STEADY_STATE.newConvsPerMin}/min</div>
+              <div className="text-[10px] text-[var(--color-text-muted)]">new conversations</div>
+            </div>
+            <div className="p-3 rounded-lg bg-[var(--color-primary-bg)] border border-[var(--color-primary)] text-center">
+              <div className="text-[20px] font-bold text-[var(--color-primary-text)]">~{DYNAMO_STEADY_STATE.prefillTimeMs} ms</div>
+              <div className="text-[10px] text-[var(--color-text-muted)]">prefill (8K prompt, TP=2)</div>
+            </div>
+            <div className="p-3 rounded-lg bg-[var(--color-teal-bg)] border border-[var(--color-teal)] text-center">
+              <div className="text-[20px] font-bold text-[var(--color-teal-text)]">~{DYNAMO_STEADY_STATE.usersPerDecodeGpu}</div>
+              <div className="text-[10px] text-[var(--color-text-muted)]">users / decode GPU</div>
+            </div>
+          </div>
           <p>
-            The Planner&rsquo;s ability to dynamically resize the pools is what makes
-            disaggregated inference adaptive. During peak hours (many new conversations),
-            more GPUs handle prefill. During off-peak (existing conversations continuing),
-            more GPUs handle decode.
-          </p>
-          <p>
-            <strong className="text-[var(--color-text)]">For our scenario at steady state:</strong>{' '}
-            With 32 concurrent users and an average of 2 new conversations per minute, 2 prefill
-            GPUs handle the load easily (each prefill of an 8K-token prompt takes ~100 ms on 2 TP
-            GPUs). The 6 decode GPUs each serve ~5 users with continuous batching, well within
-            their memory and throughput capacity.
+            With 32 concurrent users and 2 new conversations per minute, 2 prefill GPUs handle the
+            load easily. The 6 decode GPUs each serve ~5 users with continuous batching &mdash;
+            well within their memory and throughput capacity. The Planner can shift GPUs between
+            pools as demand changes.
           </p>
         </div>
       </Panel>
@@ -809,51 +1665,202 @@ function DynamoPage() {
   );
 }
 
+/* ================================================================
+   PAGE 8 — KV cache lifecycle (6-frame animation)
+   ================================================================ */
 function LifecyclePage() {
-  const frames = [
-    {
-      num: '1',
-      label: 'Request arrives',
-      text: 'User 17 submits prompt (28,000 tokens). Smart Router directs it to the Prefill Pool.',
-    },
-    {
-      num: '2',
-      label: 'Prefill begins',
-      text: 'Prefill GPU 0 and GPU 1 (TP=2) receive the prompt. 28,000 tokens enter Layer 1 simultaneously. At each of the 80 layers, K and V vectors are computed, stored in PagedAttention pages, and attention is computed. Total cache size: 8.96 GB (4.48 GB per GPU in TP=2).',
-    },
-    {
-      num: '3',
-      label: 'Prefill complete \u2014 transfer begins',
-      text: 'Output projection \u2192 softmax \u2192 first token selected. NIXL begins transferring the 8.96 GB KV cache from Prefill GPUs to Decode GPU 3. Transfer takes ~180 ms at 400G RDMA. During transfer, Decode GPU 3\u2019s other users (Users 13\u201316) continue generating tokens normally.',
-    },
-    {
-      num: '4',
-      label: 'Decode begins',
-      text: 'Transfer complete. User 17\u2019s KV cache is now in Decode GPU 3\u2019s PagedAttention page table. User 17 joins the continuous batch. Decode GPU 3 now serves Users 13\u201317, processing 5 tokens per step (one per user), appending 5 new K, V entries per step.',
-    },
-    {
-      num: '5',
-      label: 'Response complete',
-      text: 'After User 17\u2019s response is fully generated (2,000 tokens later): the 30,000-token cache (28,000 + 2,000) pages are freed, becoming available for the next conversation. If User 17 sends a follow-up, only the new message goes through prefill (incremental prefill, from Stop 10).',
-    },
-  ];
+  const [frameIdx, setFrameIdx] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const intervalRef = useRef(null);
+
+  const maxIdx = LIFECYCLE_FRAMES.length - 1;
+  const frame = LIFECYCLE_FRAMES[frameIdx];
+
+  useEffect(() => {
+    if (isPlaying) {
+      intervalRef.current = setInterval(() => {
+        setFrameIdx((prev) => {
+          if (prev >= maxIdx) { setIsPlaying(false); return maxIdx; }
+          return prev + 1;
+        });
+      }, 2200);
+    }
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
+  }, [isPlaying, maxIdx]);
 
   return (
     <div>
       <Panel>
-        <PanelHeader>User 17&rsquo;s request &mdash; end to end</PanelHeader>
-        <div className="p-4 space-y-2">
-          {frames.map((frame) => (
-            <div key={frame.num} className="flex gap-3 items-start text-[13px]">
-              <span className="flex-shrink-0 w-6 h-6 rounded-full bg-[var(--color-primary-bg)] border border-[var(--color-primary)] text-[var(--color-primary-text)] text-xs font-medium flex items-center justify-center">
-                {frame.num}
+        <PanelHeader>User 17&rsquo;s request — 6-frame end-to-end trace</PanelHeader>
+        <div className="p-4 space-y-4">
+          {/* Current frame banner */}
+          <div
+            className="p-3 rounded-lg border-2"
+            style={{
+              borderColor: frame.color,
+              background: 'var(--color-surface-muted)',
+            }}
+          >
+            <div className="flex items-baseline gap-2">
+              <span
+                className="text-[11px] font-mono font-medium uppercase tracking-wider"
+                style={{ color: frame.color }}
+              >
+                Frame {frame.frame}
               </span>
-              <div className="text-[var(--color-text-secondary)] leading-relaxed">
-                <strong className="text-[var(--color-text)]">{frame.label}.</strong>{' '}
-                {frame.text}
-              </div>
+              <span className="text-[14px] font-bold" style={{ color: frame.color }}>
+                {frame.phase}
+              </span>
+              <span className="text-[12px] text-[var(--color-text-muted)]">— {frame.label}</span>
             </div>
-          ))}
+            <div className="text-[12px] text-[var(--color-text-secondary)] leading-relaxed mt-1">
+              {frame.description}
+            </div>
+            {frame.where !== '—' && (
+              <div className="mt-2 grid grid-cols-3 gap-2 text-[11px]">
+                <div>
+                  <span className="text-[var(--color-text-muted)]">Where: </span>
+                  <span className="font-mono text-[var(--color-text)]">{frame.where}</span>
+                </div>
+                <div>
+                  <span className="text-[var(--color-text-muted)]">Size: </span>
+                  <span className="font-mono text-[var(--color-text)]">{frame.size}</span>
+                </div>
+                <div>
+                  <span className="text-[var(--color-text-muted)]">Duration: </span>
+                  <span className="font-mono text-[var(--color-text)]">{frame.duration}</span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Flow diagram: Prefill → Transfer → Decode */}
+          <div className="grid grid-cols-5 gap-2 items-center">
+            {/* Prefill */}
+            <div
+              className="p-2 rounded-lg border-2 text-center"
+              style={{
+                borderColor: frame.activePool === 'prefill' ? 'var(--color-primary)' : 'var(--color-border)',
+                background: frame.activePool === 'prefill' ? 'var(--color-primary-bg)' : 'var(--color-surface-muted)',
+                transition: 'all 400ms ease',
+              }}
+            >
+              <div className="text-[9px] font-mono text-[var(--color-text-muted)]">Prefill Pool</div>
+              <div className="text-[10px] font-medium mt-1" style={{ color: frame.activePool === 'prefill' ? 'var(--color-primary-text)' : 'var(--color-text-muted)' }}>
+                2 GPUs TP=2
+              </div>
+              {frame.activePool === 'prefill' && (
+                <div className="text-[9px] mt-1" style={{ color: 'var(--color-primary-text)' }}>
+                  ● busy
+                </div>
+              )}
+            </div>
+
+            {/* Arrow 1 */}
+            <div
+              className="h-6 relative flex items-center"
+              style={{
+                opacity: frame.activePool === 'transfer' ? 1 : 0.3,
+                transition: 'opacity 400ms ease',
+              }}
+            >
+              <div className="w-full h-0.5 bg-[var(--color-blue)] relative">
+                {frame.activePool === 'transfer' && (
+                  <div
+                    className="absolute inset-0"
+                    style={{
+                      background: 'linear-gradient(90deg, transparent, var(--color-blue), transparent)',
+                      animation: 'slide 1s linear infinite',
+                    }}
+                  />
+                )}
+              </div>
+              <div className="absolute right-0 text-[10px]" style={{ color: 'var(--color-blue)' }}>▶</div>
+            </div>
+
+            {/* NIXL / transfer box */}
+            <div
+              className="p-2 rounded-lg border-2 text-center"
+              style={{
+                borderColor: frame.activePool === 'transfer' ? 'var(--color-blue)' : 'var(--color-border)',
+                background: frame.activePool === 'transfer' ? 'var(--color-blue-bg)' : 'var(--color-surface-muted)',
+                transition: 'all 400ms ease',
+              }}
+            >
+              <div className="text-[9px] font-mono text-[var(--color-text-muted)]">NIXL / RDMA</div>
+              <div className="text-[10px] font-medium mt-1" style={{ color: frame.activePool === 'transfer' ? 'var(--color-blue-text)' : 'var(--color-text-muted)' }}>
+                8.96 GB
+              </div>
+              {frame.activePool === 'transfer' && (
+                <div className="text-[9px] mt-1" style={{ color: 'var(--color-blue-text)' }}>
+                  ● in flight
+                </div>
+              )}
+            </div>
+
+            {/* Arrow 2 */}
+            <div
+              className="h-6 relative flex items-center"
+              style={{
+                opacity: frame.activePool === 'transfer' ? 1 : 0.3,
+                transition: 'opacity 400ms ease',
+              }}
+            >
+              <div className="w-full h-0.5 bg-[var(--color-blue)]" />
+              <div className="absolute right-0 text-[10px]" style={{ color: 'var(--color-blue)' }}>▶</div>
+            </div>
+
+            {/* Decode */}
+            <div
+              className="p-2 rounded-lg border-2 text-center"
+              style={{
+                borderColor: frame.activePool === 'decode' ? 'var(--color-teal)' : 'var(--color-border)',
+                background: frame.activePool === 'decode' ? 'var(--color-teal-bg)' : 'var(--color-surface-muted)',
+                transition: 'all 400ms ease',
+              }}
+            >
+              <div className="text-[9px] font-mono text-[var(--color-text-muted)]">Decode Pool</div>
+              <div className="text-[10px] font-medium mt-1" style={{ color: frame.activePool === 'decode' ? 'var(--color-teal-text)' : 'var(--color-text-muted)' }}>
+                6 GPUs
+              </div>
+              {frame.activePool === 'decode' && (
+                <div className="text-[9px] mt-1" style={{ color: 'var(--color-teal-text)' }}>
+                  ● serving
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Frame pills */}
+          <div className="flex gap-1 flex-wrap">
+            {LIFECYCLE_FRAMES.map((f, i) => (
+              <button
+                key={f.frame}
+                onClick={() => { setIsPlaying(false); setFrameIdx(i); }}
+                className="px-2 py-1 rounded text-[10px] font-mono cursor-pointer transition-all"
+                style={{
+                  background: i === frameIdx ? f.color : 'var(--color-surface-muted)',
+                  color: i === frameIdx ? 'white' : 'var(--color-text-muted)',
+                  border: `1px solid ${i === frameIdx ? f.color : 'var(--color-border-light)'}`,
+                }}
+              >
+                {f.frame}. {f.phase}
+              </button>
+            ))}
+          </div>
+
+          <AnimControls
+            isPlaying={isPlaying}
+            onPlayToggle={() => {
+              if (frameIdx >= maxIdx) setFrameIdx(0);
+              setIsPlaying(!isPlaying);
+            }}
+            value={frameIdx}
+            max={maxIdx}
+            onChange={(v) => { setIsPlaying(false); setFrameIdx(v); }}
+            label={`Frame ${frameIdx + 1}`}
+            labelMax={LIFECYCLE_FRAMES.length}
+          />
         </div>
       </Panel>
 
@@ -884,7 +1891,7 @@ function LifecyclePage() {
       </Panel>
 
       <Panel className="mt-4">
-        <PanelHeader>Born, moved, grows, persists, dies</PanelHeader>
+        <PanelHeader>Born, moved, grows, persists, dies — the roadmap for Act 2</PanelHeader>
         <div className="p-4 space-y-3 text-[13px] text-[var(--color-text-secondary)] leading-relaxed">
           <p>
             The cache is <strong className="text-[var(--color-text)]">born</strong> in prefill,{' '}
@@ -900,13 +1907,14 @@ function LifecyclePage() {
                 key={item.stop}
                 className="flex gap-3 items-start p-2.5 rounded-lg bg-[var(--color-surface-muted)] border border-[var(--color-border-light)]"
               >
-                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-[var(--color-primary-bg)] border border-[var(--color-primary)] text-[var(--color-primary-text)] text-xs font-medium flex items-center justify-center">
+                <span className="flex-shrink-0 w-8 h-8 rounded-full bg-[var(--color-primary-bg)] border border-[var(--color-primary)] text-[var(--color-primary-text)] text-[11px] font-bold flex items-center justify-center">
                   {item.stop}
                 </span>
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <div className="text-[13px] font-medium text-[var(--color-text)]">
                     {item.title}
                   </div>
+                  <div className="text-[11px] text-[var(--color-text-muted)]">{item.subtitle}</div>
                 </div>
               </div>
             ))}
@@ -917,6 +1925,9 @@ function LifecyclePage() {
   );
 }
 
+/* ================================================================
+   PAGE 9 — Summary + Bridge to Stop 13
+   ================================================================ */
 function SummaryPage() {
   return (
     <div>
@@ -947,27 +1958,133 @@ function SummaryPage() {
       </Panel>
 
       <Panel className="mt-4">
-        <PanelHeader>Bridge to Stop 13</PanelHeader>
+        <PanelHeader>Evolving diagram — Stop 12 version</PanelHeader>
+        <div className="p-4">
+          <div className="text-[12px] text-[var(--color-text-muted)] mb-3">
+            The 8 GPUs are now split into prefill and decode pools, connected by a NIXL/RDMA pipe.
+            The Smart Router sits between users and the prefill pool.
+          </div>
+
+          {/* Users */}
+          <div className="grid grid-cols-8 gap-1 mb-2">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div
+                key={i}
+                className="h-6 rounded text-[9px] font-mono flex items-center justify-center"
+                style={{ background: 'var(--color-surface-muted)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-light)' }}
+              >
+                U{i * 4 + 1}-{i * 4 + 4}
+              </div>
+            ))}
+          </div>
+
+          <div className="text-center text-[var(--color-text-muted)] my-1">↓</div>
+
+          {/* Smart router */}
+          <div
+            className="p-2 rounded-lg border-2 text-center"
+            style={{ borderColor: 'var(--color-amber)', background: 'var(--color-amber-bg)' }}
+          >
+            <div className="text-[10px] font-mono text-[var(--color-amber-text)]">Smart Router</div>
+          </div>
+
+          <div className="text-center text-[var(--color-text-muted)] my-1">↓</div>
+
+          {/* Pool row */}
+          <div className="grid grid-cols-2 gap-3">
+            {/* Prefill */}
+            <div
+              className="p-2 rounded-lg border-2"
+              style={{ borderColor: 'var(--color-primary)', background: 'var(--color-primary-bg)' }}
+            >
+              <div className="text-[10px] font-mono text-[var(--color-primary-text)] text-center mb-1">Prefill Pool (2 GPU, TP=2)</div>
+              <div className="grid grid-cols-2 gap-1">
+                {[0, 1].map((i) => (
+                  <div
+                    key={i}
+                    className="h-8 rounded text-[9px] flex items-center justify-center text-white font-mono"
+                    style={{ background: 'var(--color-primary)' }}
+                  >
+                    GPU {i}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Decode */}
+            <div
+              className="p-2 rounded-lg border-2"
+              style={{ borderColor: 'var(--color-teal)', background: 'var(--color-teal-bg)' }}
+            >
+              <div className="text-[10px] font-mono text-[var(--color-teal-text)] text-center mb-1">Decode Pool (6 GPU, DP=6)</div>
+              <div className="grid grid-cols-6 gap-1">
+                {[2, 3, 4, 5, 6, 7].map((i) => (
+                  <div
+                    key={i}
+                    className="h-8 rounded text-[9px] flex items-center justify-center text-white font-mono"
+                    style={{ background: 'var(--color-teal)' }}
+                  >
+                    G{i}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* NIXL pipe between */}
+          <div className="my-2 relative h-6 rounded overflow-hidden border border-[var(--color-blue)] bg-[var(--color-blue-bg)]">
+            <div className="absolute inset-0 flex items-center justify-center text-[10px] font-mono text-[var(--color-blue-text)]">
+              NIXL / RDMA pipe — KV cache transfers in flight
+            </div>
+            <div
+              className="absolute inset-y-0 left-0"
+              style={{
+                width: '100%',
+                background: 'linear-gradient(90deg, transparent, var(--color-blue) 50%, transparent)',
+                animation: 'slide 2s linear infinite',
+                opacity: 0.3,
+              }}
+            />
+          </div>
+        </div>
+      </Panel>
+
+      <Panel className="mt-4">
+        <PanelHeader>Bridge to Stop 13 — 2.5 GB swap math</PanelHeader>
         <div className="p-4 space-y-3 text-[13px] text-[var(--color-text-secondary)] leading-relaxed">
           <p>
-            The KV cache transfer between prefill and decode takes ~180 ms in our scenario.
-            But what happens when the Decode GPU&rsquo;s HBM fills up? With 5 users at 8K
-            tokens each (12.5 GB), plus User 17&rsquo;s 10.56 GB document cache, we&rsquo;re
-            using ~23 GB of the 45 GB available. Comfortable now &mdash; but add 10 more users,
-            or let conversations grow to 32K tokens, and we&rsquo;ll hit the memory wall again.
+            The KV cache transfer between prefill and decode takes ~180 ms in our scenario. But
+            what happens when the Decode GPU&rsquo;s HBM fills up? With 5 users at 8K tokens each
+            (12.5 GB), plus User 17&rsquo;s 10.56 GB document cache, we&rsquo;re using ~23 GB of
+            the 45 GB available. Comfortable now &mdash; but add 10 more users, or let
+            conversations grow to 32K tokens, and we&rsquo;ll hit the memory wall again.
           </p>
           <p>
             Stop 11 showed one answer: preempt or queue. But there&rsquo;s another option: move
             less-recently-used cache pages to cheaper, larger memory. An H100 server has{' '}
             <strong className="text-[var(--color-text)]">~2 TB of CPU DRAM</strong> alongside its
-            80 GB of HBM. At 200 GB/s PCIe bandwidth, swapping a 2.5 GB cache to DRAM takes{' '}
-            <strong className="text-[var(--color-text)]">~12.5 ms</strong>. That&rsquo;s slow
-            compared to HBM access (0.1 ms), but far better than recomputing the entire cache
-            from scratch (~100 ms of prefill).
+            80 GB of HBM.
           </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="p-3 rounded-lg bg-[var(--color-teal-bg)] border border-[var(--color-teal)] text-center">
+              <div className="text-[18px] font-bold text-[var(--color-teal-text)]">{BRIDGE_CALC.hbmAccessMs} ms</div>
+              <div className="text-[10px] text-[var(--color-text-muted)]">HBM access</div>
+            </div>
+            <div className="p-3 rounded-lg bg-[var(--color-amber-bg)] border border-[var(--color-amber)] text-center">
+              <div className="text-[18px] font-bold text-[var(--color-amber-text)]">{BRIDGE_CALC.swapTimeMs} ms</div>
+              <div className="text-[10px] text-[var(--color-text-muted)]">swap {BRIDGE_CALC.cacheGB} GB → DRAM @ {BRIDGE_CALC.pcieBandwidth}</div>
+            </div>
+            <div className="p-3 rounded-lg bg-[var(--color-red-bg)] border border-[var(--color-red)] text-center">
+              <div className="text-[18px] font-bold text-[var(--color-red-text)]">~{BRIDGE_CALC.recomputeMs} ms</div>
+              <div className="text-[10px] text-[var(--color-text-muted)]">full recompute from prefill</div>
+            </div>
+          </div>
+
           <p>
-            This multi-tier approach &mdash; HBM for hot caches, DRAM for warm, SSD for cold,
-            networked storage for frozen &mdash; is the subject of{' '}
+            <strong className="text-[var(--color-text)]">Swapping is ~8&times; faster than
+            recomputing.</strong> This multi-tier approach &mdash; HBM for hot caches, DRAM for
+            warm, SSD for cold, networked storage for frozen &mdash; is the subject of{' '}
             <strong className="text-[var(--color-text)]">Stop 13</strong>.
           </p>
         </div>
@@ -981,16 +2098,15 @@ function SummaryPage() {
   );
 }
 
-// --- Main Component ---
-
+/* ================================================================
+   MAIN COMPONENT
+   ================================================================ */
 export default function SplittingWork() {
   const [pageIndex, setPageIndex] = useState(0);
-  const isDark = useStore((s) => s.darkMode);
 
   const page = PAGES[pageIndex];
   const narration = NARRATIONS[page.id] || '';
 
-  // Page navigation
   const goToPage = useCallback((idx) => {
     setPageIndex(idx);
   }, []);
@@ -1003,12 +2119,10 @@ export default function SplittingWork() {
     goToPage(Math.min(PAGES.length - 1, pageIndex + 1));
   }, [pageIndex, goToPage]);
 
-  // Keyboard: PageDown/PageUp or [ ] for pages
   useEffect(() => {
     function handleKey(e) {
       const tag = e.target.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-
       if (e.key === 'PageDown' || e.key === ']') {
         e.preventDefault();
         nextPage();
@@ -1023,7 +2137,7 @@ export default function SplittingWork() {
 
   return (
     <div>
-      {/* Narration — always at top */}
+      {/* Narration — passed through dangerouslySetInnerHTML directly, no escaping */}
       <div
         className="text-[13px] text-[var(--color-text-secondary)] leading-relaxed
                     px-4 py-3 bg-[var(--color-surface-muted)] rounded-lg
@@ -1033,18 +2147,17 @@ export default function SplittingWork() {
 
       {/* Page content */}
       <div className="min-h-[200px]">
-        {page.id === 'one-gpu' && <OneGpuPage />}
-        {page.id === 'data-parallel' && <DataParallelPage />}
-        {page.id === 'tensor-parallel' && <TensorParallelPage />}
+        {page.id === 'one-gpu'           && <OneGpuPage />}
+        {page.id === 'data-parallel'     && <DataParallelPage />}
+        {page.id === 'tensor-parallel'   && <TensorParallelPage />}
         {page.id === 'pipeline-parallel' && <PipelineParallelPage />}
-        {page.id === 'choosing' && <ChoosingPage />}
-        {page.id === 'disaggregated' && <DisaggregatedPage />}
-        {page.id === 'dynamo' && <DynamoPage />}
-        {page.id === 'lifecycle' && <LifecyclePage />}
-        {page.id === 'summary' && <SummaryPage />}
+        {page.id === 'choosing'          && <ChoosingPage />}
+        {page.id === 'disaggregated'     && <DisaggregatedPage />}
+        {page.id === 'dynamo'            && <DynamoPage />}
+        {page.id === 'lifecycle'         && <LifecyclePage />}
+        {page.id === 'summary'           && <SummaryPage />}
       </div>
 
-      {/* Page navigation — always at bottom */}
       <PageNav
         pageIndex={pageIndex}
         totalPages={PAGES.length}
@@ -1053,7 +2166,6 @@ export default function SplittingWork() {
         pageLabel={`Page ${pageIndex + 1} of ${PAGES.length}: ${page.label}`}
       />
 
-      {/* Keyboard hint */}
       <div className="text-center mt-3 mb-2 text-[10px] text-[var(--color-text-muted)]">
         PageDown / PageUp to turn pages
       </div>

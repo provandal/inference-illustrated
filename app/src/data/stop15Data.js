@@ -270,6 +270,159 @@ export const FABRIC_TRAFFIC = [
   { type: 'Health checks / control plane',   protocol: 'TCP/IP',                             pattern: 'Continuous, tiny',                latencySensitivity: 'Low',                        bandwidth: 'Negligible' },
 ];
 
+// Page 1: Interactive protocol rings (concentric distance rings)
+export const PROTOCOL_RINGS = [
+  {
+    id: 'nvlink',
+    label: 'NVLink 6',
+    bandwidth: '3.6 TB/s per GPU',
+    latency: 'ns',
+    distance: 'Within scale-up domain',
+    color: 'var(--color-primary)',
+    bgColor: 'var(--color-primary-bg)',
+    ringSize: 110, // center
+    description: 'Intra-domain GPU-to-GPU. Memory-semantic speed. NVSwitch all-to-all fabric.',
+  },
+  {
+    id: 'cxl',
+    label: 'CXL 2.0',
+    bandwidth: '64 GB/s',
+    latency: '<100 ns',
+    distance: 'Intra-rack',
+    color: 'var(--color-teal)',
+    bgColor: 'var(--color-teal-bg)',
+    ringSize: 170,
+    description: 'Load/store semantics to pooled DRAM. CPU or GPU via PCIe. Rack-level reach.',
+  },
+  {
+    id: 'rdma',
+    label: 'RDMA (IB/RoCEv2)',
+    bandwidth: '50 GB/s',
+    latency: '1\u201310 \u00b5s',
+    distance: 'Inter-domain, inter-pod',
+    color: 'var(--color-blue)',
+    bgColor: 'var(--color-blue-bg)',
+    ringSize: 240,
+    description: 'Node-to-node GPU HBM transfers via GPUDirect. Spectrum-X or Quantum-X800.',
+  },
+  {
+    id: 'nvme',
+    label: 'NVMe/RoCE',
+    bandwidth: '14\u2013100+ GB/s',
+    latency: '10\u2013100 \u00b5s',
+    distance: 'Multi-rack',
+    color: 'var(--color-text-muted)',
+    bgColor: 'var(--color-surface-muted)',
+    ringSize: 320,
+    description: 'Reach to remote flash tiers. ICMS, G3.5, G4 storage access over RDMA.',
+  },
+];
+
+// Page 3: RDMA animation frames (Prefill GPU -> Decode GPU via GPUDirect)
+export const RDMA_ANIMATION_STEPS = [
+  { id: 'prefill-hbm',  label: 'Prefill GPU HBM',  sub: 'KV blocks committed', color: 'var(--color-primary)' },
+  { id: 'gpudirect-tx', label: 'GPUDirect RDMA',    sub: 'NIC reads HBM, no CPU', color: 'var(--color-text)' },
+  { id: 'nic-tx',       label: 'ConnectX NIC',       sub: 'RDMA WRITE posted', color: 'var(--color-blue)' },
+  { id: 'fabric',       label: 'Fabric',             sub: 'IB or Ethernet (Spectrum-X)', color: 'var(--color-text-muted)' },
+  { id: 'nic-rx',       label: 'ConnectX NIC',       sub: 'RDMA WRITE received', color: 'var(--color-blue)' },
+  { id: 'gpudirect-rx', label: 'GPUDirect RDMA',    sub: 'NIC writes HBM, no CPU', color: 'var(--color-text)' },
+  { id: 'decode-hbm',   label: 'Decode GPU HBM',     sub: 'Cache ready for decode', color: 'var(--color-teal)' },
+];
+
+// Page 6: Complete data path animation (8 steps, lifecycle)
+export const COMPLETE_PATH_FRAMES = [
+  {
+    step: 1,
+    title: 'Prefill (intra-node)',
+    from: 'Embedding',
+    to: 'Prefill GPU HBM',
+    protocol: 'Internal to GPU',
+    latency: '0 (compute)',
+    color: 'var(--color-primary)',
+    narrative: 'User 17\u2019s 28K-token prompt is tokenized, embedded, and processed by the prefill GPU. The KV cache materializes directly in HBM. No network involved.',
+  },
+  {
+    step: 2,
+    title: 'P/D transfer',
+    from: 'Prefill GPU HBM',
+    to: 'Decode GPU HBM',
+    protocol: 'RDMA (RoCEv2) via GPUDirect',
+    latency: '~90 ms',
+    color: 'var(--color-blue)',
+    narrative: '4.48 GB of FP8 KV cache flows from prefill node to decode node across Spectrum-X. NIC-to-NIC with GPUDirect RDMA \u2014 zero CPU involvement.',
+  },
+  {
+    step: 3,
+    title: 'Active decode',
+    from: 'Decode GPU HBM',
+    to: 'Decode GPU HBM',
+    protocol: 'Internal to GPU',
+    latency: 'ongoing',
+    color: 'var(--color-teal)',
+    narrative: 'The decode GPU reads the full 4.48 GB on every decode step and appends a few KB per new token. All local to HBM.',
+  },
+  {
+    step: 4,
+    title: 'Demotion to DRAM',
+    from: 'Decode GPU HBM',
+    to: 'CPU DRAM (G2)',
+    protocol: 'PCIe Gen5 DMA',
+    latency: '~70 ms',
+    color: 'var(--color-amber)',
+    narrative: 'User 17 pauses. KVBM demotes the cache to host DRAM across PCIe Gen5. Still in the same node \u2014 no network.',
+  },
+  {
+    step: 5,
+    title: 'Promotion to HBM',
+    from: 'CPU DRAM (G2)',
+    to: 'Decode GPU HBM',
+    protocol: 'PCIe Gen5 DMA',
+    latency: '~70 ms',
+    color: 'var(--color-amber)',
+    narrative: 'User 17 returns within minutes. KVBM promotes the cache back to HBM. Decode resumes instantly \u2014 no recomputation.',
+  },
+  {
+    step: 6,
+    title: 'Demotion to ICMS',
+    from: 'CPU DRAM',
+    to: 'ICMS flash (G3.5)',
+    protocol: 'NVMe/RoCE',
+    latency: '~90 ms',
+    color: 'var(--color-blue)',
+    narrative: 'Extended idle. KVBM evicts to ICMS across Spectrum-X. BlueField-4 DPU writes the aggregated chunks to remote NVMe.',
+  },
+  {
+    step: 7,
+    title: 'Promotion from ICMS',
+    from: 'ICMS flash (G3.5)',
+    to: 'Decode GPU HBM',
+    protocol: 'NVMe/RoCE \u2192 GPUDirect',
+    latency: '~90\u2013100 ms',
+    color: 'var(--color-blue)',
+    narrative: 'Next day, User 17 resumes. ICMS streams the cache chunks back via NVMe/RoCE, GPUDirect writes directly to HBM. ~90 ms vs. ~2,000 ms for recomputation.',
+  },
+  {
+    step: 8,
+    title: 'Archive to G4',
+    from: 'ICMS',
+    to: 'Network storage (VAST/WEKA/DDN)',
+    protocol: 'RDMA or NVMe/RoCE or S3',
+    latency: 'Async',
+    color: 'var(--color-text-muted)',
+    narrative: 'Conversation closes. The cache tiers out to deep network storage asynchronously. No user latency \u2014 this is background.',
+  },
+];
+
+// Page 7: Traffic contention visual data
+export const TRAFFIC_VISUAL = [
+  { id: 'tp',        label: 'TP all-reduce',       color: 'var(--color-red)',       priority: 'critical',  size: 'small', freq: 'very high', note: 'TP>1 only' },
+  { id: 'pd',        label: 'P/D KV transfer',     color: 'var(--color-blue)',      priority: 'high',      size: 'huge',  freq: 'bursty',    note: 'Dominates bandwidth' },
+  { id: 'promo',     label: 'Cache promotion',     color: 'var(--color-teal)',       priority: 'high',      size: 'huge',  freq: 'bursty',    note: 'NVMe/RoCE' },
+  { id: 'demote',    label: 'Cache demotion',      color: 'var(--color-amber)',     priority: 'low',       size: 'huge',  freq: 'occasional', note: 'Background' },
+  { id: 'weights',   label: 'Model weights',       color: 'var(--color-amber)',     priority: 'low',       size: 'massive', freq: 'rare',    note: 'Startup only' },
+  { id: 'control',   label: 'Control / health',     color: 'var(--color-text-muted)', priority: 'low',     size: 'tiny',  freq: 'continuous', note: 'Negligible BW' },
+];
+
 // Page 8: Summary table
 export const SUMMARY_TABLE = [
   { protocol: 'NVLink',            distance: 'Intra-domain',  bandwidth: '3.6 TB/s per GPU (NVLink 6)', latency: 'ns',         role: 'TP all-reduce, intra-domain P/D',  maturity: 'Production' },

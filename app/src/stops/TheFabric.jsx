@@ -1,17 +1,21 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import {
   PAGES,
   PROTOCOL_OVERVIEW,
+  PROTOCOL_RINGS,
   NVLINK_DOMAINS,
   RDMA_DATA_PATH,
+  RDMA_ANIMATION_STEPS,
   IB_VS_ROCE,
   CXL_VS_RDMA,
   CXL_PRODUCTION_RESULTS,
   NVME_TRANSPORTS,
   ICMS_DATA_PATH,
   DATA_PATH_STEPS,
+  COMPLETE_PATH_FRAMES,
   TIER_PROTOCOL_SUMMARY,
   FABRIC_TRAFFIC,
+  TRAFFIC_VISUAL,
   SUMMARY_TABLE,
 } from '../data/stop15Data';
 import { Panel, PanelHeader, InfoBox, Callout } from '../components/ui';
@@ -49,6 +53,10 @@ const NARRATIONS = {
 // --- Page Content Components ---
 
 function FourProtocolsPage() {
+  const [hoveredRing, setHoveredRing] = useState(null);
+  const rings = PROTOCOL_RINGS; // NVLink (center) -> NVMe/RoCE (outer)
+  const outer = rings[rings.length - 1].ringSize;
+
   return (
     <div>
       <Panel>
@@ -86,68 +94,107 @@ function FourProtocolsPage() {
 
       <Callout
         type="note"
-        message="Each protocol occupies a distinct niche. There is no single &ldquo;best&rdquo; fabric &mdash; the right choice depends on the distance the data travels and the latency budget for that transfer. Let&rsquo;s examine each one in detail."
+        message="Each protocol occupies a distinct niche. There is no single &ldquo;best&rdquo; fabric &mdash; the right choice depends on the distance the data travels and the latency budget for that transfer. Hover any ring below to highlight a protocol family."
       />
 
-      {/* Concentric distance rings */}
+      {/* Concentric distance rings — interactive */}
       <Panel className="mt-4">
-        <PanelHeader>Protocol families by distance</PanelHeader>
-        <div className="p-4 flex justify-center">
-          <div className="relative" style={{ width: 340, height: 340 }}>
-            {/* Outer ring — NVMe/RoCE */}
-            <div
-              className="absolute rounded-full border-2 border-dashed flex items-start justify-center pt-3"
-              style={{
-                inset: 0,
-                borderColor: 'var(--color-text-muted)',
-                background: 'var(--color-surface-muted)',
-              }}
-            >
-              <span className="text-[10px] font-medium text-[var(--color-text-muted)]">
-                NVMe/RoCE &middot; 14&ndash;100+ GB/s &middot; 10&ndash;100 &micro;s
-              </span>
-            </div>
-            {/* Middle ring — RDMA */}
-            <div
-              className="absolute rounded-full border-2 flex items-start justify-center pt-3"
-              style={{
-                inset: 40,
-                borderColor: 'var(--color-blue)',
-                background: 'var(--color-surface)',
-              }}
-            >
-              <span className="text-[10px] font-medium" style={{ color: 'var(--color-blue)' }}>
-                RDMA (IB/RoCEv2) &middot; 50 GB/s &middot; 1&ndash;10 &micro;s
-              </span>
-            </div>
-            {/* Inner ring — CXL */}
-            <div
-              className="absolute rounded-full border-2 border-dashed flex items-start justify-center pt-3"
-              style={{
-                inset: 80,
-                borderColor: 'var(--color-teal)',
-                background: 'var(--color-surface-muted)',
-              }}
-            >
-              <span className="text-[10px] font-medium" style={{ color: 'var(--color-teal)' }}>
-                CXL &middot; 64 GB/s &middot; &lt;100 ns
-              </span>
-            </div>
-            {/* Center — NVLink */}
-            <div
-              className="absolute rounded-full border-2 flex items-center justify-center text-center"
-              style={{
-                inset: 120,
-                borderColor: 'var(--color-primary)',
-                background: 'var(--color-primary-bg)',
-              }}
-            >
-              <div>
-                <div className="text-[11px] font-bold" style={{ color: 'var(--color-primary)' }}>NVLink 6</div>
-                <div className="text-[10px]" style={{ color: 'var(--color-primary)' }}>3.6 TB/s</div>
-                <div className="text-[9px]" style={{ color: 'var(--color-primary)' }}>ns latency</div>
+        <PanelHeader>Protocol families by distance (hover to highlight)</PanelHeader>
+        <div className="p-4 flex flex-col md:flex-row items-center justify-center gap-6">
+          <div className="relative" style={{ width: outer, height: outer }}>
+            {/* Render outermost first so inner rings sit on top */}
+            {[...rings].reverse().map((r) => {
+              const isHover = hoveredRing === r.id;
+              const isDim = hoveredRing !== null && !isHover;
+              const offset = (outer - r.ringSize) / 2;
+              const isCenter = r.id === 'nvlink';
+              return (
+                <div
+                  key={r.id}
+                  onMouseEnter={() => setHoveredRing(r.id)}
+                  onMouseLeave={() => setHoveredRing(null)}
+                  onClick={() => setHoveredRing(hoveredRing === r.id ? null : r.id)}
+                  className="absolute rounded-full flex items-start justify-center cursor-pointer select-none"
+                  style={{
+                    left: offset,
+                    top: offset,
+                    width: r.ringSize,
+                    height: r.ringSize,
+                    border: `2px ${isCenter ? 'solid' : 'dashed'} ${r.color}`,
+                    background: isCenter || isHover ? r.bgColor : 'var(--color-surface)',
+                    opacity: isDim ? 0.35 : 1,
+                    transform: isHover ? 'scale(1.02)' : 'scale(1)',
+                    boxShadow: isHover ? `0 0 0 2px ${r.color}` : 'none',
+                    transition: 'opacity 250ms ease, transform 250ms ease, box-shadow 250ms ease, background 250ms ease',
+                    paddingTop: isCenter ? 0 : 6,
+                  }}
+                >
+                  {isCenter ? (
+                    <div className="w-full h-full flex flex-col items-center justify-center text-center">
+                      <div className="text-[11px] font-bold" style={{ color: r.color }}>
+                        {r.label}
+                      </div>
+                      <div className="text-[10px]" style={{ color: r.color }}>
+                        {r.bandwidth}
+                      </div>
+                      <div className="text-[9px]" style={{ color: r.color }}>
+                        {r.latency}
+                      </div>
+                    </div>
+                  ) : (
+                    <span
+                      className="text-[10px] font-medium px-2 py-0.5 rounded"
+                      style={{
+                        color: r.color,
+                        background: 'var(--color-surface)',
+                      }}
+                    >
+                      {r.label} &middot; {r.bandwidth} &middot; {r.latency}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Side panel: details about hovered ring */}
+          <div
+            className="w-full md:w-60 rounded-lg border p-3 text-[12px] leading-relaxed"
+            style={{
+              borderColor: hoveredRing
+                ? rings.find((r) => r.id === hoveredRing).color
+                : 'var(--color-border-light)',
+              background: hoveredRing
+                ? rings.find((r) => r.id === hoveredRing).bgColor
+                : 'var(--color-surface-muted)',
+              minHeight: 140,
+              transition: 'border-color 250ms ease, background 250ms ease',
+            }}
+          >
+            {hoveredRing ? (
+              (() => {
+                const r = rings.find((rr) => rr.id === hoveredRing);
+                return (
+                  <div>
+                    <div className="text-[13px] font-bold mb-1" style={{ color: r.color }}>
+                      {r.label}
+                    </div>
+                    <div className="text-[var(--color-text-secondary)] mb-2">
+                      {r.description}
+                    </div>
+                    <div className="space-y-0.5 text-[11px] text-[var(--color-text-secondary)]">
+                      <div><span className="text-[var(--color-text-muted)]">Bandwidth:</span> <span className="font-mono">{r.bandwidth}</span></div>
+                      <div><span className="text-[var(--color-text-muted)]">Latency:</span> <span className="font-mono">{r.latency}</span></div>
+                      <div><span className="text-[var(--color-text-muted)]">Reach:</span> {r.distance}</div>
+                    </div>
+                  </div>
+                );
+              })()
+            ) : (
+              <div className="text-[var(--color-text-muted)] text-center pt-8">
+                Hover a ring to see its bandwidth, latency, and reach.
               </div>
-            </div>
+            )}
           </div>
         </div>
         <div className="px-4 pb-3 text-[11px] text-[var(--color-text-muted)] text-center">
@@ -217,25 +264,67 @@ function NvlinkDomainsPage() {
         <PanelHeader>Scale-up domain with external connectivity</PanelHeader>
         <div className="p-4">
           <div
-            className="rounded-lg border-2 p-4 space-y-3"
+            className="rounded-lg border-2 p-4"
             style={{ borderColor: 'var(--color-primary)', background: 'var(--color-primary-bg)' }}
           >
-            <div className="text-[11px] font-bold text-center" style={{ color: 'var(--color-primary)' }}>
-              NVLink Domain (NVL72)
+            <div className="text-[11px] font-bold text-center mb-2" style={{ color: 'var(--color-primary)' }}>
+              NVLink Domain (NVL72 shown) &mdash; all-to-all NVSwitch 6 fabric
             </div>
-            <div className="text-[12px] text-center text-[var(--color-text-secondary)]">
-              GPU 0 &harr; GPU 1 &harr; &hellip; &harr; GPU 71
+
+            {/* GPU grid — 8 wide x 9 rows = 72 */}
+            <div className="flex flex-col items-center gap-1 my-2">
+              {Array.from({ length: 9 }).map((_, row) => (
+                <div key={row} className="flex gap-1">
+                  {Array.from({ length: 8 }).map((_, col) => {
+                    const idx = row * 8 + col;
+                    return (
+                      <div
+                        key={col}
+                        className="rounded text-[8px] font-mono flex items-center justify-center"
+                        style={{
+                          width: 28,
+                          height: 18,
+                          background: 'var(--color-surface)',
+                          border: '1px solid var(--color-primary)',
+                          color: 'var(--color-primary)',
+                        }}
+                      >
+                        G{idx}
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
             </div>
-            <div className="text-[11px] text-center text-[var(--color-text-muted)]">
-              NVSwitch 6 fabric (all-to-all, 3.6 TB/s per GPU)
+
+            <div className="text-[10px] text-center text-[var(--color-text-muted)] mt-2">
+              3.6 TB/s per GPU &middot; 260 TB/s aggregate (Vera Rubin NVL72) &middot; nanosecond latency
             </div>
-            <div className="flex justify-center gap-6 text-[10px] text-[var(--color-text-muted)] pt-2 border-t border-[var(--color-border-light)]">
-              <span>ConnectX-9</span>
-              <span>ConnectX-9</span>
-              <span>BlueField-4</span>
+
+            {/* External NIC/DPU row */}
+            <div className="flex justify-center gap-3 text-[10px] font-medium pt-3 mt-3 border-t border-[var(--color-border-light)]">
+              <div
+                className="px-2 py-1 rounded border"
+                style={{ borderColor: 'var(--color-blue)', color: 'var(--color-blue)', background: 'var(--color-surface)' }}
+              >
+                ConnectX-9 SuperNIC
+              </div>
+              <div
+                className="px-2 py-1 rounded border"
+                style={{ borderColor: 'var(--color-blue)', color: 'var(--color-blue)', background: 'var(--color-surface)' }}
+              >
+                ConnectX-9 SuperNIC
+              </div>
+              <div
+                className="px-2 py-1 rounded border"
+                style={{ borderColor: 'var(--color-teal)', color: 'var(--color-teal)', background: 'var(--color-surface)' }}
+              >
+                BlueField-4 DPU
+              </div>
             </div>
           </div>
-          <div className="flex justify-center gap-8 mt-2 text-[11px] font-medium">
+
+          <div className="flex justify-center gap-8 mt-3 text-[11px] font-medium">
             <div className="text-center">
               <div className="text-[var(--color-text-muted)]">&darr;</div>
               <div style={{ color: 'var(--color-blue)' }}>Spectrum-X</div>
@@ -248,7 +337,7 @@ function NvlinkDomainsPage() {
             </div>
             <div className="text-center">
               <div className="text-[var(--color-text-muted)]">&darr;</div>
-              <div style={{ color: 'var(--color-teal)' }}>ICMS/CMX</div>
+              <div style={{ color: 'var(--color-teal)' }}>ICMS / CMX</div>
               <div className="text-[10px] text-[var(--color-text-muted)]">(context memory)</div>
             </div>
           </div>
@@ -276,6 +365,33 @@ function NvlinkDomainsPage() {
 }
 
 function RdmaPage() {
+  const maxStep = RDMA_ANIMATION_STEPS.length - 1;
+  const [activeIdx, setActiveIdx] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const intervalRef = useRef(null);
+
+  useEffect(() => {
+    if (isPlaying) {
+      intervalRef.current = setInterval(() => {
+        setActiveIdx((prev) => {
+          if (prev >= maxStep) {
+            setIsPlaying(false);
+            return maxStep;
+          }
+          return prev + 1;
+        });
+      }, 700);
+    }
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, [isPlaying, maxStep]);
+
+  function handlePlay() {
+    if (activeIdx >= maxStep) setActiveIdx(0);
+    setIsPlaying(true);
+  }
+
   return (
     <div>
       <Panel>
@@ -292,37 +408,89 @@ function RdmaPage() {
         </div>
       </Panel>
 
-      {/* RDMA data path visual */}
+      {/* RDMA data path visual — animated */}
       <Panel className="mt-4">
-        <PanelHeader>GPUDirect RDMA data path (zero CPU copies)</PanelHeader>
+        <PanelHeader>GPUDirect RDMA data path &mdash; animated (zero CPU copies)</PanelHeader>
         <div className="p-4">
           <div className="flex items-center justify-between gap-1 text-[10px] font-medium text-center flex-wrap">
-            <div className="px-2 py-1.5 rounded border border-[var(--color-primary)] bg-[var(--color-primary-bg)]" style={{ color: 'var(--color-primary)' }}>
-              Prefill<br />GPU HBM
-            </div>
-            <div className="text-[var(--color-text-muted)]">&rarr;</div>
-            <div className="px-2 py-1.5 rounded border border-[var(--color-border)]">
-              GPUDirect<br /><span className="text-[9px] text-[var(--color-text-muted)]">(no CPU)</span>
-            </div>
-            <div className="text-[var(--color-text-muted)]">&rarr;</div>
-            <div className="px-2 py-1.5 rounded border border-[var(--color-blue)]" style={{ color: 'var(--color-blue)' }}>
-              ConnectX<br />NIC
-            </div>
-            <div className="text-[var(--color-text-muted)]">&rarr;</div>
-            <div className="px-2 py-1.5 rounded bg-[var(--color-surface-muted)] border border-[var(--color-border)]">
-              Fabric<br />(IB/Eth)
-            </div>
-            <div className="text-[var(--color-text-muted)]">&rarr;</div>
-            <div className="px-2 py-1.5 rounded border border-[var(--color-blue)]" style={{ color: 'var(--color-blue)' }}>
-              ConnectX<br />NIC
-            </div>
-            <div className="text-[var(--color-text-muted)]">&rarr;</div>
-            <div className="px-2 py-1.5 rounded border border-[var(--color-border)]">
-              GPUDirect<br /><span className="text-[9px] text-[var(--color-text-muted)]">(no CPU)</span>
-            </div>
-            <div className="text-[var(--color-text-muted)]">&rarr;</div>
-            <div className="px-2 py-1.5 rounded border border-[var(--color-teal)] bg-[var(--color-teal-bg)]" style={{ color: 'var(--color-teal)' }}>
-              Decode<br />GPU HBM
+            {RDMA_ANIMATION_STEPS.map((step, i) => {
+              const isActive = i === activeIdx;
+              const isPassed = i < activeIdx;
+              return (
+                <div key={step.id} className="contents">
+                  <div
+                    onClick={() => { setIsPlaying(false); setActiveIdx(i); }}
+                    className="px-2 py-1.5 rounded border cursor-pointer"
+                    style={{
+                      borderColor: isActive || isPassed ? step.color : 'var(--color-border-light)',
+                      background: isActive
+                        ? step.color
+                        : isPassed
+                          ? 'var(--color-surface-muted)'
+                          : 'var(--color-surface)',
+                      color: isActive ? '#ffffff' : isPassed ? step.color : 'var(--color-text-muted)',
+                      opacity: isActive ? 1 : isPassed ? 0.85 : 0.5,
+                      transform: isActive ? 'scale(1.08)' : 'scale(1)',
+                      boxShadow: isActive ? `0 0 0 3px ${step.color}33` : 'none',
+                      transition: 'all 350ms ease',
+                      minWidth: 72,
+                    }}
+                  >
+                    <div>{step.label}</div>
+                    <div className="text-[9px] opacity-80 font-normal">{step.sub}</div>
+                  </div>
+                  {i < RDMA_ANIMATION_STEPS.length - 1 && (
+                    <div
+                      className="text-base"
+                      style={{
+                        color: i < activeIdx ? RDMA_ANIMATION_STEPS[i + 1].color : 'var(--color-text-muted)',
+                        opacity: i < activeIdx ? 1 : 0.4,
+                        transition: 'opacity 350ms ease, color 350ms ease',
+                      }}
+                    >
+                      &rarr;
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Active step narrative */}
+          <div
+            className="mt-4 p-3 rounded border text-[12px] leading-relaxed"
+            style={{
+              borderColor: RDMA_ANIMATION_STEPS[activeIdx].color,
+              background: 'var(--color-surface-muted)',
+              transition: 'border-color 350ms ease',
+            }}
+          >
+            <strong style={{ color: RDMA_ANIMATION_STEPS[activeIdx].color }}>
+              Step {activeIdx + 1} / {RDMA_ANIMATION_STEPS.length}: {RDMA_ANIMATION_STEPS[activeIdx].label}
+            </strong>
+            <span className="text-[var(--color-text-secondary)]"> &mdash; {RDMA_ANIMATION_STEPS[activeIdx].sub}.</span>
+          </div>
+
+          {/* Controls */}
+          <div className="pt-3 mt-3 border-t border-[var(--color-border-light)]">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={isPlaying ? () => setIsPlaying(false) : handlePlay}
+                className="px-3 py-1 text-[11px] rounded border border-[var(--color-border)] hover:bg-[var(--color-surface-alt)] transition-colors cursor-pointer text-[var(--color-text-secondary)]"
+              >
+                {isPlaying ? 'Pause' : activeIdx >= maxStep ? 'Replay' : 'Play'}
+              </button>
+              <input
+                type="range"
+                min={0}
+                max={maxStep}
+                value={activeIdx}
+                onChange={(e) => { setIsPlaying(false); setActiveIdx(Number(e.target.value)); }}
+                className="anim-scrubber flex-1"
+              />
+              <span className="text-[11px] font-mono text-[var(--color-text-muted)] min-w-[70px] text-right">
+                {activeIdx + 1} / {RDMA_ANIMATION_STEPS.length}
+              </span>
             </div>
           </div>
         </div>
@@ -638,10 +806,194 @@ function NvmePage() {
 }
 
 function CompletePathPage() {
+  const maxStep = COMPLETE_PATH_FRAMES.length - 1;
+  const [frameIdx, setFrameIdx] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const intervalRef = useRef(null);
+
+  useEffect(() => {
+    if (isPlaying) {
+      intervalRef.current = setInterval(() => {
+        setFrameIdx((prev) => {
+          if (prev >= maxStep) {
+            setIsPlaying(false);
+            return maxStep;
+          }
+          return prev + 1;
+        });
+      }, 1400);
+    }
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, [isPlaying, maxStep]);
+
+  function handlePlay() {
+    if (frameIdx >= maxStep) setFrameIdx(0);
+    setIsPlaying(true);
+  }
+
+  const active = COMPLETE_PATH_FRAMES[frameIdx];
+
+  // Tier rows showing where the cache currently lives
+  const TIERS = [
+    { id: 'prefill',  label: 'Prefill GPU HBM (G1)',    activeFor: [1] },
+    { id: 'decode',   label: 'Decode GPU HBM (G1)',      activeFor: [2, 3, 5, 7] },
+    { id: 'dram',     label: 'CPU DRAM (G2)',            activeFor: [4, 5, 6] },
+    { id: 'icms',     label: 'ICMS flash (G3.5)',        activeFor: [6, 7, 8] },
+    { id: 'g4',       label: 'Network storage (G4)',    activeFor: [8] },
+  ];
+
   return (
     <div>
+      {/* Step-by-step animation */}
       <Panel>
-        <PanelHeader>User 17&rsquo;s cache &mdash; complete lifecycle</PanelHeader>
+        <PanelHeader>User 17&rsquo;s cache &mdash; complete lifecycle animation</PanelHeader>
+        <div className="p-4">
+          {/* Tier rail showing where the data lives right now */}
+          <div className="space-y-2 mb-4">
+            {TIERS.map((tier) => {
+              const isActive = tier.activeFor.includes(active.step);
+              return (
+                <div
+                  key={tier.id}
+                  className="flex items-center gap-3 rounded border p-2 text-[12px]"
+                  style={{
+                    borderColor: isActive ? active.color : 'var(--color-border-light)',
+                    background: isActive ? 'var(--color-surface-muted)' : 'var(--color-surface)',
+                    transition: 'border-color 500ms ease, background 500ms ease',
+                  }}
+                >
+                  <div
+                    className="flex-shrink-0 w-2 h-8 rounded"
+                    style={{
+                      background: isActive ? active.color : 'var(--color-border-light)',
+                      transition: 'background 500ms ease',
+                    }}
+                  />
+                  <div className="flex-1">
+                    <div
+                      className="font-medium"
+                      style={{
+                        color: isActive ? 'var(--color-text)' : 'var(--color-text-muted)',
+                        transition: 'color 500ms ease',
+                      }}
+                    >
+                      {tier.label}
+                    </div>
+                  </div>
+                  {isActive && (
+                    <div
+                      className="text-[10px] font-mono px-2 py-0.5 rounded"
+                      style={{
+                        background: active.color,
+                        color: '#ffffff',
+                      }}
+                    >
+                      cache resident
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Active step card */}
+          <div
+            className="rounded-lg border-2 p-4"
+            style={{
+              borderColor: active.color,
+              background: 'var(--color-surface-muted)',
+              transition: 'border-color 500ms ease',
+            }}
+          >
+            <div className="flex items-center gap-3 mb-2">
+              <div
+                className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-[13px] font-bold text-white"
+                style={{ background: active.color }}
+              >
+                {active.step}
+              </div>
+              <div className="text-[15px] font-bold text-[var(--color-text)]">
+                {active.title}
+              </div>
+            </div>
+            <div className="flex items-center gap-2 text-[12px] mb-2">
+              <span className="px-2 py-1 rounded font-mono" style={{ background: 'var(--color-surface)', color: active.color, border: `1px solid ${active.color}` }}>
+                {active.from}
+              </span>
+              <span className="text-[var(--color-text-muted)]">&rarr;</span>
+              <span className="px-2 py-1 rounded font-mono" style={{ background: 'var(--color-surface)', color: active.color, border: `1px solid ${active.color}` }}>
+                {active.to}
+              </span>
+            </div>
+            <div className="flex items-center gap-4 text-[11px] text-[var(--color-text-secondary)] mb-3">
+              <div>
+                <span className="text-[var(--color-text-muted)]">Protocol: </span>
+                <strong className="text-[var(--color-text)]">{active.protocol}</strong>
+              </div>
+              <div>
+                <span className="text-[var(--color-text-muted)]">Latency: </span>
+                <span className="font-mono text-[var(--color-text)]">{active.latency}</span>
+              </div>
+            </div>
+            <div className="text-[12px] leading-relaxed text-[var(--color-text-secondary)]">
+              {active.narrative}
+            </div>
+          </div>
+
+          {/* Step dot navigation */}
+          <div className="flex justify-between items-center mt-4 gap-1">
+            {COMPLETE_PATH_FRAMES.map((f, i) => {
+              const isActive = i === frameIdx;
+              const isPassed = i < frameIdx;
+              return (
+                <button
+                  key={f.step}
+                  onClick={() => { setIsPlaying(false); setFrameIdx(i); }}
+                  className="flex-1 rounded py-1.5 text-[10px] font-medium cursor-pointer"
+                  style={{
+                    background: isActive ? f.color : isPassed ? 'var(--color-surface-muted)' : 'var(--color-surface)',
+                    color: isActive ? '#ffffff' : isPassed ? f.color : 'var(--color-text-muted)',
+                    border: `1px solid ${isActive || isPassed ? f.color : 'var(--color-border-light)'}`,
+                    opacity: isActive ? 1 : isPassed ? 0.85 : 0.5,
+                    transition: 'all 350ms ease',
+                  }}
+                >
+                  {f.step}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Controls */}
+          <div className="pt-3 mt-3 border-t border-[var(--color-border-light)]">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={isPlaying ? () => setIsPlaying(false) : handlePlay}
+                className="px-3 py-1 text-[11px] rounded border border-[var(--color-border)] hover:bg-[var(--color-surface-alt)] transition-colors cursor-pointer text-[var(--color-text-secondary)]"
+              >
+                {isPlaying ? 'Pause' : frameIdx >= maxStep ? 'Replay' : 'Play'}
+              </button>
+              <input
+                type="range"
+                min={0}
+                max={maxStep}
+                value={frameIdx}
+                onChange={(e) => { setIsPlaying(false); setFrameIdx(Number(e.target.value)); }}
+                className="anim-scrubber flex-1"
+              />
+              <span className="text-[11px] font-mono text-[var(--color-text-muted)] min-w-[80px] text-right">
+                Step {frameIdx + 1} / {COMPLETE_PATH_FRAMES.length}
+              </span>
+            </div>
+          </div>
+        </div>
+      </Panel>
+
+      {/* Full step detail table */}
+      <Panel className="mt-4">
+        <PanelHeader>All 8 steps in detail</PanelHeader>
         <div className="px-4 py-3 space-y-3">
           {DATA_PATH_STEPS.map((s) => (
             <div
@@ -720,9 +1072,72 @@ function CompletePathPage() {
 }
 
 function FabricContentionPage() {
+  // Competing traffic visual: each lane shows a flow on the wire
+  const sizeToWidth = { tiny: 6, small: 14, huge: 60, massive: 88 };
+
   return (
     <div>
+      {/* Traffic contention visual: shared pipe */}
       <Panel>
+        <PanelHeader>What competes on the wire</PanelHeader>
+        <div className="p-4 space-y-2">
+          <div className="text-[11px] text-[var(--color-text-muted)] mb-2">
+            Every traffic type below shares the same physical fabric link. Width indicates relative burst size; the red TP lane is the latency-critical flow that large bursts can block.
+          </div>
+          {TRAFFIC_VISUAL.map((t) => {
+            const width = sizeToWidth[t.size] || 20;
+            return (
+              <div key={t.id} className="flex items-center gap-3">
+                <div
+                  className="text-[11px] font-medium min-w-[140px] text-right"
+                  style={{ color: t.color }}
+                >
+                  {t.label}
+                </div>
+                <div className="flex-1 h-5 rounded overflow-hidden border border-[var(--color-border-light)] bg-[var(--color-surface-muted)] relative">
+                  <div
+                    className="h-full rounded-r"
+                    style={{
+                      width: `${width}%`,
+                      background: t.color,
+                      opacity: t.priority === 'critical' ? 1 : 0.85,
+                      transition: 'width 400ms ease',
+                    }}
+                  />
+                  <div
+                    className="absolute inset-0 flex items-center px-2 text-[9px] font-mono"
+                    style={{ color: t.priority === 'critical' ? '#ffffff' : 'var(--color-text-secondary)' }}
+                  >
+                    {t.freq} &middot; {t.note}
+                  </div>
+                </div>
+                <div
+                  className="text-[10px] min-w-[70px] px-2 py-0.5 rounded text-center"
+                  style={{
+                    background: t.priority === 'critical'
+                      ? 'var(--color-red-bg)'
+                      : t.priority === 'high'
+                        ? 'var(--color-amber-bg)'
+                        : 'var(--color-surface-muted)',
+                    color: t.priority === 'critical'
+                      ? 'var(--color-red-text)'
+                      : t.priority === 'high'
+                        ? 'var(--color-amber-text)'
+                        : 'var(--color-text-muted)',
+                  }}
+                >
+                  {t.priority}
+                </div>
+              </div>
+            );
+          })}
+          <div className="mt-3 text-[11px] text-[var(--color-text-muted)] italic border-t border-[var(--color-border-light)] pt-2">
+            Head-of-line risk: the massive P/D and promotion bursts can delay the tiny, latency-critical TP all-reduce packets unless QoS classes, separate fabrics, or PFC/ECN flow control are configured.
+          </div>
+        </div>
+      </Panel>
+
+      <Panel className="mt-4">
         <PanelHeader>Traffic types on the inference fabric</PanelHeader>
         <div className="overflow-x-auto">
           <table className="w-full text-[13px]">
