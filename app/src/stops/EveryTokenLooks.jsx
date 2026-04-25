@@ -234,6 +234,37 @@ function SelfAttentionPage() {
         type="good"
         message='<strong>Self-attention replaces the chain with direct access.</strong> Instead of passing information through a bottleneck at every step, every word gets to examine every other word and decide for itself what matters.'
       />
+
+      <Panel className="mt-4">
+        <PanelHeader>How does the model know word order?</PanelHeader>
+        <InfoBox>
+          If every word attends to every other word simultaneously, how does the
+          model distinguish &ldquo;The server crashed&rdquo; from &ldquo;crashed
+          The server&rdquo;? The answer is{' '}
+          <strong>positional encoding</strong> &mdash; before entering the first
+          layer, each token&rsquo;s embedding is modified to include information
+          about its position in the sequence.
+        </InfoBox>
+        <InfoBox>
+          The original &ldquo;Attention Is All You Need&rdquo; paper used fixed
+          sinusoidal functions &mdash; mathematical waves at different frequencies
+          that give each position a unique signature. Modern models like Llama use
+          a learned technique called{' '}
+          <strong>RoPE (Rotary Position Embeddings)</strong>, which encodes relative
+          positions by rotating the Q and K vectors. This means the dot product
+          between Q and K naturally captures how far apart two tokens are, not just
+          what they contain.
+        </InfoBox>
+        <InfoBox>
+          Positional encoding is applied once (at the embedding stage) and carried
+          through all layers via residual connections. It&rsquo;s why the model can
+          distinguish &ldquo;the storage controller that the technician
+          replaced&rdquo; from a random shuffle of the same words. We don&rsquo;t
+          explore the mathematics of positional encoding in this course because it
+          doesn&rsquo;t affect the KV cache &mdash; but it&rsquo;s the mechanism
+          that makes word order visible to attention.
+        </InfoBox>
+      </Panel>
     </div>
   );
 }

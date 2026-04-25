@@ -78,6 +78,10 @@ function WhatYoullBuildPage() {
             </div>
           </div>
         </div>
+        <Callout
+          type="note"
+          message={'<strong>A note on scope.</strong> The title "Attention Is All You Need" refers to the landmark 2017 paper by Vaswani et al. that introduced the transformer. That paper describes a full encoder-decoder architecture designed for translation. Modern LLMs &mdash; GPT, Claude, Llama &mdash; use only the <strong>decoder</strong> half of that architecture. Act 1 covers the decoder-specific concepts because they are what drive the KV cache: self-attention with causal masking, Q/K/V persistence, multi-head attention, and autoregressive generation. The encoder side (bidirectional attention, cross-attention) is not covered because it doesn&rsquo;t apply to the models this course is about.'}
+        />
       </Panel>
 
       <Panel>
