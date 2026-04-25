@@ -486,12 +486,17 @@ export default function TelephoneProblem() {
 
       {/* Animation controls — below content, only on animation page */}
       {isAnimation && (
-        <AnimationControls
-          currentStep={animStep}
-          totalSteps={15}
-          onStepChange={setAnimStep}
-          stepLabel={`word ${animStep + 1} of 15: "${WORDS[animStep]}"`}
-        />
+        <>
+          <AnimationControls
+            currentStep={animStep}
+            totalSteps={15}
+            onStepChange={setAnimStep}
+            stepLabel={`word ${animStep + 1} of 15: "${WORDS[animStep]}"`}
+          />
+          <div className="text-center text-xs text-[var(--color-text-muted)] -mt-2 mb-2">
+            Use the controls above to step through the sentence word by word, or press Play to watch the hidden state evolve automatically.
+          </div>
+        </>
       )}
 
       {/* Page navigation — always at bottom */}
