@@ -230,7 +230,7 @@ function WorkedExamplePage() {
 
       <Callout
         type="note"
-        message='<strong>4 dimensions for clarity; real models use many more.</strong> Llama-3 uses 128 dimensions per head; other models may use 64, 96, or different values. The computation is identical regardless — multiply corresponding elements, sum the results. More dimensions means more signal for the model to encode subtle distinctions, but the operation itself does not change.'
+        message="<strong>4 dimensions for clarity; real models use many more.</strong> Llama-3&rsquo;s embeddings have 8,192 numbers per token, but we&rsquo;ll see in Stop 8 that each attention head works with a slice of that full vector &mdash; 128 dimensions per head. Other models may use 64, 96, or different values per head. The computation is identical regardless &mdash; multiply corresponding elements, sum the results. More dimensions means more signal for the model to encode subtle distinctions, but the operation itself does not change."
       />
     </div>
   );
