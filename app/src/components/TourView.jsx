@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useStore } from '../store';
 import { tourSteps } from '../data/tourSteps';
+import Welcome from '../stops/Welcome';
 import TelephoneProblem from '../stops/TelephoneProblem';
 import EveryTokenLooks from '../stops/EveryTokenLooks';
 import QueryKeyValue from '../stops/QueryKeyValue';
@@ -20,6 +21,7 @@ import IntelligentRouting from '../stops/IntelligentRouting';
 import CompletePicture from '../stops/CompletePicture';
 
 const STOP_COMPONENTS = {
+  Welcome,
   TelephoneProblem,
   EveryTokenLooks,
   QueryKeyValue,

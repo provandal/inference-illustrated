@@ -1,5 +1,15 @@
 export const tourSteps = [
   {
+    id: 'welcome',
+    shortTitle: 'Welcome',
+    title: 'Welcome to Inference Illustrated',
+    narration:
+      'An interactive journey from attention mechanisms to infrastructure.',
+    component: 'Welcome',
+    act: 0,
+    stopNumber: 0,
+  },
+  {
     id: 'telephone-problem',
     shortTitle: 'The Telephone Problem',
     title: 'Stop 1: The Telephone Problem',
