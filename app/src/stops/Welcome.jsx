@@ -38,8 +38,7 @@ function WelcomePage() {
         <PanelHeader>Time commitment</PanelHeader>
         <InfoBox>
           The full tour is approximately 60–90 minutes. Each stop is
-          self-contained — you can pause and return at any time. Your progress
-          is preserved.
+          self-contained, so you can take it at your own pace.
         </InfoBox>
       </Panel>
     </div>
