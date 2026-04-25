@@ -109,6 +109,14 @@ function WorkedExamplePage() {
     <div>
       <Panel>
         <PanelHeader>Worked example: output for &ldquo;faulty&rdquo;</PanelHeader>
+        <InfoBox>
+          Each row below shows one word&rsquo;s contribution. The weight (from
+          Stop 6&rsquo;s softmax) multiplies every number in that word&rsquo;s
+          Value vector. For example, &ldquo;controller&rdquo; has weight 37.9%,
+          so each number in V<sub>controller</sub> is multiplied by 0.379. The
+          bottom row sums all five weighted vectors into a single output &mdash;
+          the blended representation of &ldquo;faulty&rdquo; after attention.
+        </InfoBox>
         <div className="p-4 space-y-3">
           {/* Header row */}
           <div className="flex items-center gap-2 text-[10px] font-medium text-[var(--color-text-muted)] uppercase tracking-wider">
