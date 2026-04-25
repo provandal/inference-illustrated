@@ -1,8 +1,12 @@
 import { create } from 'zustand';
 import { tourSteps } from './data/tourSteps';
 
-function getSystemDarkMode() {
-  return window.matchMedia('(prefers-color-scheme: dark)').matches;
+function getInitialDarkMode() {
+  // Check localStorage first (user's explicit choice persists)
+  const stored = localStorage.getItem('darkMode');
+  if (stored !== null) return stored === 'true';
+  // Default to dark
+  return true;
 }
 
 function applyDarkMode(dark) {
@@ -16,8 +20,8 @@ export const useStore = create((set, get) => ({
   // Tour navigation (stop-level)
   currentStep: 0,
 
-  // Dark mode
-  darkMode: getSystemDarkMode(),
+  // Dark mode — defaults to dark, persists user choice
+  darkMode: getInitialDarkMode(),
 
   setMode: (mode) => set({ mode }),
 
@@ -45,6 +49,7 @@ export const useStore = create((set, get) => ({
   toggleDarkMode: () => {
     const next = !get().darkMode;
     applyDarkMode(next);
+    localStorage.setItem('darkMode', String(next));
     set({ darkMode: next });
   },
 
