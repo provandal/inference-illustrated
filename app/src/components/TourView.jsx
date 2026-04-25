@@ -104,9 +104,9 @@ export default function TourView() {
             ))}
           </div>
 
-          {/* Step counter */}
+          {/* Step counter — Stop 0 is the prologue, real stops start at 1 */}
           <span className="text-xs font-mono text-[var(--color-text-muted)]">
-            {currentStep + 1}/{tourSteps.length}
+            {step.stopNumber}/{tourSteps.length - 1}
           </span>
 
           {/* Stop nav buttons */}

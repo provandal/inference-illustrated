@@ -209,6 +209,7 @@ function SelfAttentionPage() {
           In a transformer, every word simultaneously computes how relevant every
           other word is to it. This mechanism is called{' '}
           <strong>self-attention</strong> — the sequence attends to itself.
+          Every word examines every other word and decides for itself what matters.
         </InfoBox>
         <InfoBox>
           Think of it as a room full of people, each one scanning the room and
@@ -216,23 +217,17 @@ function SelfAttentionPage() {
           No telephone game. Everyone sees everyone directly.
         </InfoBox>
         <InfoBox>
-          This is the key difference from the RNN we saw in Stop 1. The RNN
-          processed words one at a time, compressing everything into a single
-          hidden state that had to be passed forward. By the time "faulty"
-          needed "storage controller," the signal had decayed through eight
-          intermediate steps.
-        </InfoBox>
-        <InfoBox>
-          With self-attention, there are no intermediate steps. "faulty" can
-          look directly at "storage controller" — and at every other word in
-          the sentence. Every word can do this simultaneously. No waiting,
-          no compression, no loss.
+          The result is a grid of relevance scores — every word scored against
+          every other word. &ldquo;faulty&rdquo; scores &ldquo;controller&rdquo;
+          highly. &ldquo;crashed&rdquo; scores &ldquo;server&rdquo; highly.
+          &ldquo;last&rdquo; scores &ldquo;week&rdquo; highly. All of these
+          relationships are computed simultaneously, in one operation.
         </InfoBox>
       </Panel>
 
       <Callout
-        type="good"
-        message='<strong>Self-attention replaces the chain with direct access.</strong> Instead of passing information through a bottleneck at every step, every word gets to examine every other word and decide for itself what matters.'
+        type="note"
+        message='<strong>How does the model decide what&rsquo;s relevant?</strong> Self-attention tells us that every word looks at every other word. But it doesn&rsquo;t yet tell us <em>how</em> the model computes relevance, or <em>what information</em> gets passed along. Those questions lead to Q, K, V &mdash; the subject of Stop 3. For now, focus on the big idea: simultaneous, direct access.'
       />
 
       <Panel className="mt-4">
