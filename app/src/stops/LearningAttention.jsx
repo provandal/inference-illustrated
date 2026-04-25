@@ -14,10 +14,15 @@ function IntroPage() {
         <InfoBox>
           Consider just one piece of the machinery we saw in Stop 3: the weight
           matrix W<sub>Q</sub>, which transforms each token&rsquo;s embedding into
-          a Query vector. For Llama-3 70B, the embedding has 8,192 numbers, and
-          W<sub>Q</sub> transforms it into a Query vector that is also 8,192
-          numbers. That makes W<sub>Q</sub> a grid of 8,192 &times; 8,192 ={' '}
-          <strong>67 million numbers</strong> &mdash; in a single layer.
+          a Query vector. For Llama-3 70B, the embedding is a vector of 8,192
+          numbers. To transform it into a Query, the model multiplies it by
+          W<sub>Q</sub> &mdash; a matrix with 8,192 rows and 8,192 columns.
+          Each output number in the Query is computed by taking the dot product of
+          the input vector against one column of W<sub>Q</sub>. The result is a
+          new vector of 8,192 numbers (the Query), but the matrix itself contains
+          8,192 &times; 8,192 ={' '}
+          <strong>67 million learned numbers</strong> &mdash; and that&rsquo;s
+          just one matrix, in one layer.
         </InfoBox>
         <InfoBox>
           And W<sub>Q</sub> is just one of several weight matrices per layer.
