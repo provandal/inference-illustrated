@@ -14,27 +14,26 @@ function IntroPage() {
         <InfoBox>
           Consider just one piece of the machinery we saw in Stop 3: the weight
           matrix W<sub>Q</sub>, which transforms each token&rsquo;s embedding into
-          a Query vector. For Llama-3 70B, W<sub>Q</sub> transforms a d_model-sized
-          vector (8,192 numbers) into a vector for all 64 Q heads (64 &times; 128 =
-          8,192 numbers). That makes W<sub>Q</sub> a grid of 8,192 &times; 8,192 ={' '}
-          <strong>67 million numbers</strong> in a single layer.
+          a Query vector. For Llama-3 70B, the embedding has 8,192 numbers, and
+          W<sub>Q</sub> transforms it into a Query vector that is also 8,192
+          numbers. That makes W<sub>Q</sub> a grid of 8,192 &times; 8,192 ={' '}
+          <strong>67 million numbers</strong> &mdash; in a single layer.
         </InfoBox>
         <InfoBox>
-          But not all attention matrices are the same size. Because Llama-3 uses GQA
-          with only 8 KV head groups (from Stop 8), W<sub>K</sub> and W<sub>V</sub>{' '}
-          are much smaller &mdash; they transform 8,192 numbers into only 8 &times;
-          128 = 1,024 numbers. So W<sub>K</sub> and W<sub>V</sub> are each 8,192
-          &times; 1,024 = <strong>~8.4 million numbers</strong>. W<sub>O</sub> (the
-          output projection from Stop 8) is 8,192 &times; 8,192 ={' '}
-          <strong>67 million</strong>, the same size as W<sub>Q</sub>.
+          And W<sub>Q</sub> is just one of several weight matrices per layer.
+          There&rsquo;s also W<sub>K</sub> (for Keys), W<sub>V</sub> (for
+          Values), and a large feed-forward network. We&rsquo;ll see the full
+          breakdown in later stops, but the scale is staggering: a single layer
+          of Llama-3 70B contains roughly <strong>856 million parameters</strong>.
+          The model has 80 such layers.
         </InfoBox>
         <InfoBox>
-          That&rsquo;s the attention side. But each layer also contains a{' '}
+          Beyond the attention matrices, each layer also contains a{' '}
           <strong>feed-forward network (FFN)</strong> &mdash; and it&rsquo;s actually
-          larger. Llama uses a variant called <strong>SwiGLU</strong>, which requires
-          three matrices instead of the usual two: W<sub>1</sub> (gate projection),
-          W<sub>2</sub> (down projection), and W<sub>3</sub> (up projection) &mdash;
-          each roughly <strong>235 million numbers</strong>.
+          the larger component. Llama uses a variant called <strong>SwiGLU</strong>,
+          which has three large matrices &mdash; each roughly{' '}
+          <strong>235 million numbers</strong>. We&rsquo;ll explore the FFN in
+          detail in Stop 9. For now, what matters is the total scale.
         </InfoBox>
       </Panel>
 
