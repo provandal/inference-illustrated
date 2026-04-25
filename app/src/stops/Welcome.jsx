@@ -166,7 +166,7 @@ function HowItWorksPage() {
 
       <Callout
         type="good"
-        message='<strong>Ready?</strong> Let\u2019s start with a question: what happens when a model can only read one word at a time?'
+        message="<strong>Ready?</strong> Let&rsquo;s start with a question: what happens when a model can only read one word at a time?"
       />
     </div>
   );
