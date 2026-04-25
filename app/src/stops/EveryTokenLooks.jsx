@@ -447,10 +447,13 @@ function ScalingPage() {
           But scale up to a real conversation, and the numbers explode.
         </p>
         <p>
-          At <strong className="text-[var(--color-text)]">128,000 tokens</strong> — roughly the
-          context window of GPT-4 Turbo or Claude — the model must compute over{' '}
-          <strong className="text-[var(--color-text)]">16 billion pairs</strong>. At a million
-          tokens, it's a <strong className="text-[var(--color-text)]">trillion</strong>.
+          At <strong className="text-[var(--color-text)]">128,000 tokens</strong>, the
+          model must compute over{' '}
+          <strong className="text-[var(--color-text)]">16 billion pairs</strong>.
+          Today&rsquo;s frontier models &mdash; GPT-5.4, Claude Opus &mdash; support
+          context windows of <strong className="text-[var(--color-text)]">1 million
+          tokens or more</strong>. At a million tokens, that&rsquo;s{' '}
+          <strong className="text-[var(--color-text)]">a trillion</strong> pairs.
         </p>
         <p>
           This is <strong className="text-[var(--color-text)]">n² scaling</strong>: doubling the
