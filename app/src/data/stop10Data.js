@@ -71,10 +71,10 @@ export const PREFILL_VS_DECODE = [
 // Act 2 preview: stops 11–17
 export const ACT2_PREVIEW = [
   { stop: 11, title: 'The Memory Wall',               description: 'An interactive calculator: when and why GPU memory runs out, with real model and hardware configurations.' },
-  { stop: 12, title: 'Disaggregated Inference',        description: 'Separating prefill and decode onto different hardware. The KV cache must transfer between GPU pools.' },
+  { stop: 12, title: 'Splitting the Work',              description: 'Parallelism strategies (TP, PP, DP) and disaggregated inference. Separating prefill and decode onto different hardware.' },
   { stop: 13, title: 'The Memory Hierarchy',           description: 'Tiering the cache across HBM, DRAM, NVMe, CXL-attached memory, and persistent storage.' },
   { stop: 14, title: 'Compressing the Cache',          description: 'MQA, GQA, MLA in depth. Quantization from FP16 to INT4. Token eviction strategies.' },
   { stop: 15, title: 'The Fabric',                     description: 'RDMA/RoCE, CXL memory pooling, NVMe-oF. The protocols that move cache data between tiers and machines.' },
   { stop: 16, title: 'Intelligent Routing',            description: 'KV-cache-aware load balancing. Prefix-aware scheduling. The network participates in cache placement.' },
-  { stop: 17, title: 'The Crystal Ball',               description: 'One, two, and five-year projections for KV cache infrastructure.' },
+  { stop: 17, title: 'The Complete Picture',            description: 'Everything assembled into one interactive system. Design, simulate, and trace requests through a complete inference cluster.' },
 ];
