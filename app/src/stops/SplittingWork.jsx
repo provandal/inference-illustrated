@@ -2,7 +2,6 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import {
   PAGES,
   NARRATIONS,
-  SPLIT_AXES,
   DP_STEPS,
   DATA_PARALLEL_GPUS,
   TP_ANIMATION_STEPS,
@@ -57,8 +56,591 @@ function AnimControls({ isPlaying, onPlayToggle, value, max, onChange, label, la
 }
 
 /* ================================================================
+   Parallelism Configurations — interactive GPU visualization
+   ================================================================ */
+
+const PARALLELISM_CONFIGS = [
+  {
+    id: 'tp8',
+    label: 'TP=8',
+    fullLabel: 'Tensor Parallelism',
+    gpuCount: 8,
+    layout: { cols: 8, rows: 1 },
+    groups: [
+      {
+        color: 'var(--color-red)',
+        bg: 'var(--color-red-bg)',
+        textColor: 'var(--color-red-text)',
+        gpus: [
+          { id: 0, content: 'All 80 layers\n1/8 weights' },
+          { id: 1, content: 'All 80 layers\n1/8 weights' },
+          { id: 2, content: 'All 80 layers\n1/8 weights' },
+          { id: 3, content: 'All 80 layers\n1/8 weights' },
+          { id: 4, content: 'All 80 layers\n1/8 weights' },
+          { id: 5, content: 'All 80 layers\n1/8 weights' },
+          { id: 6, content: 'All 80 layers\n1/8 weights' },
+          { id: 7, content: 'All 80 layers\n1/8 weights' },
+        ],
+      },
+    ],
+    arrows: 'all-reduce',
+    arrowLabel: 'all-reduce',
+    users: '1 user (all 8 GPUs collaborate on every token)',
+    communication: 'Heavy \u2014 all-reduce after every attention and FFN block',
+    kvCache: 'Sharded \u2014 each GPU holds 1/8 of the cache',
+  },
+  {
+    id: 'pp8',
+    label: 'PP=8',
+    fullLabel: 'Pipeline Parallelism',
+    gpuCount: 8,
+    layout: { cols: 8, rows: 1 },
+    groups: [
+      {
+        color: 'var(--color-blue)',
+        bg: 'var(--color-blue-bg)',
+        textColor: 'var(--color-blue-text)',
+        gradient: true,
+        gpus: [
+          { id: 0, content: 'Layers 1\u201310' },
+          { id: 1, content: 'Layers 11\u201320' },
+          { id: 2, content: 'Layers 21\u201330' },
+          { id: 3, content: 'Layers 31\u201340' },
+          { id: 4, content: 'Layers 41\u201350' },
+          { id: 5, content: 'Layers 51\u201360' },
+          { id: 6, content: 'Layers 61\u201370' },
+          { id: 7, content: 'Layers 71\u201380' },
+        ],
+      },
+    ],
+    arrows: 'pipeline',
+    arrowLabel: '16 KB',
+    users: '1 user (token flows through all 8 sequentially)',
+    communication: 'Light \u2014 small activations passed between stages',
+    kvCache: 'Split by layer \u2014 each GPU caches only its layers',
+  },
+  {
+    id: 'dp8',
+    label: 'DP=8',
+    fullLabel: 'Data Parallelism',
+    gpuCount: 8,
+    layout: { cols: 4, rows: 2 },
+    groups: [
+      { color: 'var(--color-red)', bg: 'var(--color-red-bg)', textColor: 'var(--color-red-text)', gpus: [{ id: 0, content: 'Full model\nAll 80 layers' }] },
+      { color: 'var(--color-blue)', bg: 'var(--color-blue-bg)', textColor: 'var(--color-blue-text)', gpus: [{ id: 1, content: 'Full model\nAll 80 layers' }] },
+      { color: 'var(--color-teal)', bg: 'var(--color-teal-bg)', textColor: 'var(--color-teal-text)', gpus: [{ id: 2, content: 'Full model\nAll 80 layers' }] },
+      { color: 'var(--color-amber)', bg: 'var(--color-amber-bg)', textColor: 'var(--color-amber-text)', gpus: [{ id: 3, content: 'Full model\nAll 80 layers' }] },
+      { color: 'var(--color-primary)', bg: 'var(--color-primary-bg)', textColor: 'var(--color-primary-text)', gpus: [{ id: 4, content: 'Full model\nAll 80 layers' }] },
+      { color: 'var(--color-red)', bg: 'var(--color-red-bg)', textColor: 'var(--color-red-text)', gpus: [{ id: 5, content: 'Full model\nAll 80 layers' }] },
+      { color: 'var(--color-blue)', bg: 'var(--color-blue-bg)', textColor: 'var(--color-blue-text)', gpus: [{ id: 6, content: 'Full model\nAll 80 layers' }] },
+      { color: 'var(--color-teal)', bg: 'var(--color-teal-bg)', textColor: 'var(--color-teal-text)', gpus: [{ id: 7, content: 'Full model\nAll 80 layers' }] },
+    ],
+    arrows: 'none',
+    arrowLabel: '',
+    users: '8 users (each GPU serves independently)',
+    communication: 'None during inference',
+    kvCache: 'Independent \u2014 each GPU holds its own users\u2019 cache',
+  },
+  {
+    id: 'tp4pp2',
+    label: 'TP\u00d7PP',
+    fullLabel: 'TP=4 \u00d7 PP=2',
+    gpuCount: 8,
+    layout: { cols: 4, rows: 2 },
+    groups: [
+      {
+        color: 'var(--color-red)',
+        bg: 'var(--color-red-bg)',
+        textColor: 'var(--color-red-text)',
+        gpus: [
+          { id: 0, content: 'L 1\u201340\n1/4 weights' },
+          { id: 1, content: 'L 1\u201340\n1/4 weights' },
+          { id: 2, content: 'L 1\u201340\n1/4 weights' },
+          { id: 3, content: 'L 1\u201340\n1/4 weights' },
+        ],
+      },
+      {
+        color: 'var(--color-blue)',
+        bg: 'var(--color-blue-bg)',
+        textColor: 'var(--color-blue-text)',
+        gpus: [
+          { id: 4, content: 'L 41\u201380\n1/4 weights' },
+          { id: 5, content: 'L 41\u201380\n1/4 weights' },
+          { id: 6, content: 'L 41\u201380\n1/4 weights' },
+          { id: 7, content: 'L 41\u201380\n1/4 weights' },
+        ],
+      },
+    ],
+    arrows: 'tp-pp',
+    arrowLabel: '',
+    users: '1 user \u2014 processed by all 8 GPUs',
+    communication: 'All-reduce within rows (TP) + pipeline between rows (PP)',
+    kvCache: 'Sharded within each pipeline stage \u2014 each GPU holds 1/4 of its layers\u2019 cache',
+  },
+  {
+    id: 'tp4dp2',
+    label: 'TP\u00d7DP',
+    fullLabel: 'TP=4 \u00d7 DP=2',
+    gpuCount: 8,
+    layout: { cols: 4, rows: 2, groupGap: true },
+    groups: [
+      {
+        color: 'var(--color-red)',
+        bg: 'var(--color-red-bg)',
+        textColor: 'var(--color-red-text)',
+        label: 'Group A \u2014 User 1',
+        gpus: [
+          { id: 0, content: 'All 80 layers\n1/4 weights' },
+          { id: 1, content: 'All 80 layers\n1/4 weights' },
+          { id: 2, content: 'All 80 layers\n1/4 weights' },
+          { id: 3, content: 'All 80 layers\n1/4 weights' },
+        ],
+      },
+      {
+        color: 'var(--color-teal)',
+        bg: 'var(--color-teal-bg)',
+        textColor: 'var(--color-teal-text)',
+        label: 'Group B \u2014 User 2',
+        gpus: [
+          { id: 4, content: 'All 80 layers\n1/4 weights' },
+          { id: 5, content: 'All 80 layers\n1/4 weights' },
+          { id: 6, content: 'All 80 layers\n1/4 weights' },
+          { id: 7, content: 'All 80 layers\n1/4 weights' },
+        ],
+      },
+    ],
+    arrows: 'tp-dp',
+    arrowLabel: '',
+    users: '2 users \u2014 each group of 4 handles one user',
+    communication: 'All-reduce within groups, independent across groups',
+    kvCache: 'Sharded within groups \u2014 each GPU holds 1/4 of cache for its user',
+  },
+  {
+    id: 'pp4dp2',
+    label: 'PP\u00d7DP',
+    fullLabel: 'PP=4 \u00d7 DP=2',
+    gpuCount: 8,
+    layout: { cols: 4, rows: 2, groupGap: true },
+    groups: [
+      {
+        color: 'var(--color-blue)',
+        bg: 'var(--color-blue-bg)',
+        textColor: 'var(--color-blue-text)',
+        label: 'Pipeline A \u2014 User 1',
+        gradient: true,
+        gpus: [
+          { id: 0, content: 'L 1\u201320' },
+          { id: 1, content: 'L 21\u201340' },
+          { id: 2, content: 'L 41\u201360' },
+          { id: 3, content: 'L 61\u201380' },
+        ],
+      },
+      {
+        color: 'var(--color-teal)',
+        bg: 'var(--color-teal-bg)',
+        textColor: 'var(--color-teal-text)',
+        label: 'Pipeline B \u2014 User 2',
+        gradient: true,
+        gpus: [
+          { id: 4, content: 'L 1\u201320' },
+          { id: 5, content: 'L 21\u201340' },
+          { id: 6, content: 'L 41\u201360' },
+          { id: 7, content: 'L 61\u201380' },
+        ],
+      },
+    ],
+    arrows: 'pp-dp',
+    arrowLabel: '16 KB',
+    users: '2 users \u2014 each pipeline handles one user',
+    communication: 'Sequential within pipelines, independent across pipelines',
+    kvCache: 'Split by layer within each pipeline \u2014 each GPU caches its own layers',
+  },
+  {
+    id: 'tp2pp3dp4',
+    label: 'All Three',
+    fullLabel: 'TP=2 \u00d7 PP=3 \u00d7 DP=4',
+    gpuCount: 24,
+    layout: { cols: 6, rows: 4, groupGap: true },
+    groups: [
+      {
+        color: 'var(--color-red)',
+        bg: 'var(--color-red-bg)',
+        textColor: 'var(--color-red-text)',
+        label: 'Replica 1',
+        gpus: [
+          { id: 0, content: 'L 1\u201327\n\u00bd wt' },
+          { id: 1, content: 'L 1\u201327\n\u00bd wt' },
+          { id: 2, content: 'L 28\u201354\n\u00bd wt' },
+          { id: 3, content: 'L 28\u201354\n\u00bd wt' },
+          { id: 4, content: 'L 55\u201380\n\u00bd wt' },
+          { id: 5, content: 'L 55\u201380\n\u00bd wt' },
+        ],
+      },
+      {
+        color: 'var(--color-blue)',
+        bg: 'var(--color-blue-bg)',
+        textColor: 'var(--color-blue-text)',
+        label: 'Replica 2',
+        gpus: [
+          { id: 6, content: 'L 1\u201327\n\u00bd wt' },
+          { id: 7, content: 'L 1\u201327\n\u00bd wt' },
+          { id: 8, content: 'L 28\u201354\n\u00bd wt' },
+          { id: 9, content: 'L 28\u201354\n\u00bd wt' },
+          { id: 10, content: 'L 55\u201380\n\u00bd wt' },
+          { id: 11, content: 'L 55\u201380\n\u00bd wt' },
+        ],
+      },
+      {
+        color: 'var(--color-teal)',
+        bg: 'var(--color-teal-bg)',
+        textColor: 'var(--color-teal-text)',
+        label: 'Replica 3',
+        gpus: [
+          { id: 12, content: 'L 1\u201327\n\u00bd wt' },
+          { id: 13, content: 'L 1\u201327\n\u00bd wt' },
+          { id: 14, content: 'L 28\u201354\n\u00bd wt' },
+          { id: 15, content: 'L 28\u201354\n\u00bd wt' },
+          { id: 16, content: 'L 55\u201380\n\u00bd wt' },
+          { id: 17, content: 'L 55\u201380\n\u00bd wt' },
+        ],
+      },
+      {
+        color: 'var(--color-amber)',
+        bg: 'var(--color-amber-bg)',
+        textColor: 'var(--color-amber-text)',
+        label: 'Replica 4',
+        gpus: [
+          { id: 18, content: 'L 1\u201327\n\u00bd wt' },
+          { id: 19, content: 'L 1\u201327\n\u00bd wt' },
+          { id: 20, content: 'L 28\u201354\n\u00bd wt' },
+          { id: 21, content: 'L 28\u201354\n\u00bd wt' },
+          { id: 22, content: 'L 55\u201380\n\u00bd wt' },
+          { id: 23, content: 'L 55\u201380\n\u00bd wt' },
+        ],
+      },
+    ],
+    arrows: 'all-three',
+    arrowLabel: '',
+    users: '4 users \u2014 each group of 6 handles one user',
+    communication: 'All-reduce within TP pairs, pipeline across PP stages, independent across DP replicas',
+    kvCache: 'Sharded by TP within each pipeline stage, split across stages, independent across replicas',
+  },
+];
+
+/* ---------- GPU Box ---------- */
+function GpuBox({ gpu, group, isSmall }) {
+  const lines = gpu.content.split('\n');
+  const opacity = group.gradient
+    ? 0.5 + 0.5 * ((gpu.id % (group.gpus.length)) / Math.max(1, group.gpus.length - 1))
+    : 1;
+  return (
+    <div
+      className="rounded-md border-2 flex flex-col items-center justify-center text-center"
+      style={{
+        borderColor: group.color,
+        background: group.bg,
+        opacity,
+        padding: isSmall ? '4px 2px' : '6px 4px',
+        minHeight: isSmall ? '48px' : '60px',
+        transition: 'all 300ms ease',
+      }}
+    >
+      <div
+        className="font-mono font-bold"
+        style={{ fontSize: isSmall ? '8px' : '10px', color: group.textColor }}
+      >
+        GPU {gpu.id}
+      </div>
+      {lines.map((line, i) => (
+        <div
+          key={i}
+          style={{ fontSize: isSmall ? '7px' : '9px', color: group.textColor, lineHeight: 1.3 }}
+        >
+          {line}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ---------- Arrow indicators ---------- */
+function ArrowRow({ arrows, arrowLabel, cols }) {
+  if (arrows === 'none') {
+    return (
+      <div className="flex items-center justify-center py-1">
+        <span className="text-[10px] text-[var(--color-text-muted)] italic">No communication between GPUs</span>
+      </div>
+    );
+  }
+  if (arrows === 'all-reduce') {
+    return (
+      <div className="flex items-center justify-center gap-1 py-1 flex-wrap">
+        <span className="text-[10px] font-medium" style={{ color: 'var(--color-red-text)' }}>
+          {'\u2194'.repeat(Math.min(cols - 1, 7))}
+        </span>
+        <span className="text-[9px] px-1.5 py-0.5 rounded bg-[var(--color-red-bg)] border border-[var(--color-red)]" style={{ color: 'var(--color-red-text)' }}>
+          {arrowLabel}
+        </span>
+      </div>
+    );
+  }
+  if (arrows === 'pipeline') {
+    return (
+      <div className="flex items-center justify-center gap-1 py-1 flex-wrap">
+        <span className="text-[10px] font-medium" style={{ color: 'var(--color-blue-text)' }}>
+          {'\u2192  '.repeat(Math.min(cols - 1, 7)).trim()}
+        </span>
+        <span className="text-[9px] px-1.5 py-0.5 rounded bg-[var(--color-blue-bg)] border border-[var(--color-blue)]" style={{ color: 'var(--color-blue-text)' }}>
+          {arrowLabel}
+        </span>
+      </div>
+    );
+  }
+  return null;
+}
+
+/* ---------- GPU Grid for a single group ---------- */
+function GpuGroup({ group, cols, isSmall }) {
+  return (
+    <div>
+      {group.label && (
+        <div className="text-[10px] font-medium mb-1 px-1" style={{ color: group.textColor }}>
+          {group.label}
+        </div>
+      )}
+      <div
+        className="grid gap-1"
+        style={{ gridTemplateColumns: `repeat(${Math.min(cols, group.gpus.length)}, minmax(0, 1fr))` }}
+      >
+        {group.gpus.map((gpu) => (
+          <GpuBox key={gpu.id} gpu={gpu} group={group} isSmall={isSmall} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Full config renderer ---------- */
+function ConfigGrid({ config }) {
+  const { groups, arrows, arrowLabel, layout } = config;
+  const cols = layout.cols;
+
+  // For simple single-row configs (TP, PP)
+  if (groups.length === 1 && layout.rows === 1) {
+    return (
+      <div>
+        <div
+          className="grid gap-1"
+          style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
+        >
+          {groups[0].gpus.map((gpu) => (
+            <GpuBox key={gpu.id} gpu={gpu} group={groups[0]} isSmall={false} />
+          ))}
+        </div>
+        <ArrowRow arrows={arrows} arrowLabel={arrowLabel} cols={cols} />
+      </div>
+    );
+  }
+
+  // DP: all separate groups, no arrows
+  if (arrows === 'none') {
+    return (
+      <div>
+        <div
+          className="grid gap-1"
+          style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
+        >
+          {groups.map((grp) =>
+            grp.gpus.map((gpu) => (
+              <GpuBox key={gpu.id} gpu={gpu} group={grp} isSmall={false} />
+            ))
+          )}
+        </div>
+        <ArrowRow arrows="none" arrowLabel="" cols={cols} />
+      </div>
+    );
+  }
+
+  // TP+PP: 2 rows, all-reduce within rows, pipeline arrows between rows
+  if (arrows === 'tp-pp') {
+    return (
+      <div className="space-y-1">
+        {groups.map((grp, gi) => (
+          <div key={gi}>
+            <GpuGroup group={grp} cols={cols} isSmall={false} />
+            {gi === 0 && (
+              <div className="flex items-center justify-center gap-1 py-0.5 flex-wrap">
+                <span className="text-[10px] font-medium" style={{ color: 'var(--color-red-text)' }}>
+                  {'\u2194'.repeat(3)}
+                </span>
+                <span className="text-[8px] px-1 py-0.5 rounded bg-[var(--color-red-bg)] border border-[var(--color-red)]" style={{ color: 'var(--color-red-text)' }}>
+                  all-reduce (TP)
+                </span>
+              </div>
+            )}
+            {gi === 0 && (
+              <div className="flex items-center justify-center gap-1 py-0.5">
+                <span className="text-[12px] font-medium" style={{ color: 'var(--color-blue-text)' }}>
+                  {'\u2193  '.repeat(4).trim()}
+                </span>
+                <span className="text-[8px] px-1 py-0.5 rounded bg-[var(--color-blue-bg)] border border-[var(--color-blue)]" style={{ color: 'var(--color-blue-text)' }}>
+                  pipeline (PP)
+                </span>
+              </div>
+            )}
+          </div>
+        ))}
+        <div className="flex items-center justify-center gap-1 py-0.5 flex-wrap">
+          <span className="text-[10px] font-medium" style={{ color: 'var(--color-blue-text)' }}>
+            {'\u2194'.repeat(3)}
+          </span>
+          <span className="text-[8px] px-1 py-0.5 rounded bg-[var(--color-blue-bg)] border border-[var(--color-blue)]" style={{ color: 'var(--color-blue-text)' }}>
+            all-reduce (TP)
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  // TP+DP or PP+DP: 2 separated groups
+  if (arrows === 'tp-dp' || arrows === 'pp-dp') {
+    const isTP = arrows === 'tp-dp';
+    return (
+      <div className="space-y-3">
+        {groups.map((grp, gi) => (
+          <div
+            key={gi}
+            className="p-2 rounded-lg border"
+            style={{ borderColor: grp.color, background: `color-mix(in srgb, ${grp.bg} 50%, transparent)` }}
+          >
+            <GpuGroup group={grp} cols={cols} isSmall={false} />
+            <div className="flex items-center justify-center gap-1 py-0.5 flex-wrap">
+              {isTP ? (
+                <>
+                  <span className="text-[10px] font-medium" style={{ color: grp.textColor }}>
+                    {'\u2194'.repeat(3)}
+                  </span>
+                  <span className="text-[8px] px-1 py-0.5 rounded" style={{ background: grp.bg, border: `1px solid ${grp.color}`, color: grp.textColor }}>
+                    all-reduce (TP)
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span className="text-[10px] font-medium" style={{ color: grp.textColor }}>
+                    {'\u2192  '.repeat(3).trim()}
+                  </span>
+                  <span className="text-[8px] px-1 py-0.5 rounded" style={{ background: grp.bg, border: `1px solid ${grp.color}`, color: grp.textColor }}>
+                    pipeline {arrowLabel}
+                  </span>
+                </>
+              )}
+            </div>
+          </div>
+        ))}
+        <div className="flex items-center justify-center py-0.5">
+          <span className="text-[10px] text-[var(--color-text-muted)] italic">No communication between groups (DP)</span>
+        </div>
+      </div>
+    );
+  }
+
+  // All three: TP+PP+DP (24 GPUs, 4 groups of 6)
+  if (arrows === 'all-three') {
+    return (
+      <div className="space-y-2">
+        {groups.map((grp, gi) => (
+          <div
+            key={gi}
+            className="p-2 rounded-lg border"
+            style={{ borderColor: grp.color, background: `color-mix(in srgb, ${grp.bg} 50%, transparent)` }}
+          >
+            <GpuGroup group={grp} cols={cols} isSmall={true} />
+            <div className="flex items-center justify-center gap-2 py-0.5 flex-wrap">
+              <span className="text-[8px] px-1 py-0.5 rounded bg-[var(--color-red-bg)] border border-[var(--color-red)]" style={{ color: 'var(--color-red-text)' }}>
+                {'\u2194'} TP pairs
+              </span>
+              <span className="text-[8px] px-1 py-0.5 rounded bg-[var(--color-blue-bg)] border border-[var(--color-blue)]" style={{ color: 'var(--color-blue-text)' }}>
+                {'\u2192'} PP stages
+              </span>
+            </div>
+          </div>
+        ))}
+        <div className="flex items-center justify-center py-0.5">
+          <span className="text-[10px] text-[var(--color-text-muted)] italic">No communication between replicas (DP)</span>
+        </div>
+      </div>
+    );
+  }
+
+  return null;
+}
+
+/* ---------- Main Parallelism Configurator ---------- */
+function ParallelismConfigurator() {
+  const [selected, setSelected] = useState(0);
+  const config = PARALLELISM_CONFIGS[selected];
+
+  return (
+    <Panel className="mt-4">
+      <PanelHeader>
+        Parallelism configurations {config.gpuCount === 24 ? '\u2014 24 GPUs' : '\u2014 8 GPUs'}
+      </PanelHeader>
+      <div className="p-4">
+        <div className="text-[13px] text-[var(--color-text-secondary)] leading-relaxed mb-3">
+          Three types of parallelism can be combined in different ways. Select a
+          configuration to see how GPUs are organized, what each one holds, and how
+          they communicate.
+        </div>
+
+        {/* Selector buttons */}
+        <div className="flex flex-wrap gap-1.5 mb-4">
+          {PARALLELISM_CONFIGS.map((cfg, i) => (
+            <button
+              key={cfg.id}
+              onClick={() => setSelected(i)}
+              className={`px-3 py-1.5 text-[11px] font-medium rounded border transition-all cursor-pointer ${
+                selected === i
+                  ? 'bg-[var(--color-primary-bg)] border-[var(--color-primary)] text-[var(--color-primary-text)] shadow-sm'
+                  : 'border-[var(--color-border)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-alt)]'
+              }`}
+            >
+              <div className="font-mono font-bold text-[10px]">{cfg.label}</div>
+              <div className="text-[8px] mt-0.5 opacity-80">{cfg.fullLabel}</div>
+            </button>
+          ))}
+        </div>
+
+        {/* GPU grid visualization */}
+        <div
+          style={{ transition: 'opacity 300ms ease, transform 300ms ease' }}
+          key={config.id}
+        >
+          <ConfigGrid config={config} />
+        </div>
+
+        {/* Info row */}
+        <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <div className="p-2 rounded bg-[var(--color-surface-muted)] border border-[var(--color-border-light)]">
+            <div className="text-[9px] text-[var(--color-text-muted)] uppercase tracking-wider mb-0.5">Users served</div>
+            <div className="text-[11px] text-[var(--color-text)] leading-snug">{config.users}</div>
+          </div>
+          <div className="p-2 rounded bg-[var(--color-surface-muted)] border border-[var(--color-border-light)]">
+            <div className="text-[9px] text-[var(--color-text-muted)] uppercase tracking-wider mb-0.5">Communication</div>
+            <div className="text-[11px] text-[var(--color-text)] leading-snug">{config.communication}</div>
+          </div>
+          <div className="p-2 rounded bg-[var(--color-surface-muted)] border border-[var(--color-border-light)]">
+            <div className="text-[9px] text-[var(--color-text-muted)] uppercase tracking-wider mb-0.5">KV Cache</div>
+            <div className="text-[11px] text-[var(--color-text)] leading-snug">{config.kvCache}</div>
+          </div>
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+/* ================================================================
    PAGE 1 — One GPU Isn't Enough
-   3D block + three axes diagram
+   Interactive parallelism configurations
    ================================================================ */
 function OneGpuPage() {
   return (
@@ -120,137 +702,7 @@ function OneGpuPage() {
         </div>
       </Panel>
 
-      <Panel className="mt-4">
-        <PanelHeader>Three axes of splitting (3D block)</PanelHeader>
-        <div className="p-4">
-          <div className="text-[13px] text-[var(--color-text-secondary)] leading-relaxed mb-4">
-            Think of the full model as a 3D block. Three colored planes cut it three different ways.
-            Each parallelism type cuts along a different axis — and the KV cache follows the cut
-            differently.
-          </div>
-
-          {/* 3D perspective box */}
-          <div className="relative mx-auto my-4" style={{ width: '280px', height: '240px', perspective: '800px' }}>
-            <div
-              className="absolute"
-              style={{
-                width: '180px',
-                height: '180px',
-                top: '30px',
-                left: '30px',
-                transformStyle: 'preserve-3d',
-                transform: 'rotateX(-20deg) rotateY(-30deg)',
-              }}
-            >
-              {/* Front face — Width axis (TP, red) */}
-              <div
-                className="absolute inset-0 flex items-center justify-center text-[10px] font-medium"
-                style={{
-                  background: 'linear-gradient(90deg, rgba(239,68,68,0.45), rgba(239,68,68,0.15))',
-                  border: '2px solid var(--color-red)',
-                  color: 'var(--color-red-text)',
-                  transform: 'translateZ(60px)',
-                }}
-              >
-                Width → TP
-              </div>
-              {/* Back face */}
-              <div
-                className="absolute inset-0"
-                style={{
-                  background: 'rgba(100,116,139,0.15)',
-                  border: '1px dashed var(--color-border)',
-                  transform: 'translateZ(-60px)',
-                }}
-              />
-              {/* Top face — Depth (PP, blue) */}
-              <div
-                className="absolute"
-                style={{
-                  width: '180px',
-                  height: '120px',
-                  top: 0,
-                  left: 0,
-                  background: 'linear-gradient(180deg, rgba(59,130,246,0.45), rgba(59,130,246,0.15))',
-                  border: '2px solid var(--color-blue)',
-                  color: 'var(--color-blue-text)',
-                  transform: 'rotateX(90deg) translateZ(60px)',
-                  transformOrigin: 'top',
-                  fontSize: '10px',
-                  fontWeight: 500,
-                  textAlign: 'center',
-                  paddingTop: '6px',
-                }}
-              >
-                Depth → PP
-              </div>
-              {/* Right face — Users (DP, teal) */}
-              <div
-                className="absolute"
-                style={{
-                  width: '120px',
-                  height: '180px',
-                  top: 0,
-                  right: 0,
-                  background: 'linear-gradient(90deg, rgba(20,184,166,0.45), rgba(20,184,166,0.15))',
-                  border: '2px solid var(--color-teal)',
-                  color: 'var(--color-teal-text)',
-                  transform: 'rotateY(90deg) translateZ(60px)',
-                  transformOrigin: 'right',
-                  fontSize: '10px',
-                  fontWeight: 500,
-                  textAlign: 'center',
-                  paddingTop: '80px',
-                }}
-              >
-                Users → DP
-              </div>
-            </div>
-
-            {/* Axis labels */}
-            <div
-              className="absolute text-[10px] font-medium"
-              style={{ bottom: '8px', left: '50%', transform: 'translateX(-50%)', color: 'var(--color-red-text)' }}
-            >
-              ← Width (d_model) →
-            </div>
-            <div
-              className="absolute text-[10px] font-medium"
-              style={{ top: '50%', left: '-4px', transform: 'rotate(-90deg) translateY(-50%)', color: 'var(--color-blue-text)', transformOrigin: 'left' }}
-            >
-              ↑ Depth (80 layers)
-            </div>
-            <div
-              className="absolute text-[10px] font-medium"
-              style={{ top: '16px', right: '0', color: 'var(--color-teal-text)' }}
-            >
-              ↗ Users
-            </div>
-          </div>
-
-          <div className="space-y-2 mt-4">
-            {SPLIT_AXES.map((item) => (
-              <div
-                key={item.id}
-                className="flex gap-3 items-start p-3 rounded-lg border"
-                style={{ background: item.bgColor, borderColor: item.color }}
-              >
-                <div className="flex-shrink-0 w-3 h-12 rounded-sm" style={{ background: item.color }} />
-                <div className="min-w-0 flex-1">
-                  <div className="text-[13px] font-medium" style={{ color: item.textColor }}>
-                    {item.name}
-                  </div>
-                  <div className="text-[12px] text-[var(--color-text-secondary)] leading-relaxed mt-0.5">
-                    <strong className="text-[var(--color-text)]">{item.axis}</strong> — {item.direction}.
-                    <br />
-                    <em>{item.cut}.</em>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </Panel>
+      <ParallelismConfigurator />
 
       <Callout
         type="note"
