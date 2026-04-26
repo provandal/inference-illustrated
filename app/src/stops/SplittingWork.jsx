@@ -85,9 +85,10 @@ const PARALLELISM_CONFIGS = [
     ],
     arrows: 'all-reduce',
     arrowLabel: 'all-reduce',
-    users: '1 user (all 8 GPUs collaborate on every token)',
-    communication: 'Heavy \u2014 all-reduce after every attention and FFN block',
-    kvCache: 'Sharded \u2014 each GPU holds 1/8 of the cache',
+    description: 'Every GPU holds all 80 layers but only a slice (1/8) of each layer\u2019s weight matrices. When processing a token, all 8 GPUs compute their slice in parallel, then synchronize results via an all-reduce operation. This happens twice per layer (after attention and after FFN) \u2014 160 all-reduces per forward pass for Llama-3 70B. The benefit: each GPU only needs 1/8 of the weights in memory, freeing space for more KV cache.',
+    users: '1 user \u2014 all 8 GPUs collaborate on every single token. The token\u2019s computation is split across GPUs, not the users. This makes each token faster but means the cluster can only serve one conversation at a time.',
+    communication: 'Heavy. Two all-reduce operations per layer, 80 layers = 160 all-reduces per token. Each all-reduce requires every GPU to send its partial result to every other GPU and receive back the combined result. At NVLink speeds within a node this takes microseconds per operation. Across nodes (InfiniBand at 50 GB/s) it\u2019s 18\u00d7 slower \u2014 which is why TP should stay within a single node.',
+    kvCache: 'Sharded across GPUs \u2014 each GPU holds 1/8 of the KV cache (1/8 of the attention heads). This is the super-linear scaling effect: with TP=8, the weight memory per GPU drops to 1/8, freeing disproportionately more space for cache. Total cache capacity across the cluster is much larger than 8\u00d7 one GPU\u2019s cache.',
   },
   {
     id: 'pp8',
@@ -115,9 +116,10 @@ const PARALLELISM_CONFIGS = [
     ],
     arrows: 'pipeline',
     arrowLabel: '16 KB',
-    users: '1 user (token flows through all 8 sequentially)',
-    communication: 'Light \u2014 small activations passed between stages',
-    kvCache: 'Split by layer \u2014 each GPU caches only its layers',
+    description: 'Each GPU holds a contiguous range of layers (10 out of 80). A token enters GPU 0, passes through layers 1\u201310, then the output (a single d_model-sized vector \u2014 just 16 KB) is handed off to GPU 1 for layers 11\u201320, and so on through all 8 stages. The benefit: each GPU holds only 1/8 of the model weights AND only 1/8 of the KV cache (since each layer\u2019s cache stays on the GPU that owns those layers).',
+    users: '1 user \u2014 one token flows through all 8 GPUs sequentially. Unlike TP, GPUs are not working simultaneously on the same token. To keep all GPUs busy, you need micro-batching: feeding multiple tokens into the pipeline so GPU 0 processes token N+1 while GPU 1 processes token N.',
+    communication: 'Light. Only 16 KB of activation data passes between adjacent GPUs at each stage boundary. This is a simple point-to-point send \u2014 no collective operation like all-reduce. The communication cost is negligible compared to TP, making PP viable across nodes (InfiniBand) and even across racks.',
+    kvCache: 'Naturally split by layer. Each GPU caches K and V only for its 10 layers. No GPU needs to store the full 80-layer cache. Cache placement maps directly to the pipeline stage structure \u2014 there is no ambiguity about which GPU holds which cache entries.',
   },
   {
     id: 'dp8',
@@ -137,9 +139,10 @@ const PARALLELISM_CONFIGS = [
     ],
     arrows: 'none',
     arrowLabel: '',
-    users: '8 users (each GPU serves independently)',
-    communication: 'None during inference',
-    kvCache: 'Independent \u2014 each GPU holds its own users\u2019 cache',
+    description: 'The simplest strategy: copy the entire model onto every GPU. Each GPU is a fully independent inference server \u2014 it holds all 80 layers, all weight matrices, and serves its own set of users. No GPU needs to communicate with any other during inference. The downside: the model weights are duplicated 8 times (8 \u00d7 35 GB = 280 GB of HBM consumed by redundant weight copies), leaving less room for KV cache per GPU.',
+    users: '8 users simultaneously \u2014 one per GPU, each completely independent. This is the best throughput configuration because there is zero coordination overhead. If you need to serve 32 users on 8 GPUs, each GPU handles 4 users in its own batch.',
+    communication: 'Zero during inference. Each GPU runs the complete forward pass independently. There is no all-reduce, no pipeline handoff, no synchronization of any kind between GPUs. (During training, gradients must be synchronized, but inference has no gradients.)',
+    kvCache: 'Fully independent. Each GPU holds the complete KV cache for its own users only. No cache sharing between GPUs. The constraint: with 35 GB of weights on each GPU, only 45 GB remains for cache \u2014 enough for ~18 concurrent users at 8K tokens each. If one GPU\u2019s users need more cache, you can\u2019t borrow from another GPU\u2019s free space.',
   },
   {
     id: 'tp4pp2',
@@ -173,9 +176,10 @@ const PARALLELISM_CONFIGS = [
     ],
     arrows: 'tp-pp',
     arrowLabel: '',
-    users: '1 user \u2014 processed by all 8 GPUs',
-    communication: 'All-reduce within rows (TP) + pipeline between rows (PP)',
-    kvCache: 'Sharded within each pipeline stage \u2014 each GPU holds 1/4 of its layers\u2019 cache',
+    description: 'Combines both splitting strategies on the same 8 GPUs. The model is sliced two ways: horizontally (TP splits each layer\u2019s weights across 4 GPUs) and vertically (PP splits the 80 layers into 2 stages of 40). The top row of 4 GPUs runs layers 1\u201340 with tensor parallelism; the bottom row runs layers 41\u201380. A token is processed by the top row first (with all-reduce between the 4 GPUs), then the result passes to the bottom row (a 16 KB pipeline handoff).',
+    users: '1 user \u2014 processed by all 8 GPUs working together. Compared to pure TP=8, there are fewer all-reduce participants per operation (4 instead of 8), but a pipeline handoff is added between stages.',
+    communication: 'Mixed. Within each row: all-reduce between 4 GPUs (TP). Between rows: 16 KB point-to-point handoff (PP). The TP all-reduce stays within a 4-GPU node (fast NVLink), while the PP handoff can cross nodes (only 16 KB, so the latency is manageable).',
+    kvCache: 'Doubly split. Each GPU holds 1/4 of the cache for its layers only. GPU 0 holds 1/4 of the heads for layers 1\u201340. No single GPU holds the full cache for any layer.',
   },
   {
     id: 'tp4dp2',
@@ -211,9 +215,10 @@ const PARALLELISM_CONFIGS = [
     ],
     arrows: 'tp-dp',
     arrowLabel: '',
-    users: '2 users \u2014 each group of 4 handles one user',
-    communication: 'All-reduce within groups, independent across groups',
-    kvCache: 'Sharded within groups \u2014 each GPU holds 1/4 of cache for its user',
+    description: 'The most common production configuration. Two independent TP groups, each serving different users. Group A (4 GPUs) uses tensor parallelism to serve User 1 \u2014 each GPU holds 1/4 of the weights, they all-reduce together. Group B (4 GPUs) does the same for User 2. The groups operate completely independently. This gives you the memory efficiency of TP (each GPU holds only 1/4 of the weights) with the throughput of DP (2 users served simultaneously).',
+    users: '2 users simultaneously \u2014 one per group. Each group of 4 GPUs collaborates via TP on one user\u2019s tokens. With larger clusters (e.g., 32 GPUs), you\u2019d have 8 groups of 4, serving 8 users simultaneously.',
+    communication: 'All-reduce within each group (4 GPUs, 160 all-reduces per forward pass). Zero communication between groups. This is why TP+DP scales well: the heavy TP communication stays within a NVLink-connected node, while the DP replication requires no communication at all.',
+    kvCache: 'Sharded within each group. Each GPU in Group A holds 1/4 of User 1\u2019s cache. Each GPU in Group B holds 1/4 of User 2\u2019s cache. No cache sharing between groups. This is the super-linear scaling effect from Stop 8 \u2014 TP=4 frees disproportionately more memory for cache than running at TP=1.',
   },
   {
     id: 'pp4dp2',
@@ -251,9 +256,10 @@ const PARALLELISM_CONFIGS = [
     ],
     arrows: 'pp-dp',
     arrowLabel: '16 KB',
-    users: '2 users \u2014 each pipeline handles one user',
-    communication: 'Sequential within pipelines, independent across pipelines',
-    kvCache: 'Split by layer within each pipeline \u2014 each GPU caches its own layers',
+    description: 'Two independent pipeline instances, each serving a different user. Pipeline A (4 GPUs) splits the 80 layers across 4 stages; Pipeline B does the same. Tokens flow through each pipeline sequentially. The pipelines are completely independent \u2014 no communication between them. This is less common than TP+DP in practice because pipeline parallelism introduces latency (tokens must traverse all stages) and is harder to keep busy without micro-batching.',
+    users: '2 users simultaneously \u2014 one per pipeline. Each 4-GPU pipeline handles one user\u2019s tokens sequentially. Micro-batching within each pipeline can keep all stages busy.',
+    communication: 'Sequential point-to-point handoffs (16 KB) within each pipeline. Zero communication between pipelines. Lower total communication than TP+DP because pipeline handoffs are tiny compared to all-reduce operations.',
+    kvCache: 'Split by layer within each pipeline. Each GPU caches K and V only for its assigned layers (20 layers per GPU in a 4-stage pipeline). Cache placement is clear and deterministic \u2014 no sharding ambiguity.',
   },
   {
     id: 'tp2pp3dp4',
@@ -321,9 +327,10 @@ const PARALLELISM_CONFIGS = [
     ],
     arrows: 'all-three',
     arrowLabel: '',
-    users: '4 users \u2014 each group of 6 handles one user',
-    communication: 'All-reduce within TP pairs, pipeline across PP stages, independent across DP replicas',
-    kvCache: 'Sharded by TP within each pipeline stage, split across stages, independent across replicas',
+    description: 'All three strategies combined. 24 GPUs organized as 4 independent replicas (DP=4), each replica containing 6 GPUs arranged as 2 GPUs wide (TP=2) and 3 GPUs deep (PP=3). Within each replica: TP handles width (all-reduce between pairs), PP handles depth (pipeline handoffs between stages). Across replicas: complete independence (DP). This is how the largest production clusters operate \u2014 hundreds or thousands of GPUs, organized along all three axes simultaneously.',
+    users: '4 users simultaneously \u2014 one per replica. Each group of 6 GPUs collaborates to serve one user. With 72 GPUs (NVL72), you could have 12 replicas serving 12 users, or 6 replicas of TP=4\u00d7PP=3 serving 6 users with more parallelism per user.',
+    communication: 'All three types coexist: all-reduce within TP pairs (heaviest, stays on NVLink), pipeline handoffs between PP stages (light, 16 KB), and zero communication between DP replicas. The key design constraint: TP must stay within a single NVLink domain; PP can cross nodes; DP can span the entire cluster.',
+    kvCache: 'Triple-split. Within each replica: sharded by TP (each GPU holds 1/2 of the heads) and split by PP (each GPU holds 1/3 of the layers). Across replicas: fully independent. Each GPU holds a small, well-defined slice of one user\u2019s cache.',
   },
 ];
 
@@ -618,19 +625,26 @@ function ParallelismConfigurator() {
           <ConfigGrid config={config} />
         </div>
 
-        {/* Info row */}
-        <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
-          <div className="p-2 rounded bg-[var(--color-surface-muted)] border border-[var(--color-border-light)]">
-            <div className="text-[9px] text-[var(--color-text-muted)] uppercase tracking-wider mb-0.5">Users served</div>
-            <div className="text-[11px] text-[var(--color-text)] leading-snug">{config.users}</div>
+        {/* Description */}
+        {config.description && (
+          <div className="mt-3 p-3 rounded-lg bg-[var(--color-surface-muted)] border border-[var(--color-border-light)] text-[13px] text-[var(--color-text-secondary)] leading-relaxed">
+            {config.description}
           </div>
-          <div className="p-2 rounded bg-[var(--color-surface-muted)] border border-[var(--color-border-light)]">
-            <div className="text-[9px] text-[var(--color-text-muted)] uppercase tracking-wider mb-0.5">Communication</div>
-            <div className="text-[11px] text-[var(--color-text)] leading-snug">{config.communication}</div>
+        )}
+
+        {/* Info cards */}
+        <div className="mt-3 space-y-2">
+          <div className="p-3 rounded bg-[var(--color-surface-muted)] border border-[var(--color-border-light)]">
+            <div className="text-[10px] text-[var(--color-text-muted)] uppercase tracking-wider mb-1 font-medium">Users served</div>
+            <div className="text-[12px] text-[var(--color-text-secondary)] leading-relaxed">{config.users}</div>
           </div>
-          <div className="p-2 rounded bg-[var(--color-surface-muted)] border border-[var(--color-border-light)]">
-            <div className="text-[9px] text-[var(--color-text-muted)] uppercase tracking-wider mb-0.5">KV Cache</div>
-            <div className="text-[11px] text-[var(--color-text)] leading-snug">{config.kvCache}</div>
+          <div className="p-3 rounded bg-[var(--color-surface-muted)] border border-[var(--color-border-light)]">
+            <div className="text-[10px] text-[var(--color-text-muted)] uppercase tracking-wider mb-1 font-medium">Communication pattern</div>
+            <div className="text-[12px] text-[var(--color-text-secondary)] leading-relaxed">{config.communication}</div>
+          </div>
+          <div className="p-3 rounded bg-[var(--color-surface-muted)] border border-[var(--color-border-light)]">
+            <div className="text-[10px] text-[var(--color-text-muted)] uppercase tracking-wider mb-1 font-medium">KV Cache impact</div>
+            <div className="text-[12px] text-[var(--color-text-secondary)] leading-relaxed">{config.kvCache}</div>
           </div>
         </div>
       </div>
