@@ -1048,12 +1048,12 @@ function PagedAttentionPage() {
         >
           + Add conversation
         </button>
-        {tradActive.length > 0 && (
+        {pagedActive.length > 0 && (
           <button
-            onClick={() => finishConversation(tradActive[0].id)}
+            onClick={() => finishConversation(pagedActive[0].id)}
             className="px-3 py-1.5 text-[11px] rounded border border-[var(--color-red)] bg-[var(--color-red-bg)] text-[var(--color-red-text)] hover:opacity-80 transition-opacity cursor-pointer"
           >
-            Finish Conv {tradActive[0].id}
+            Finish Conv {pagedActive[0].id}
           </button>
         )}
         <button
