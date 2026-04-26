@@ -241,7 +241,7 @@ export const DATA_PATH_STEPS = [
   {
     step: 8,
     title: 'Archive to network storage (conversation ends)',
-    dataPath: 'ICMS \u2192 Spectrum-X \u2192 Storage system (VAST/WEKA/DDN)',
+    dataPath: 'ICMS \u2192 Spectrum-X \u2192 Storage system (Dell/VAST/WEKA/DDN)',
     protocol: 'RDMA or NVMe/RoCE or S3',
     dataVolume: '4.48 GB',
     latency: 'Async (not on critical path)',
@@ -405,7 +405,7 @@ export const COMPLETE_PATH_FRAMES = [
     step: 8,
     title: 'Archive to G4',
     from: 'ICMS',
-    to: 'Network storage (VAST/WEKA/DDN)',
+    to: 'Network storage (Dell/VAST/WEKA/DDN)',
     protocol: 'RDMA or NVMe/RoCE or S3',
     latency: 'Async',
     color: 'var(--color-text-muted)',

@@ -56,7 +56,7 @@ export const TIERING_COMPARISON = [
   { aspect: 'Hot tier',            traditional: 'NVMe SSD',                            kvCache: 'GPU HBM' },
   { aspect: 'Warm tier',           traditional: 'SAS SSD / HDD',                      kvCache: 'CPU DRAM' },
   { aspect: 'Cold tier',           traditional: 'HDD / tape',                          kvCache: 'NVMe SSD' },
-  { aspect: 'Archive',             traditional: 'Object storage / cloud',              kvCache: 'Network storage (VAST, WEKA)' },
+  { aspect: 'Archive',             traditional: 'Object storage / cloud',              kvCache: 'Network storage (Dell, WEKA, VAST)' },
   { aspect: 'Data lifecycle',      traditional: 'Months to years',                     kvCache: 'Seconds to minutes' },
   { aspect: 'Placement policy',    traditional: 'Access frequency over days/weeks',    kvCache: 'Access recency within a conversation' },
   { aspect: 'Eviction cost',       traditional: 'Read from slower tier',               kvCache: 'Recompute (prefill) OR read from slower tier' },

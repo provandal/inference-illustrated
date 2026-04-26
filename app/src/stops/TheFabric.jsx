@@ -757,7 +757,7 @@ function NvmePage() {
             transferred the KV cache one page at a time at the inference engine&rsquo;s
             native page size (16&ndash;32 tokens, tens of KB per I/O). This pattern{' '}
             <strong>underutilized network bandwidth</strong>. LMCache benchmarks
-            documented the problem, and production systems &mdash; NVIDIA KVBM, WEKA,
+            documented the problem, and production systems &mdash; NVIDIA KVBM, Dell, WEKA,
             VAST, LMCache &mdash; have all converged on a different approach:{' '}
             <strong>aggregate many pages and all model layers into a single large
             sequential transfer</strong>.

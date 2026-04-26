@@ -801,7 +801,7 @@ function KvbmPage() {
 
       <Callout
         type="note"
-        message='<strong>Why &ldquo;block&rdquo; and not &ldquo;file&rdquo; or &ldquo;object&rdquo;?</strong> The KVBM&rsquo;s API is block-level: get() and put() on fixed-size blocks identified by coordinates (conversation_id, layer_range, token_range). Files carry filesystem overhead that KV cache does not need. Object stores add HTTP/REST overhead and are optimized for large, immutable blobs. KV blocks are small (~5.2 MB per block for Llama-3 70B with GQA), mutable during decode, and accessed with strict latency requirements. However, KVBM treats G4 (network storage) as an <em>opaque blob store</em> &mdash; it does not dictate the backend&rsquo;s internal organization. Storage providers like VAST, WEKA, and DDN implement their own optimizations behind the KVBM API.'
+        message='<strong>Why &ldquo;block&rdquo; and not &ldquo;file&rdquo; or &ldquo;object&rdquo;?</strong> The KVBM&rsquo;s API is block-level: get() and put() on fixed-size blocks identified by coordinates (conversation_id, layer_range, token_range). Files carry filesystem overhead that KV cache does not need. Object stores add HTTP/REST overhead and are optimized for large, immutable blobs. KV blocks are small (~5.2 MB per block for Llama-3 70B with GQA), mutable during decode, and accessed with strict latency requirements. However, KVBM treats G4 (network storage) as an <em>opaque blob store</em> &mdash; it does not dictate the backend&rsquo;s internal organization. Storage providers like Dell, VAST, WEKA, and DDN implement their own optimizations behind the KVBM API.'
       />
 
       <InfoBox>
@@ -996,8 +996,8 @@ function StorageIOPage() {
         <InfoBox>
           <strong>The columns above describe structural decomposition</strong> &mdash; how
           one block of 16 tokens (the KVBM page size) breaks down per layer. They are{' '}
-          <em>not</em> network transfer units. Production systems (KVBM, WEKA, VAST,
-          LMCache) aggregate multiple pages and all model layers into much larger
+          <em>not</em> network transfer units. Production systems (KVBM, Dell, WEKA,
+          VAST, LMCache) aggregate multiple pages and all model layers into much larger
           sequential chunks. LMCache&rsquo;s default is 256 tokens per chunk &mdash; tens to
           low hundreds of large chunks per conversation, not thousands of small
           per-layer-per-page reads. We&rsquo;ll see why this matters in Stop 15 (the
@@ -1527,7 +1527,7 @@ function EconomicsPage() {
             &mdash; potentially causing cascading delays in a multi-agent workflow.
           </p>
           <p>
-            This is why NVIDIA, WEKA, VAST, and others are investing heavily in KV cache
+            This is why NVIDIA, Dell, WEKA, VAST, and others are investing heavily in KV cache
             infrastructure.{' '}
             <strong className="text-[var(--color-text)]">
               Context is becoming a first-class infrastructure resource
