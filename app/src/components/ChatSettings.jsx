@@ -8,7 +8,7 @@ export default function ChatSettings({ onClose, onSave }) {
     () => localStorage.getItem('llmApiKey') || ''
   );
   const [model, setModel] = useState(
-    () => localStorage.getItem('llmModel') || 'claude-sonnet-4-5-20250514'
+    () => localStorage.getItem('llmModel') || 'claude-opus-4-7'
   );
 
   function handleSave() {
@@ -24,7 +24,7 @@ export default function ChatSettings({ onClose, onSave }) {
     localStorage.removeItem('llmModel');
     setEndpoint('https://api.anthropic.com');
     setApiKey('');
-    setModel('claude-sonnet-4-5-20250514');
+    setModel('claude-opus-4-7');
   }
 
   return (
