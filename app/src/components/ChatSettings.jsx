@@ -2,13 +2,13 @@ import { useState } from 'react';
 
 export default function ChatSettings({ onClose, onSave }) {
   const [endpoint, setEndpoint] = useState(
-    () => localStorage.getItem('llmEndpoint') || 'https://api.openai.com/v1'
+    () => localStorage.getItem('llmEndpoint') || 'https://api.anthropic.com'
   );
   const [apiKey, setApiKey] = useState(
     () => localStorage.getItem('llmApiKey') || ''
   );
   const [model, setModel] = useState(
-    () => localStorage.getItem('llmModel') || 'gpt-4o'
+    () => localStorage.getItem('llmModel') || 'claude-sonnet-4-5-20241022'
   );
 
   function handleSave() {
@@ -22,9 +22,9 @@ export default function ChatSettings({ onClose, onSave }) {
     localStorage.removeItem('llmEndpoint');
     localStorage.removeItem('llmApiKey');
     localStorage.removeItem('llmModel');
-    setEndpoint('https://api.openai.com/v1');
+    setEndpoint('https://api.anthropic.com');
     setApiKey('');
-    setModel('gpt-4o');
+    setModel('claude-sonnet-4-5-20241022');
   }
 
   return (
