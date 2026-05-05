@@ -1047,26 +1047,35 @@ function Pp8HandoffArrow({ handoff }) {
   if (!handoff) return null;
   const a = TP8_GPU_POS[handoff.from];
   const b = TP8_GPU_POS[handoff.to];
-  const x1 = a.cx;
-  const y1 = a.y + TP8_GPU_H + 1;
-  const x2 = b.cx;
-  const y2 = b.y - 1;
+  // Curve sweeps out to the right of the GPU column, from bottom-right of the
+  // sending GPU to top-right of the receiving GPU. Same style language as the
+  // TP=8 all-reduce arcs.
+  const sx = a.rightX - 6;
+  const sy = a.y + TP8_GPU_H;
+  const ex = b.rightX - 6;
+  const ey = b.y;
+  const bulge = 26;
+  const cp1x = sx + bulge;
+  const cp1y = sy + 4;
+  const cp2x = ex + bulge;
+  const cp2y = ey - 4;
+  const path = `M ${sx} ${sy} C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${ex} ${ey}`;
+  const midX = (cp1x + cp2x) / 2;
+  const midY = (sy + ey) / 2;
   return (
     <g>
-      <line
-        x1={x1}
-        y1={y1}
-        x2={x2}
-        y2={y2}
+      <path
+        d={path}
+        fill="none"
         stroke="var(--color-blue)"
-        strokeWidth={2.4}
+        strokeWidth={2.2}
         markerEnd="url(#pp8-arrow-blue)"
       />
-      <text x={x1 + 12} y={(y1 + y2) / 2 + 4} fontSize={10} fontWeight={700} fill="var(--color-blue-text)">
+      <text x={midX + 6} y={midY + 3} fontSize={10} fontWeight={700} fill="var(--color-blue-text)">
         16 KB
       </text>
-      <circle cx={x1} cy={y1} r={4} fill="var(--color-blue)">
-        <animate attributeName="cy" from={y1} to={y2} dur="800ms" repeatCount="indefinite" />
+      <circle cx={midX} cy={midY} r={4} fill="var(--color-blue)">
+        <animate attributeName="r" values="3;6;3" dur="800ms" repeatCount="indefinite" />
         <animate attributeName="opacity" values="1;0.4;1" dur="800ms" repeatCount="indefinite" />
       </circle>
     </g>
