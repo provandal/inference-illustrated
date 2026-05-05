@@ -520,15 +520,18 @@ function Tp8BroadcastArrows({ active }) {
 
 function Tp8FeedbackArrow({ active }) {
   // Curve from below the GPU column back up to the prompt bubble bottom edge.
+  // Rendered AFTER the GPUs so the label is never occluded by GPU box fills.
   const startX = TP8_GPU_POS[7].rightX - 20;
   const startY = TP8_GPU_POS[7].y + TP8_GPU_H + 8;
   const endX = TP8_PROMPT_X + TP8_PROMPT_W / 2;
   const endY = TP8_PROMPT_Y + TP8_PROMPT_H + 4;
   const path = `M ${startX} ${startY} C ${startX} ${startY + 60}, ${endX} ${endY + 60}, ${endX} ${endY}`;
+  const labelX = (startX + endX) / 2;
+  const labelY = 445;
   return (
     <g style={{ transition: 'opacity 350ms ease', opacity: active ? 1 : 0 }}>
       <path d={path} fill="none" stroke="var(--color-amber)" strokeWidth={1.8} strokeDasharray="4 3" markerEnd="url(#tp8-arrow-amber)" />
-      <text x={(startX + endX) / 2} y={endY + 60} textAnchor="middle" fontSize={10} fill="var(--color-amber-text)">
+      <text x={labelX} y={labelY} textAnchor="middle" fontSize={10} fill="var(--color-amber-text)">
         feedback (autoregression)
       </text>
     </g>
@@ -537,22 +540,52 @@ function Tp8FeedbackArrow({ active }) {
 
 function Tp8EmergeToken({ active, label }) {
   if (!active) return null;
-  const startX = TP8_GPU_POS[7].rightX + 4;
-  const startY = TP8_GPU_POS[7].cy;
-  const endX = TP8_RESP_X - 4;
-  const endY = TP8_RESP_Y + 40;
+  // After the final all-reduce, every GPU holds the same logits.
+  // Show all 8 GPUs fanning into a single convergence point at the response bubble,
+  // making it visually obvious that no single GPU is "the" output.
+  const targetX = TP8_RESP_X - 6;
+  const targetY = TP8_RESP_Y + 44;
   return (
     <g>
-      <line x1={startX} y1={startY} x2={endX} y2={endY} stroke="var(--color-teal)" strokeWidth={2} markerEnd="url(#tp8-arrow-teal)" />
-      <circle cx={(startX + endX) / 2} cy={(startY + endY) / 2} r={6} fill="var(--color-teal)" opacity={0.9}>
-        <animate attributeName="r" from="3" to="8" dur="600ms" repeatCount="indefinite" />
-        <animate attributeName="opacity" from="1" to="0.4" dur="600ms" repeatCount="indefinite" />
+      {TP8_GPU_POS.map((g, i) => (
+        <line
+          key={i}
+          x1={g.rightX}
+          y1={g.cy}
+          x2={targetX}
+          y2={targetY}
+          stroke="var(--color-teal)"
+          strokeWidth={1.4}
+          opacity={0.55}
+          markerEnd="url(#tp8-arrow-teal)"
+        />
+      ))}
+      <circle cx={targetX} cy={targetY} r={7} fill="var(--color-teal)" opacity={0.95}>
+        <animate attributeName="r" from="4" to="10" dur="700ms" repeatCount="indefinite" />
+        <animate attributeName="opacity" from="1" to="0.45" dur="700ms" repeatCount="indefinite" />
       </circle>
       {label && (
-        <text x={(startX + endX) / 2} y={(startY + endY) / 2 - 12} textAnchor="middle" fontSize={10} fill="var(--color-teal-text)">
+        <text
+          x={targetX - 12}
+          y={targetY - 14}
+          textAnchor="end"
+          fontSize={11}
+          fontWeight={700}
+          fill="var(--color-teal-text)"
+        >
           {label}
         </text>
       )}
+      <text
+        x={targetX - 12}
+        y={targetY + 18}
+        textAnchor="end"
+        fontSize={9}
+        fill="var(--color-text-muted)"
+        fontStyle="italic"
+      >
+        all 8 ranks have the same token
+      </text>
     </g>
   );
 }
@@ -741,9 +774,6 @@ function Tp8LifecycleAnimation() {
           {/* All-reduce curves */}
           <Tp8AllReduceCurves active={allreduceActive} />
 
-          {/* Feedback arrow */}
-          <Tp8FeedbackArrow active={feedbackActive} />
-
           {/* GPUs */}
           {TP8_GPU_POS.map((pos, i) => (
             <Tp8Gpu
@@ -755,6 +785,9 @@ function Tp8LifecycleAnimation() {
               decodePass={current.highlight === 'decode-pass'}
             />
           ))}
+
+          {/* Feedback arrow — rendered after GPUs so the label is never occluded */}
+          <Tp8FeedbackArrow active={feedbackActive} />
 
           {/* Token emerging from bottom GPU to response bubble */}
           <Tp8EmergeToken

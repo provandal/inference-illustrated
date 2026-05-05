@@ -121,7 +121,7 @@ export const TP8_RESPONSE_TOKENS = [
 export const TP8_LIFECYCLE_STEPS = [
   { phase: 'Setup',    label: 'Cluster idle',                   sub: '8 H100 GPUs holding 1/8 of every weight matrix.',                                                  layer: null, highlight: 'idle' },
   { phase: 'Prompt',   label: 'Prompt arrives',                 sub: 'User submits the prompt. Tokenizer turns it into ~8 tokens.',                                       layer: null, highlight: 'idle' },
-  { phase: 'Prompt',   label: 'Broadcast to all GPUs',          sub: 'Embedding for the prompt is replicated to all 8 GPUs (TP requires every GPU to start with the full activation).', layer: null, highlight: 'broadcast' },
+  { phase: 'Prompt',   label: 'Every GPU starts with the same embedding', sub: 'Animation shorthand: arrows from the prompt to every GPU. Real mechanic: the tokenizer turns the text into integer IDs on the CPU, then each GPU produces the embedding either from a replicated embedding table (no transfer) or via an NCCL all-gather over NVLink. "Broadcast" here is the collective-communication primitive (one→many over the interconnect) — not an Ethernet/IP broadcast frame.', layer: null, highlight: 'broadcast' },
 
   { phase: 'Prefill',  label: 'Layer 1 — attention compute',    sub: 'Each GPU multiplies the embedding by its 1/8 slice of W_Q, W_K, W_V and runs attention on its 8 heads.', layer: 1, highlight: 'compute' },
   { phase: 'Prefill',  label: 'Layer 1 — attention all-reduce', sub: 'All 8 GPUs send their partials to all others over NVLink. After the all-reduce every GPU has the full attention output.', layer: 1, highlight: 'allreduce' },
@@ -140,7 +140,7 @@ export const TP8_LIFECYCLE_STEPS = [
 
   { phase: 'Prefill',  label: 'Layers 4–80 (fast-forward)',     sub: '154 more all-reduces follow the same pattern. At NVLink speed inside one node this whole prefill takes ~100 ms.', layer: 80, highlight: 'condense' },
 
-  { phase: 'Decode',   label: 'First token emerges',            sub: 'Output projection → softmax → sample. The first token of the response is born.',                    layer: 80, highlight: 'emerge', tokenIndex: 0 },
+  { phase: 'Decode',   label: 'First token emerges (from all 8 GPUs)', sub: 'After the final all-reduce, every GPU holds the identical logits vector for the next token. Sampling (argmax / temperature / top-k) runs on every rank with the same RNG state, so all 8 produce the same token in lock-step — no extra communication needed. The token is then ready on every rank for the next decode pass.', layer: 80, highlight: 'emerge', tokenIndex: 0 },
   { phase: 'Decode',   label: 'Token feeds back as input',      sub: 'The new token rejoins the prompt embedding and goes back into layer 1. This is autoregression.',     layer: null, highlight: 'feedback', tokenIndex: 0 },
   { phase: 'Decode',   label: 'Decode pass — token 2',          sub: 'One token, 80 layers, 160 all-reduces. With KV cache from prefill, only the new token is processed.', layer: 80, highlight: 'decode-pass', tokenIndex: 1 },
   { phase: 'Decode',   label: 'Decode pass — token 3',          sub: 'Same again. Decode steps are short — typically 30 ms each.',                                        layer: 80, highlight: 'decode-pass', tokenIndex: 2 },
