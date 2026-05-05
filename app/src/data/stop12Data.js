@@ -88,6 +88,69 @@ export const SPLIT_AXES = [
 ];
 
 // ================================================================
+// PAGE 1 (TP=8) — Lifecycle animation
+// Prompt → Prefill (3 layers shown explicitly + condense) → First token →
+// Decode loop (autoregressive feedback) → Response complete
+// 4 sub-steps per layer: attention compute, attention all-reduce, FFN compute, FFN all-reduce
+// ================================================================
+export const TP8_PROMPT = 'Write a haiku about tensor parallelism.';
+export const TP8_RESPONSE_LINES = [
+  'Eight cards share the load',
+  'Whispers cross the silver wires',
+  'One thought, parallel.',
+];
+// Pre-tokenised response so we can reveal one token per decode step.
+// Approximated tokenisation — fine for visual effect.
+export const TP8_RESPONSE_TOKENS = [
+  'Eight', ' cards', ' share', ' the', ' load', ',', '\n',
+  'Whispers', ' cross', ' the', ' silver', ' wires', ',', '\n',
+  'One', ' thought', ',', ' parallel', '.',
+];
+
+// Each step: { phase, label, sub, layer (1..80 or null), highlight, narration }
+// highlight values:
+//   'idle'         – no GPU activity
+//   'broadcast'    – arrows from prompt bubble to all 8 GPUs
+//   'compute'      – all 8 GPUs pulse with computation
+//   'allreduce'    – mesh of curves between all 8 GPUs (GPU 0 bright, others shadow)
+//   'condense'     – fast-forward through layers 4-80
+//   'emerge'       – token pops out the bottom-right of the column
+//   'feedback'     – curved arrow from response area back to prompt area
+//   'decode-pass'  – very fast pulse through all layers (single decode step)
+//   'complete'     – final response shown in full
+export const TP8_LIFECYCLE_STEPS = [
+  { phase: 'Setup',    label: 'Cluster idle',                   sub: '8 H100 GPUs holding 1/8 of every weight matrix.',                                                  layer: null, highlight: 'idle' },
+  { phase: 'Prompt',   label: 'Prompt arrives',                 sub: 'User submits the prompt. Tokenizer turns it into ~8 tokens.',                                       layer: null, highlight: 'idle' },
+  { phase: 'Prompt',   label: 'Broadcast to all GPUs',          sub: 'Embedding for the prompt is replicated to all 8 GPUs (TP requires every GPU to start with the full activation).', layer: null, highlight: 'broadcast' },
+
+  { phase: 'Prefill',  label: 'Layer 1 — attention compute',    sub: 'Each GPU multiplies the embedding by its 1/8 slice of W_Q, W_K, W_V and runs attention on its 8 heads.', layer: 1, highlight: 'compute' },
+  { phase: 'Prefill',  label: 'Layer 1 — attention all-reduce', sub: 'All 8 GPUs send their partials to all others over NVLink. After the all-reduce every GPU has the full attention output.', layer: 1, highlight: 'allreduce' },
+  { phase: 'Prefill',  label: 'Layer 1 — FFN compute',          sub: 'Each GPU multiplies through its 1/8 slice of the FFN weights.',                                     layer: 1, highlight: 'compute' },
+  { phase: 'Prefill',  label: 'Layer 1 — FFN all-reduce',       sub: 'Second all-reduce of layer 1. Now every GPU holds the full layer-1 output.',                       layer: 1, highlight: 'allreduce' },
+
+  { phase: 'Prefill',  label: 'Layer 2 — attention compute',    sub: 'Same pattern repeats for the next layer.',                                                          layer: 2, highlight: 'compute' },
+  { phase: 'Prefill',  label: 'Layer 2 — attention all-reduce', sub: 'Third all-reduce overall.',                                                                         layer: 2, highlight: 'allreduce' },
+  { phase: 'Prefill',  label: 'Layer 2 — FFN compute',          sub: 'Parallel FFN slice on every GPU.',                                                                  layer: 2, highlight: 'compute' },
+  { phase: 'Prefill',  label: 'Layer 2 — FFN all-reduce',       sub: 'Fourth all-reduce. Layer 2 output now replicated everywhere.',                                     layer: 2, highlight: 'allreduce' },
+
+  { phase: 'Prefill',  label: 'Layer 3 — attention compute',    sub: 'One more layer to give you the rhythm.',                                                            layer: 3, highlight: 'compute' },
+  { phase: 'Prefill',  label: 'Layer 3 — attention all-reduce', sub: 'Fifth all-reduce.',                                                                                 layer: 3, highlight: 'allreduce' },
+  { phase: 'Prefill',  label: 'Layer 3 — FFN compute',          sub: 'Parallel FFN slice on every GPU.',                                                                  layer: 3, highlight: 'compute' },
+  { phase: 'Prefill',  label: 'Layer 3 — FFN all-reduce',       sub: 'Sixth all-reduce — that is two per layer, every layer.',                                            layer: 3, highlight: 'allreduce' },
+
+  { phase: 'Prefill',  label: 'Layers 4–80 (fast-forward)',     sub: '154 more all-reduces follow the same pattern. At NVLink speed inside one node this whole prefill takes ~100 ms.', layer: 80, highlight: 'condense' },
+
+  { phase: 'Decode',   label: 'First token emerges',            sub: 'Output projection → softmax → sample. The first token of the response is born.',                    layer: 80, highlight: 'emerge', tokenIndex: 0 },
+  { phase: 'Decode',   label: 'Token feeds back as input',      sub: 'The new token rejoins the prompt embedding and goes back into layer 1. This is autoregression.',     layer: null, highlight: 'feedback', tokenIndex: 0 },
+  { phase: 'Decode',   label: 'Decode pass — token 2',          sub: 'One token, 80 layers, 160 all-reduces. With KV cache from prefill, only the new token is processed.', layer: 80, highlight: 'decode-pass', tokenIndex: 1 },
+  { phase: 'Decode',   label: 'Decode pass — token 3',          sub: 'Same again. Decode steps are short — typically 30 ms each.',                                        layer: 80, highlight: 'decode-pass', tokenIndex: 2 },
+  { phase: 'Decode',   label: 'Decode pass — token 4',          sub: 'Pattern continues for every output token.',                                                          layer: 80, highlight: 'decode-pass', tokenIndex: 3 },
+  { phase: 'Decode',   label: '… 14 more decode passes',        sub: 'The remaining tokens stream out the same way. KV cache grows by one entry per token per layer.',     layer: 80, highlight: 'decode-pass', tokenIndex: 17 },
+
+  { phase: 'Done',     label: 'Response complete',              sub: 'The full haiku has been streamed back to the user. Total: 1 prefill + 18 decode passes = 19 forward passes × 160 all-reduces each.', layer: null, highlight: 'complete', tokenIndex: 17 },
+];
+
+// ================================================================
 // PAGE 2 — Data Parallelism animation
 // ================================================================
 export const DP_STEPS = [
