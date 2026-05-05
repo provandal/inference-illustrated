@@ -590,7 +590,80 @@ function Tp8EmergeToken({ active, label }) {
   );
 }
 
-function Tp8Gpu({ pos, idx, computeActive, allreduceActive, decodePass }) {
+function Tp8LayerTrack({ pos, currentLayer, highlight }) {
+  // 80-segment track at the bottom of each GPU box, one segment per transformer layer.
+  // The current layer lights up red; previously-traversed layers are muted; future
+  // layers are outline-only (transparent fill on the background track).
+  const trackY = pos.y + TP8_GPU_H - 11;
+  const trackH = 7;
+  const trackX = pos.x + 8;
+  const trackW = TP8_GPU_W - 16;
+  const segW = trackW / 80;
+
+  const isCondense = highlight === 'condense';
+  const isDecodePass = highlight === 'decode-pass';
+  const isComplete = highlight === 'complete';
+
+  // Decide the per-segment style for layer i (1..80).
+  const segStyle = (layerNum) => {
+    if (isComplete)    return { fill: 'var(--color-text-muted)', opacity: 0.45 };
+    if (isDecodePass)  return { fill: 'var(--color-red)',        opacity: 0.7  };
+    if (isCondense)    return layerNum <= 3
+      ? { fill: 'var(--color-text-muted)', opacity: 0.55 }
+      : { fill: 'var(--color-amber)',      opacity: 0.85 };
+    if (currentLayer && layerNum  < currentLayer) return { fill: 'var(--color-text-muted)', opacity: 0.5 };
+    if (currentLayer && layerNum === currentLayer) return { fill: 'var(--color-red)',         opacity: 1.0 };
+    return null;
+  };
+
+  return (
+    <g>
+      {/* Background track */}
+      <rect
+        x={trackX}
+        y={trackY}
+        width={trackW}
+        height={trackH}
+        rx={1.5}
+        fill="var(--color-surface)"
+        stroke="var(--color-border)"
+        strokeWidth={0.5}
+        opacity={0.7}
+      />
+      {/* Per-layer segments (drawn only when filled) */}
+      {Array.from({ length: 80 }, (_, i) => {
+        const layerNum = i + 1;
+        const s = segStyle(layerNum);
+        if (!s) return null;
+        return (
+          <rect
+            key={i}
+            x={trackX + i * segW + 0.15}
+            y={trackY + 1}
+            width={Math.max(0.6, segW - 0.3)}
+            height={trackH - 2}
+            fill={s.fill}
+            opacity={s.opacity}
+            style={{ transition: 'opacity 250ms ease' }}
+          />
+        );
+      })}
+      {/* Active-layer pointer above the current segment */}
+      {currentLayer && currentLayer <= 80 && !isComplete && !isDecodePass && !isCondense && (
+        <line
+          x1={trackX + (currentLayer - 0.5) * segW}
+          x2={trackX + (currentLayer - 0.5) * segW}
+          y1={trackY - 3}
+          y2={trackY - 0.5}
+          stroke="var(--color-red)"
+          strokeWidth={1.2}
+        />
+      )}
+    </g>
+  );
+}
+
+function Tp8Gpu({ pos, idx, computeActive, allreduceActive, decodePass, currentLayer, highlight }) {
   const isActiveCompute = computeActive;
   const pulse = isActiveCompute || decodePass;
   return (
@@ -610,12 +683,13 @@ function Tp8Gpu({ pos, idx, computeActive, allreduceActive, decodePass }) {
           <animate attributeName="opacity" values="1;0.55;1" dur="900ms" repeatCount="indefinite" />
         )}
       </rect>
-      <text x={pos.x + 8} y={pos.cy + 4} fontSize={11} fontFamily="monospace" fontWeight={700} fill={pulse || allreduceActive ? 'var(--color-red-text)' : 'var(--color-text-secondary)'}>
+      <text x={pos.x + 8} y={pos.y + 14} fontSize={11} fontFamily="monospace" fontWeight={700} fill={pulse || allreduceActive ? 'var(--color-red-text)' : 'var(--color-text-secondary)'}>
         GPU {idx}
       </text>
-      <text x={pos.x + TP8_GPU_W - 8} y={pos.cy + 4} fontSize={9} textAnchor="end" fill="var(--color-text-muted)">
+      <text x={pos.x + TP8_GPU_W - 8} y={pos.y + 14} fontSize={9} textAnchor="end" fill="var(--color-text-muted)">
         1/8 weights
       </text>
+      <Tp8LayerTrack pos={pos} currentLayer={currentLayer} highlight={highlight} />
     </g>
   );
 }
@@ -783,6 +857,8 @@ function Tp8LifecycleAnimation() {
               computeActive={computeActive}
               allreduceActive={allreduceActive}
               decodePass={current.highlight === 'decode-pass'}
+              currentLayer={current.layer}
+              highlight={current.highlight}
             />
           ))}
 
