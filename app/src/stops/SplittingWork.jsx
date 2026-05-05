@@ -27,6 +27,9 @@ import {
   TP8_LIFECYCLE_STEPS,
   TP8_PROMPT,
   TP8_RESPONSE_TOKENS,
+  PP8_LIFECYCLE_STEPS,
+  PP8_PROMPT,
+  PP8_RESPONSE_TOKENS,
 } from '../data/stop12Data';
 import { Panel, PanelHeader, InfoBox, Callout } from '../components/ui';
 import PageNav from '../components/PageNav';
@@ -952,6 +955,404 @@ function Tp8LifecycleAnimation() {
   );
 }
 
+/* ================================================================
+   PP=8 lifecycle animation
+   Replaces the static GPU row when config.id === 'pp8'.
+   Token walks down the 8-stage column with handoffs (16 KB each),
+   then we show micro-batching and the autoregressive feedback loop.
+   Reuses TP8_GPU_POS / TP8_W / TP8_H from above for shared geometry.
+   ================================================================ */
+
+function Pp8LayerTrack({ pos, gpuState, decodePass, microbatch }) {
+  // Each PP GPU only owns 10 layers, so the track is 10 segments wide.
+  const trackY = pos.y + TP8_GPU_H - 11;
+  const trackH = 7;
+  const trackX = pos.x + 8;
+  const trackW = TP8_GPU_W - 16;
+  const totalLayers = 10;
+  const segW = trackW / totalLayers;
+
+  const fill = gpuState === 'active' || microbatch
+    ? 'var(--color-blue)'
+    : gpuState === 'done'
+    ? 'var(--color-text-muted)'
+    : decodePass
+    ? 'var(--color-blue)'
+    : null;
+  const opacity = gpuState === 'active' || microbatch ? 1 : gpuState === 'done' ? 0.5 : decodePass ? 0.55 : 0;
+
+  return (
+    <g>
+      <rect
+        x={trackX}
+        y={trackY}
+        width={trackW}
+        height={trackH}
+        rx={1.5}
+        fill="var(--color-surface)"
+        stroke="var(--color-border)"
+        strokeWidth={0.5}
+        opacity={0.7}
+      />
+      {fill && Array.from({ length: totalLayers }, (_, i) => (
+        <rect
+          key={i}
+          x={trackX + i * segW + 0.3}
+          y={trackY + 1}
+          width={Math.max(1, segW - 0.6)}
+          height={trackH - 2}
+          fill={fill}
+          opacity={opacity}
+          style={{ transition: 'opacity 250ms ease' }}
+        />
+      ))}
+    </g>
+  );
+}
+
+function Pp8Gpu({ pos, idx, gpuState, decodePass, microbatch, layerRange }) {
+  const isActive = gpuState === 'active';
+  const isDone = gpuState === 'done';
+  const isPulsing = isActive || microbatch;
+  const isSoftGlow = decodePass && !isPulsing;
+  return (
+    <g>
+      <rect
+        x={pos.x}
+        y={pos.y}
+        width={TP8_GPU_W}
+        height={TP8_GPU_H}
+        rx={5}
+        fill={isPulsing ? 'var(--color-blue-bg)' : 'var(--color-surface-muted)'}
+        stroke={isPulsing ? 'var(--color-blue)' : isSoftGlow ? 'var(--color-blue)' : 'var(--color-border)'}
+        strokeWidth={isPulsing ? 2 : isSoftGlow ? 1.5 : 1}
+        style={{ transition: 'all 300ms ease', opacity: isDone ? 0.6 : 1 }}
+      >
+        {isPulsing && (
+          <animate attributeName="opacity" values="1;0.55;1" dur="900ms" repeatCount="indefinite" />
+        )}
+      </rect>
+      <text x={pos.x + 8} y={pos.y + 14} fontSize={11} fontFamily="monospace" fontWeight={700} fill={isPulsing ? 'var(--color-blue-text)' : 'var(--color-text-secondary)'}>
+        GPU {idx}
+      </text>
+      <text x={pos.x + TP8_GPU_W - 8} y={pos.y + 14} fontSize={9} textAnchor="end" fill="var(--color-text-muted)">
+        {layerRange}
+      </text>
+      <Pp8LayerTrack pos={pos} gpuState={gpuState} decodePass={decodePass} microbatch={microbatch} />
+    </g>
+  );
+}
+
+function Pp8HandoffArrow({ handoff }) {
+  if (!handoff) return null;
+  const a = TP8_GPU_POS[handoff.from];
+  const b = TP8_GPU_POS[handoff.to];
+  const x1 = a.cx;
+  const y1 = a.y + TP8_GPU_H + 1;
+  const x2 = b.cx;
+  const y2 = b.y - 1;
+  return (
+    <g>
+      <line
+        x1={x1}
+        y1={y1}
+        x2={x2}
+        y2={y2}
+        stroke="var(--color-blue)"
+        strokeWidth={2.4}
+        markerEnd="url(#pp8-arrow-blue)"
+      />
+      <text x={x1 + 12} y={(y1 + y2) / 2 + 4} fontSize={10} fontWeight={700} fill="var(--color-blue-text)">
+        16 KB
+      </text>
+      <circle cx={x1} cy={y1} r={4} fill="var(--color-blue)">
+        <animate attributeName="cy" from={y1} to={y2} dur="800ms" repeatCount="indefinite" />
+        <animate attributeName="opacity" values="1;0.4;1" dur="800ms" repeatCount="indefinite" />
+      </circle>
+    </g>
+  );
+}
+
+function Pp8TokenPuck({ activeStage }) {
+  if (activeStage == null) return null;
+  const pos = TP8_GPU_POS[activeStage];
+  const x = pos.x - 14;
+  const y = pos.cy;
+  return (
+    <g>
+      <circle cx={x} cy={y} r={5} fill="var(--color-blue)" opacity={0.95}>
+        <animate attributeName="r" from="3" to="7" dur="700ms" repeatCount="indefinite" />
+        <animate attributeName="opacity" from="1" to="0.5" dur="700ms" repeatCount="indefinite" />
+      </circle>
+      <text x={x - 10} y={y + 4} fontSize={9} textAnchor="end" fill="var(--color-blue-text)" fontWeight={700}>
+        token
+      </text>
+    </g>
+  );
+}
+
+function Pp8MicrobatchTokens({ active }) {
+  if (!active) return null;
+  // 8 different users' tokens, one per stage. Token A is at GPU 7 (about to emit),
+  // token H just entered GPU 0. Each is labeled.
+  const labels = ['H', 'G', 'F', 'E', 'D', 'C', 'B', 'A'];
+  return (
+    <g>
+      {TP8_GPU_POS.map((pos, i) => (
+        <g key={i}>
+          <circle cx={pos.x - 14} cy={pos.cy} r={6} fill="var(--color-blue)" opacity={0.9}>
+            <animate attributeName="opacity" values="0.95;0.55;0.95" dur="900ms" repeatCount="indefinite" />
+          </circle>
+          <text x={pos.x - 14} y={pos.cy + 3} fontSize={9} textAnchor="middle" fill="white" fontWeight={700}>
+            {labels[i]}
+          </text>
+        </g>
+      ))}
+    </g>
+  );
+}
+
+function Pp8FirstTokenEmerge({ active, label }) {
+  if (!active) return null;
+  // Only GPU 7 (the LM head holder) emits the token in PP — single arrow, no fan.
+  const startX = TP8_GPU_POS[7].rightX + 4;
+  const startY = TP8_GPU_POS[7].cy;
+  const endX = TP8_RESP_X - 6;
+  const endY = TP8_RESP_Y + 44;
+  return (
+    <g>
+      <line x1={startX} y1={startY} x2={endX} y2={endY} stroke="var(--color-teal)" strokeWidth={2.2} markerEnd="url(#pp8-arrow-teal)" />
+      <circle cx={endX} cy={endY} r={7} fill="var(--color-teal)" opacity={0.95}>
+        <animate attributeName="r" from="4" to="10" dur="700ms" repeatCount="indefinite" />
+        <animate attributeName="opacity" from="1" to="0.45" dur="700ms" repeatCount="indefinite" />
+      </circle>
+      {label && (
+        <text x={endX - 12} y={endY - 14} textAnchor="end" fontSize={11} fontWeight={700} fill="var(--color-teal-text)">
+          {label}
+        </text>
+      )}
+      <text x={endX - 12} y={endY + 18} textAnchor="end" fontSize={9} fill="var(--color-text-muted)" fontStyle="italic">
+        only GPU 7 holds the token
+      </text>
+    </g>
+  );
+}
+
+function Pp8FeedbackArrow({ active }) {
+  if (!active) return null;
+  // Curve from GPU 7 (bottom) back up to GPU 0 / prompt area.
+  const startX = TP8_GPU_POS[7].rightX - 20;
+  const startY = TP8_GPU_POS[7].y + TP8_GPU_H + 8;
+  const endX = TP8_PROMPT_X + TP8_PROMPT_W / 2;
+  const endY = TP8_PROMPT_Y + TP8_PROMPT_H + 4;
+  const path = `M ${startX} ${startY} C ${startX} ${startY + 60}, ${endX} ${endY + 60}, ${endX} ${endY}`;
+  const labelX = (startX + endX) / 2;
+  const labelY = 445;
+  return (
+    <g>
+      <path d={path} fill="none" stroke="var(--color-amber)" strokeWidth={1.8} strokeDasharray="4 3" markerEnd="url(#pp8-arrow-amber)" />
+      <text x={labelX} y={labelY} textAnchor="middle" fontSize={10} fill="var(--color-amber-text)">
+        feedback (autoregression)
+      </text>
+    </g>
+  );
+}
+
+const PP8_LAYER_RANGES = ['L 1-10', 'L 11-20', 'L 21-30', 'L 31-40', 'L 41-50', 'L 51-60', 'L 61-70', 'L 71-80'];
+
+function Pp8LifecycleAnimation() {
+  const [step, setStep] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const numSteps = PP8_LIFECYCLE_STEPS.length;
+  const current = PP8_LIFECYCLE_STEPS[step];
+
+  useEffect(() => {
+    if (!isPlaying) return;
+    if (step >= numSteps - 1) { setIsPlaying(false); return; }
+    const delay = current.condense || current.microbatch ? 2200 : 1400;
+    const t = setTimeout(() => setStep((s) => s + 1), delay);
+    return () => clearTimeout(t);
+  }, [isPlaying, step, numSteps, current.condense, current.microbatch]);
+
+  // Per-GPU state derivation.
+  const gpuState = (i) => {
+    if (current.complete) return 'done';
+    if (current.condense) {
+      // Stages 1-3 done, stages 4-7 represented as "active" amber on the active overlay
+      if (i <= 6) return 'done';
+      return 'active';
+    }
+    if (current.microbatch) return 'active';
+    if (current.activeStage === i) return 'active';
+    if (current.completedStages?.includes(i)) return 'done';
+    return 'pending';
+  };
+
+  const tokenIdx = current.tokenIndex;
+  const visibleResponse = typeof tokenIdx === 'number'
+    ? PP8_RESPONSE_TOKENS.slice(0, tokenIdx + 1).join('')
+    : '';
+
+  const stageLabel = (() => {
+    if (current.activeStage != null) return `Stage ${current.activeStage + 1} of 8`;
+    if (current.handoff) return `Handoff ${current.handoff.from + 1}→${current.handoff.to + 1}`;
+    if (current.condense) return 'Stages 4-8';
+    if (current.microbatch) return 'All 8 stages busy';
+    if (current.decodePass) return 'Sweep through 8 stages';
+    return null;
+  })();
+
+  return (
+    <div className="rounded-lg border border-[var(--color-border-light)] bg-[var(--color-surface-muted)] p-3">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-2 text-[11px]">
+        <div className="flex items-center gap-2">
+          <span className="px-2 py-0.5 rounded bg-[var(--color-primary-bg)] border border-[var(--color-primary)] text-[var(--color-primary-text)] font-medium">
+            {current.phase}
+          </span>
+          {stageLabel && (
+            <span className="text-[var(--color-text-muted)] font-mono">{stageLabel}</span>
+          )}
+        </div>
+        <div className="font-mono text-[var(--color-text-muted)]">
+          Step {step + 1} / {numSteps}
+        </div>
+      </div>
+
+      {/* Animation canvas */}
+      <div className="relative w-full" style={{ aspectRatio: `${TP8_W} / ${TP8_H}` }}>
+        <svg
+          viewBox={`0 0 ${TP8_W} ${TP8_H}`}
+          xmlns="http://www.w3.org/2000/svg"
+          className="absolute inset-0 w-full h-full"
+        >
+          <defs>
+            <marker id="pp8-arrow-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--color-blue)" />
+            </marker>
+            <marker id="pp8-arrow-teal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--color-teal)" />
+            </marker>
+            <marker id="pp8-arrow-amber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--color-amber)" />
+            </marker>
+          </defs>
+
+          {/* Prompt bubble */}
+          <g>
+            <rect x={TP8_PROMPT_X} y={TP8_PROMPT_Y} width={TP8_PROMPT_W} height={TP8_PROMPT_H} rx={10} fill="var(--color-primary-bg)" stroke="var(--color-primary)" strokeWidth={1.5} />
+            <text x={TP8_PROMPT_X + 10} y={TP8_PROMPT_Y + 18} fontSize={10} fontWeight={700} fill="var(--color-primary-text)">PROMPT</text>
+            <foreignObject x={TP8_PROMPT_X + 8} y={TP8_PROMPT_Y + 24} width={TP8_PROMPT_W - 16} height={TP8_PROMPT_H - 32}>
+              <div xmlns="http://www.w3.org/1999/xhtml" style={{ fontSize: '11px', color: 'var(--color-text-secondary)', lineHeight: 1.35, fontStyle: 'italic' }}>
+                "{PP8_PROMPT}"
+              </div>
+            </foreignObject>
+          </g>
+
+          {/* Response bubble */}
+          <g>
+            <rect x={TP8_RESP_X} y={TP8_RESP_Y} width={TP8_RESP_W} height={TP8_RESP_H} rx={10} fill="var(--color-teal-bg)" stroke="var(--color-teal)" strokeWidth={1.5} />
+            <text x={TP8_RESP_X + 10} y={TP8_RESP_Y + 18} fontSize={10} fontWeight={700} fill="var(--color-teal-text)">RESPONSE</text>
+            <foreignObject x={TP8_RESP_X + 8} y={TP8_RESP_Y + 24} width={TP8_RESP_W - 16} height={TP8_RESP_H - 50}>
+              <div xmlns="http://www.w3.org/1999/xhtml" style={{ fontSize: '11px', color: 'var(--color-text)', lineHeight: 1.4, whiteSpace: 'pre-wrap', fontFamily: 'monospace' }}>
+                {visibleResponse}
+                {typeof tokenIdx === 'number' && !current.complete && (
+                  <span style={{ color: 'var(--color-teal-text)' }}>▍</span>
+                )}
+              </div>
+            </foreignObject>
+            <text x={TP8_RESP_X + TP8_RESP_W - 10} y={TP8_RESP_Y + TP8_RESP_H - 8} fontSize={9} textAnchor="end" fill="var(--color-text-muted)" fontFamily="monospace">
+              tokens: {typeof tokenIdx === 'number' ? tokenIdx + 1 : 0}
+            </text>
+          </g>
+
+          {/* GPUs */}
+          {TP8_GPU_POS.map((pos, i) => (
+            <Pp8Gpu
+              key={i}
+              pos={pos}
+              idx={i}
+              gpuState={gpuState(i)}
+              decodePass={current.decodePass}
+              microbatch={current.microbatch}
+              layerRange={PP8_LAYER_RANGES[i]}
+            />
+          ))}
+
+          {/* Token puck during single-stage compute (not microbatch) */}
+          {!current.microbatch && !current.feedback && !current.handoff && (
+            <Pp8TokenPuck activeStage={current.activeStage} />
+          )}
+
+          {/* Microbatching: 8 labeled tokens at every stage */}
+          <Pp8MicrobatchTokens active={!!current.microbatch} />
+
+          {/* Handoff arrow */}
+          <Pp8HandoffArrow handoff={current.handoff} />
+
+          {/* Feedback arrow */}
+          <Pp8FeedbackArrow active={!!current.feedback} />
+
+          {/* First-token emerge (single arrow from GPU 7) */}
+          <Pp8FirstTokenEmerge active={!!current.emerge} label={current.emerge ? `"${PP8_RESPONSE_TOKENS[0].trim()}"` : null} />
+
+          {/* Condense overlay */}
+          {current.condense && (
+            <g>
+              <rect
+                x={TP8_GPU_POS[3].x - 6}
+                y={TP8_GPU_POS[3].y - 6}
+                width={TP8_GPU_W + 12}
+                height={(TP8_GPU_H + TP8_GPU_GAP) * 5 - TP8_GPU_GAP + 12}
+                rx={6}
+                fill="none"
+                stroke="var(--color-amber)"
+                strokeWidth={2}
+                strokeDasharray="6 4"
+              >
+                <animate attributeName="stroke-dashoffset" from="0" to="20" dur="900ms" repeatCount="indefinite" />
+              </rect>
+              <text
+                x={TP8_GPU_POS[5].cx}
+                y={TP8_GPU_POS[7].y + TP8_GPU_H + 18}
+                textAnchor="middle"
+                fontSize={11}
+                fontWeight={700}
+                fill="var(--color-amber-text)"
+              >
+                Stages 4-8 fast-forward — 5 more handoffs
+              </text>
+            </g>
+          )}
+        </svg>
+      </div>
+
+      {/* Caption */}
+      <div className="mt-2 p-2 rounded bg-[var(--color-surface)] border border-[var(--color-border-light)] min-h-[58px]">
+        <div className="text-[12px] font-medium text-[var(--color-text)]">{current.label}</div>
+        <div className="text-[11px] text-[var(--color-text-secondary)] leading-relaxed mt-0.5">{current.sub}</div>
+      </div>
+
+      {/* Controls */}
+      <div className="mt-2 flex items-center gap-2 flex-wrap">
+        <button onClick={() => { setIsPlaying(false); setStep(0); }} className="px-2 py-1 text-[11px] rounded border border-[var(--color-border)] hover:bg-[var(--color-surface-alt)] cursor-pointer text-[var(--color-text-secondary)]">⏮ Restart</button>
+        <button onClick={() => { setIsPlaying(false); setStep((s) => Math.max(0, s - 1)); }} disabled={step === 0} className="px-2 py-1 text-[11px] rounded border border-[var(--color-border)] hover:bg-[var(--color-surface-alt)] cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed text-[var(--color-text-secondary)]">◀ Prev</button>
+        <button
+          onClick={() => {
+            if (step >= numSteps - 1) { setStep(0); setIsPlaying(true); return; }
+            setIsPlaying((p) => !p);
+          }}
+          className="px-3 py-1 text-[11px] rounded border border-[var(--color-primary)] bg-[var(--color-primary-bg)] hover:opacity-90 cursor-pointer text-[var(--color-primary-text)] font-medium"
+        >
+          {isPlaying ? '⏸ Pause' : step >= numSteps - 1 ? '↻ Replay' : '▶ Play'}
+        </button>
+        <button onClick={() => { setIsPlaying(false); setStep((s) => Math.min(numSteps - 1, s + 1)); }} disabled={step === numSteps - 1} className="px-2 py-1 text-[11px] rounded border border-[var(--color-border)] hover:bg-[var(--color-surface-alt)] cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed text-[var(--color-text-secondary)]">Next ▶</button>
+        <input type="range" min={0} max={numSteps - 1} value={step} onChange={(e) => { setIsPlaying(false); setStep(Number(e.target.value)); }} className="anim-scrubber flex-1 min-w-[120px]" />
+      </div>
+    </div>
+  );
+}
+
 /* ---------- Full config renderer ---------- */
 function ConfigGrid({ config }) {
   const { groups, arrows, arrowLabel, layout } = config;
@@ -960,6 +1361,11 @@ function ConfigGrid({ config }) {
   // TP=8 gets the lifecycle animation in place of the static row
   if (config.id === 'tp8') {
     return <Tp8LifecycleAnimation />;
+  }
+
+  // PP=8 gets its own pipeline lifecycle animation
+  if (config.id === 'pp8') {
+    return <Pp8LifecycleAnimation />;
   }
 
   // For simple single-row configs (TP, PP)

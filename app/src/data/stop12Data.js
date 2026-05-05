@@ -151,6 +151,102 @@ export const TP8_LIFECYCLE_STEPS = [
 ];
 
 // ================================================================
+// PAGE 1 (PP=8) — Lifecycle animation
+// 8 GPUs, each holds 10 contiguous layers of an 80-layer model.
+// Token walks down the column with point-to-point handoffs (16 KB each).
+// 7 handoffs per token. Micro-batching keeps the pipeline full at steady state.
+// ================================================================
+export const PP8_PROMPT = 'Write a haiku about pipeline parallelism.';
+export const PP8_RESPONSE_LINES = [
+  'Eight steps in a line',
+  'Token walks from card to card',
+  'One mind, eight homes.',
+];
+export const PP8_RESPONSE_TOKENS = [
+  'Eight', ' steps', ' in', ' a', ' line', ',', '\n',
+  'Token', ' walks', ' from', ' card', ' to', ' card', ',', '\n',
+  'One', ' mind', ',', ' eight', ' homes', '.',
+];
+
+// Each step optionally carries:
+//   activeStage:    GPU index currently computing (0..7) or null
+//   completedStages: array of GPU indices done with this pass
+//   handoff:        { from, to } when the active animation is the inter-stage send
+//   condense:       fast-forward through stages 4-8
+//   decodePass:     a soft-glow pass through all stages for a single decode token
+//   microbatch:     all 8 GPUs busy on different tokens (steady state)
+//   emerge:         first token emerging from GPU 7 (LM head)
+//   feedback:       new token routed from GPU 7 back to GPU 0 for next pass
+//   complete:       full response on screen
+//   tokenIndex:     last revealed index of PP8_RESPONSE_TOKENS
+export const PP8_LIFECYCLE_STEPS = [
+  { phase: 'Setup',
+    label: 'Pipeline idle',
+    sub: '8 H100s arranged as an 8-stage pipeline. Each GPU holds 10 contiguous layers — GPU 0: layers 1-10, GPU 1: 11-20, … GPU 7: 71-80, plus the LM head.',
+    activeStage: null, completedStages: [] },
+  { phase: 'Prompt',
+    label: 'Prompt arrives at Stage 1',
+    sub: 'User submits the prompt. Tokenizer turns it into ~9 tokens. The activation enters GPU 0 (the head of the pipeline).',
+    activeStage: null, completedStages: [] },
+  { phase: 'Prefill',
+    label: 'Stage 1 compute (GPU 0, layers 1-10)',
+    sub: 'GPU 0 processes layers 1-10. KV cache for these layers stored locally on GPU 0. GPUs 1-7 sit idle — this is the pipeline-bubble cost of single-token flow.',
+    activeStage: 0, completedStages: [] },
+  { phase: 'Prefill',
+    label: 'Handoff GPU 0 → GPU 1',
+    sub: 'Output activation (one d_model-sized vector per token, ~16 KB at FP16) sent point-to-point to GPU 1. Tiny payload, simple send — not a collective.',
+    activeStage: null, handoff: { from: 0, to: 1 }, completedStages: [0] },
+  { phase: 'Prefill',
+    label: 'Stage 2 compute (GPU 1, layers 11-20)',
+    sub: 'GPU 1 processes layers 11-20. Its KV cache fills only with K/V for these layers. GPU 0 is idle until the next request.',
+    activeStage: 1, completedStages: [0] },
+  { phase: 'Prefill',
+    label: 'Handoff GPU 1 → GPU 2',
+    sub: '16 KB sent to GPU 2.',
+    activeStage: null, handoff: { from: 1, to: 2 }, completedStages: [0, 1] },
+  { phase: 'Prefill',
+    label: 'Stage 3 compute (GPU 2, layers 21-30)',
+    sub: 'GPU 2 processes layers 21-30. Same pattern repeats — local layers, local cache, no synchronization with anyone else.',
+    activeStage: 2, completedStages: [0, 1] },
+  { phase: 'Prefill',
+    label: 'Handoff GPU 2 → GPU 3',
+    sub: '16 KB sent to GPU 3.',
+    activeStage: null, handoff: { from: 2, to: 3 }, completedStages: [0, 1, 2] },
+  { phase: 'Prefill',
+    label: 'Stages 4-8 (fast-forward)',
+    sub: 'Stages 4 through 8 cascade through GPUs 3-7. Each does its 10 layers and hands 16 KB to the next. Total handoffs for one prefill pass: 7.',
+    activeStage: null, condense: true, completedStages: [0, 1, 2, 3, 4, 5, 6] },
+  { phase: 'Decode',
+    label: 'First token emerges from GPU 7',
+    sub: 'GPU 7 holds the final layers and the LM head shard. Output projection → softmax → sample. Only GPU 7 has the result — unlike TP=8 where every rank held the same logits.',
+    activeStage: 7, completedStages: [0, 1, 2, 3, 4, 5, 6], emerge: true, tokenIndex: 0 },
+  { phase: 'Decode',
+    label: 'Token feeds back to GPU 0',
+    sub: 'For the next decode pass, GPU 7 sends just the new token ID back to GPU 0 — a tiny network message. From GPU 0\'s view this is the next input token in the autoregressive loop.',
+    activeStage: null, feedback: true, tokenIndex: 0 },
+  { phase: 'Decode',
+    label: 'Decode pass — token 2',
+    sub: 'One token sweeps through 8 stages with 7 handoffs. The KV cache from prefill on each GPU is reused — only the new token is processed at every layer.',
+    activeStage: null, decodePass: true, tokenIndex: 1 },
+  { phase: 'Decode',
+    label: 'Decode pass — token 3',
+    sub: 'Same again. Per-token decode latency = sum of all 8 stages plus 7 handoffs ≈ 30 ms over NVLink.',
+    activeStage: null, decodePass: true, tokenIndex: 2 },
+  { phase: 'Decode',
+    label: 'Micro-batching (steady state)',
+    sub: 'In production the pipeline is filled with many users\' tokens at once — token A on GPU 7, token B on GPU 6, … token H on GPU 0, all advancing every step. Now every GPU is busy and the pipeline-bubble cost disappears.',
+    activeStage: null, microbatch: true, tokenIndex: 5 },
+  { phase: 'Decode',
+    label: '… 14 more decode passes',
+    sub: 'Tokens stream out at ~30 ms each. KV cache grows by one entry per token per layer on the GPU that owns that layer.',
+    activeStage: null, decodePass: true, tokenIndex: 19 },
+  { phase: 'Done',
+    label: 'Response complete',
+    sub: 'Full haiku streamed back. Total: 1 prefill + 19 decode passes × 7 handoffs = 140 handoffs at 16 KB each ≈ 2.2 MB total inter-GPU traffic. Compare to TP=8: ~3,200 all-reduces of much larger payloads.',
+    activeStage: null, complete: true, tokenIndex: 20 },
+];
+
+// ================================================================
 // PAGE 2 — Data Parallelism animation
 // ================================================================
 export const DP_STEPS = [
