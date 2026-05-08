@@ -247,6 +247,63 @@ export const PP8_LIFECYCLE_STEPS = [
 ];
 
 // ================================================================
+// PAGE 1 (DP=8) — Lifecycle animation
+// 8 GPUs, each holds the FULL model and serves its own users.
+// No inter-GPU communication during inference.
+// ================================================================
+export const DP8_LANES = [
+  { gpu: 0, user: 'User 1', prompt: 'Capital of France?',  tokens: ['Par',   'is',     '.']    },
+  { gpu: 1, user: 'User 2', prompt: '5 + 7?',              tokens: ['1',     '2',      '.']    },
+  { gpu: 2, user: 'User 3', prompt: 'Largest planet?',     tokens: ['Jup',   'iter',   '.']    },
+  { gpu: 3, user: 'User 4', prompt: 'Color of grass?',     tokens: ['Gr',    'een',    '.']    },
+  { gpu: 4, user: 'User 5', prompt: 'Who wrote Hamlet?',   tokens: ['Shake', 'speare', '.']    },
+  { gpu: 5, user: 'User 6', prompt: 'Water boils at?',     tokens: ['100',   '°',      'C.']   },
+  { gpu: 6, user: 'User 7', prompt: 'Capital of Japan?',   tokens: ['Tok',   'yo',     '.']    },
+  { gpu: 7, user: 'User 8', prompt: '1 km in miles?',      tokens: ['0',     '.621',   ' mi.'] },
+];
+
+// Each step:
+//   promptsArrived: 8 prompt bubbles visible
+//   routingActive:  draw routing arrows from each prompt to its GPU
+//   prefillActive:  every GPU pulses, 80-layer track lights up
+//   decodeStep:     0..3 — how many response tokens revealed in every lane
+//   complete:       all 8 responses shown muted (done)
+export const DP8_LIFECYCLE_STEPS = [
+  { phase: 'Setup',
+    label: 'Cluster idle',
+    sub: 'Each of 8 H100s holds a complete copy of Llama-3 70B (35 GB at FP4). No GPU talks to any other during inference. Zero arrows in this animation will ever cross between lanes.',
+    promptsArrived: false, routingActive: false, prefillActive: false, decodeStep: 0 },
+  { phase: 'Routing',
+    label: 'Eight user prompts arrive',
+    sub: 'Eight different users with eight unrelated questions. Each prompt enters from the left and waits for routing.',
+    promptsArrived: true, routingActive: false, prefillActive: false, decodeStep: 0 },
+  { phase: 'Routing',
+    label: 'Router distributes one user per GPU',
+    sub: 'A load balancer outside the GPU cluster picks which GPU serves which user. Once routed, that user lives entirely on that GPU. (Real workloads can batch 4-18 users per GPU; we show one each for clarity.)',
+    promptsArrived: true, routingActive: true, prefillActive: false, decodeStep: 0 },
+  { phase: 'Prefill',
+    label: 'All 8 GPUs prefill — in lockstep, in isolation',
+    sub: 'Eight independent forward passes through the full 80-layer model. Each GPU builds its own KV cache for its own user. No all-reduce, no handoff, no synchronization. Each GPU is a complete inference engine.',
+    promptsArrived: true, routingActive: false, prefillActive: true, decodeStep: 0 },
+  { phase: 'Decode',
+    label: 'First tokens emerge — eight at once',
+    sub: 'Each GPU samples its own next token from its own logits. There is no "the output GPU" — there are eight outputs, one per lane.',
+    prefillActive: false, decodeStep: 1 },
+  { phase: 'Decode',
+    label: 'Decode pass 2',
+    sub: 'Eight forward passes, eight tokens, zero inter-GPU bytes.',
+    decodeStep: 2 },
+  { phase: 'Decode',
+    label: 'Decode pass 3',
+    sub: 'A slow GPU does not stall the others — each lane finishes when its own model decides it is done. No coordination ever.',
+    decodeStep: 3 },
+  { phase: 'Done',
+    label: 'Eight responses delivered',
+    sub: 'Total inter-GPU traffic during this run: zero bytes. The cost: weights duplicated 8 times = 280 GB of HBM consumed by redundant copies, leaving less per-GPU room for KV cache. DP buys throughput scaling at the price of memory efficiency.',
+    decodeStep: 3, complete: true },
+];
+
+// ================================================================
 // PAGE 2 — Data Parallelism animation
 // ================================================================
 export const DP_STEPS = [

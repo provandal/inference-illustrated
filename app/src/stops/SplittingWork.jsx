@@ -30,6 +30,8 @@ import {
   PP8_LIFECYCLE_STEPS,
   PP8_PROMPT,
   PP8_RESPONSE_TOKENS,
+  DP8_LIFECYCLE_STEPS,
+  DP8_LANES,
 } from '../data/stop12Data';
 import { Panel, PanelHeader, InfoBox, Callout } from '../components/ui';
 import PageNav from '../components/PageNav';
@@ -1362,6 +1364,254 @@ function Pp8LifecycleAnimation() {
   );
 }
 
+/* ================================================================
+   DP=8 lifecycle animation
+   8 horizontal lanes, each with prompt → GPU → response.
+   No arrows ever cross between lanes — that is the whole point.
+   ================================================================ */
+
+const DP8_W = 720;
+const DP8_H = 460;
+const DP8_LANE_TOP = 14;
+const DP8_LANE_H = 50;
+const DP8_LANE_GAP = 4;
+const DP8_LANE_POS = Array.from({ length: 8 }, (_, i) => {
+  const y = DP8_LANE_TOP + i * (DP8_LANE_H + DP8_LANE_GAP);
+  return { y, cy: y + DP8_LANE_H / 2 };
+});
+const DP8_USER_X = 8;        // user label x
+const DP8_USER_W = 56;
+const DP8_PROMPT_X = 70;     // prompt bubble x
+const DP8_PROMPT_W = 156;
+const DP8_GPU_X = 240;       // GPU box x
+const DP8_GPU_W = 220;
+const DP8_GPU_H = 38;
+const DP8_RESP_X = 472;      // response bubble x
+const DP8_RESP_W = 240;
+
+function Dp8LayerTrack({ laneY, gpuState }) {
+  // 80-segment track inside each DP GPU box.
+  const trackY = laneY + (DP8_LANE_H - DP8_GPU_H) / 2 + DP8_GPU_H - 11;
+  const trackH = 7;
+  const trackX = DP8_GPU_X + 8;
+  const trackW = DP8_GPU_W - 16;
+  const total = 80;
+  const segW = trackW / total;
+
+  const fill = gpuState === 'active'
+    ? 'var(--color-teal)'
+    : gpuState === 'done'
+    ? 'var(--color-text-muted)'
+    : null;
+  const opacity = gpuState === 'active' ? 0.95 : gpuState === 'done' ? 0.5 : 0;
+
+  return (
+    <g>
+      <rect
+        x={trackX} y={trackY} width={trackW} height={trackH}
+        rx={1.5} fill="var(--color-surface)" stroke="var(--color-border)" strokeWidth={0.5} opacity={0.7}
+      />
+      {fill && Array.from({ length: total }, (_, i) => (
+        <rect
+          key={i}
+          x={trackX + i * segW + 0.15}
+          y={trackY + 1}
+          width={Math.max(0.6, segW - 0.3)}
+          height={trackH - 2}
+          fill={fill}
+          opacity={opacity}
+          style={{ transition: 'opacity 250ms ease' }}
+        />
+      ))}
+    </g>
+  );
+}
+
+function Dp8Lane({ lane, idx, step }) {
+  const { promptsArrived, routingActive, prefillActive, decodeStep, complete } = step;
+  const lanePos = DP8_LANE_POS[idx];
+  const laneY = lanePos.y;
+  const laneCy = lanePos.cy;
+  const gpuY = laneY + (DP8_LANE_H - DP8_GPU_H) / 2;
+
+  // GPU state — every lane is in lockstep, so all share the same state
+  let gpuState = 'idle';
+  if (complete) gpuState = 'done';
+  else if (prefillActive) gpuState = 'active';
+  else if (decodeStep > 0) gpuState = 'active';
+
+  const isPulsing = gpuState === 'active';
+
+  // Visible response tokens for this lane
+  const visibleResponse = decodeStep > 0
+    ? lane.tokens.slice(0, decodeStep).join('')
+    : '';
+
+  return (
+    <g>
+      {/* User label */}
+      <text x={DP8_USER_X} y={laneCy + 4} fontSize={10} fontWeight={700} fill="var(--color-text-secondary)" fontFamily="monospace">
+        {lane.user}
+      </text>
+
+      {/* Prompt bubble */}
+      {promptsArrived && (
+        <g style={{ transition: 'opacity 300ms ease' }}>
+          <rect
+            x={DP8_PROMPT_X} y={gpuY} width={DP8_PROMPT_W} height={DP8_GPU_H}
+            rx={6} fill="var(--color-primary-bg)" stroke="var(--color-primary)" strokeWidth={1}
+          />
+          <foreignObject x={DP8_PROMPT_X + 6} y={gpuY + 4} width={DP8_PROMPT_W - 12} height={DP8_GPU_H - 8}>
+            <div xmlns="http://www.w3.org/1999/xhtml" style={{
+              fontSize: '10px',
+              color: 'var(--color-primary-text)',
+              fontStyle: 'italic',
+              lineHeight: 1.25,
+              overflow: 'hidden',
+            }}>
+              "{lane.prompt}"
+            </div>
+          </foreignObject>
+        </g>
+      )}
+
+      {/* Routing arrow (prompt → GPU) */}
+      {routingActive && (
+        <line
+          x1={DP8_PROMPT_X + DP8_PROMPT_W + 2}
+          y1={laneCy}
+          x2={DP8_GPU_X - 4}
+          y2={laneCy}
+          stroke="var(--color-primary)"
+          strokeWidth={1.5}
+          markerEnd="url(#dp8-arrow-primary)"
+        />
+      )}
+
+      {/* GPU box */}
+      <rect
+        x={DP8_GPU_X} y={gpuY} width={DP8_GPU_W} height={DP8_GPU_H}
+        rx={5}
+        fill={isPulsing ? 'var(--color-teal-bg)' : 'var(--color-surface-muted)'}
+        stroke={isPulsing ? 'var(--color-teal)' : 'var(--color-border)'}
+        strokeWidth={isPulsing ? 1.8 : 1}
+        style={{ transition: 'all 300ms ease', opacity: gpuState === 'done' ? 0.65 : 1 }}
+      >
+        {isPulsing && (
+          <animate attributeName="opacity" values="1;0.6;1" dur="900ms" repeatCount="indefinite" />
+        )}
+      </rect>
+      <text x={DP8_GPU_X + 8} y={gpuY + 14} fontSize={11} fontFamily="monospace" fontWeight={700}
+        fill={isPulsing ? 'var(--color-teal-text)' : 'var(--color-text-secondary)'}>
+        GPU {idx}
+      </text>
+      <text x={DP8_GPU_X + DP8_GPU_W - 8} y={gpuY + 14} fontSize={9} textAnchor="end" fill="var(--color-text-muted)">
+        full 70B
+      </text>
+      <Dp8LayerTrack laneY={laneY} gpuState={gpuState} />
+
+      {/* Response bubble */}
+      {(decodeStep > 0 || complete) && (
+        <g>
+          <rect
+            x={DP8_RESP_X} y={gpuY} width={DP8_RESP_W} height={DP8_GPU_H}
+            rx={6} fill="var(--color-teal-bg)" stroke="var(--color-teal)" strokeWidth={1}
+          />
+          <foreignObject x={DP8_RESP_X + 6} y={gpuY + 4} width={DP8_RESP_W - 12} height={DP8_GPU_H - 8}>
+            <div xmlns="http://www.w3.org/1999/xhtml" style={{
+              fontSize: '11px',
+              color: 'var(--color-text)',
+              lineHeight: 1.3,
+              fontFamily: 'monospace',
+            }}>
+              {visibleResponse}
+              {!complete && decodeStep > 0 && (
+                <span style={{ color: 'var(--color-teal-text)' }}>▍</span>
+              )}
+            </div>
+          </foreignObject>
+        </g>
+      )}
+    </g>
+  );
+}
+
+function Dp8LifecycleAnimation() {
+  const [step, setStep] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const numSteps = DP8_LIFECYCLE_STEPS.length;
+  const current = DP8_LIFECYCLE_STEPS[step];
+
+  useEffect(() => {
+    if (!isPlaying) return;
+    if (step >= numSteps - 1) { setIsPlaying(false); return; }
+    const t = setTimeout(() => setStep((s) => s + 1), 1500);
+    return () => clearTimeout(t);
+  }, [isPlaying, step, numSteps]);
+
+  return (
+    <div className="rounded-lg border border-[var(--color-border-light)] bg-[var(--color-surface-muted)] p-3">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-2 text-[11px]">
+        <div className="flex items-center gap-2">
+          <span className="px-2 py-0.5 rounded bg-[var(--color-primary-bg)] border border-[var(--color-primary)] text-[var(--color-primary-text)] font-medium">
+            {current.phase}
+          </span>
+          <span className="text-[var(--color-text-muted)] font-mono">
+            8 lanes · 0 inter-GPU bytes
+          </span>
+        </div>
+        <div className="font-mono text-[var(--color-text-muted)]">
+          Step {step + 1} / {numSteps}
+        </div>
+      </div>
+
+      {/* Animation canvas */}
+      <div className="relative w-full" style={{ aspectRatio: `${DP8_W} / ${DP8_H}` }}>
+        <svg
+          viewBox={`0 0 ${DP8_W} ${DP8_H}`}
+          xmlns="http://www.w3.org/2000/svg"
+          className="absolute inset-0 w-full h-full"
+        >
+          <defs>
+            <marker id="dp8-arrow-primary" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--color-primary)" />
+            </marker>
+          </defs>
+
+          {/* All 8 lanes */}
+          {DP8_LANES.map((lane, i) => (
+            <Dp8Lane key={i} lane={lane} idx={i} step={current} />
+          ))}
+        </svg>
+      </div>
+
+      {/* Caption */}
+      <div className="mt-2 p-2 rounded bg-[var(--color-surface)] border border-[var(--color-border-light)] min-h-[58px]">
+        <div className="text-[12px] font-medium text-[var(--color-text)]">{current.label}</div>
+        <div className="text-[11px] text-[var(--color-text-secondary)] leading-relaxed mt-0.5">{current.sub}</div>
+      </div>
+
+      {/* Controls */}
+      <div className="mt-2 flex items-center gap-2 flex-wrap">
+        <button onClick={() => { setIsPlaying(false); setStep(0); }} className="px-2 py-1 text-[11px] rounded border border-[var(--color-border)] hover:bg-[var(--color-surface-alt)] cursor-pointer text-[var(--color-text-secondary)]">⏮ Restart</button>
+        <button onClick={() => { setIsPlaying(false); setStep((s) => Math.max(0, s - 1)); }} disabled={step === 0} className="px-2 py-1 text-[11px] rounded border border-[var(--color-border)] hover:bg-[var(--color-surface-alt)] cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed text-[var(--color-text-secondary)]">◀ Prev</button>
+        <button
+          onClick={() => {
+            if (step >= numSteps - 1) { setStep(0); setIsPlaying(true); return; }
+            setIsPlaying((p) => !p);
+          }}
+          className="px-3 py-1 text-[11px] rounded border border-[var(--color-primary)] bg-[var(--color-primary-bg)] hover:opacity-90 cursor-pointer text-[var(--color-primary-text)] font-medium"
+        >
+          {isPlaying ? '⏸ Pause' : step >= numSteps - 1 ? '↻ Replay' : '▶ Play'}
+        </button>
+        <button onClick={() => { setIsPlaying(false); setStep((s) => Math.min(numSteps - 1, s + 1)); }} disabled={step === numSteps - 1} className="px-2 py-1 text-[11px] rounded border border-[var(--color-border)] hover:bg-[var(--color-surface-alt)] cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed text-[var(--color-text-secondary)]">Next ▶</button>
+        <input type="range" min={0} max={numSteps - 1} value={step} onChange={(e) => { setIsPlaying(false); setStep(Number(e.target.value)); }} className="anim-scrubber flex-1 min-w-[120px]" />
+      </div>
+    </div>
+  );
+}
+
 /* ---------- Full config renderer ---------- */
 function ConfigGrid({ config }) {
   const { groups, arrows, arrowLabel, layout } = config;
@@ -1375,6 +1625,11 @@ function ConfigGrid({ config }) {
   // PP=8 gets its own pipeline lifecycle animation
   if (config.id === 'pp8') {
     return <Pp8LifecycleAnimation />;
+  }
+
+  // DP=8 gets its 8-lane independent-engines animation
+  if (config.id === 'dp8') {
+    return <Dp8LifecycleAnimation />;
   }
 
   // For simple single-row configs (TP, PP)
