@@ -160,12 +160,12 @@ export const PP8_PROMPT = 'Write a haiku about pipeline parallelism.';
 export const PP8_RESPONSE_LINES = [
   'Eight steps in a line',
   'Token walks from card to card',
-  'One mind, eight homes.',
+  'One mind, in eight homes.',
 ];
 export const PP8_RESPONSE_TOKENS = [
   'Eight', ' steps', ' in', ' a', ' line', ',', '\n',
   'Token', ' walks', ' from', ' card', ' to', ' card', ',', '\n',
-  'One', ' mind', ',', ' eight', ' homes', '.',
+  'One', ' mind', ',', ' in', ' eight', ' homes', '.',
 ];
 
 // Each step optionally carries:
@@ -237,13 +237,13 @@ export const PP8_LIFECYCLE_STEPS = [
     sub: 'In production the pipeline is filled with many users\' tokens at once — token A on GPU 7, token B on GPU 6, … token H on GPU 0, all advancing every step. Now every GPU is busy and the pipeline-bubble cost disappears.',
     activeStage: null, microbatch: true, tokenIndex: 5 },
   { phase: 'Decode',
-    label: '… 14 more decode passes',
+    label: '… 15 more decode passes',
     sub: 'Tokens stream out at ~30 ms each. KV cache grows by one entry per token per layer on the GPU that owns that layer.',
-    activeStage: null, decodePass: true, tokenIndex: 19 },
+    activeStage: null, decodePass: true, tokenIndex: 20 },
   { phase: 'Done',
     label: 'Response complete',
-    sub: 'Full haiku streamed back. Total: 1 prefill + 19 decode passes × 7 handoffs = 140 handoffs at 16 KB each ≈ 2.2 MB total inter-GPU traffic. Compare to TP=8: ~3,200 all-reduces of much larger payloads.',
-    activeStage: null, complete: true, tokenIndex: 20 },
+    sub: 'Full haiku streamed back. Total: 1 prefill + 20 decode passes × 7 handoffs = 147 handoffs at 16 KB each ≈ 2.3 MB total inter-GPU traffic. Compare to TP=8: ~3,360 all-reduces of much larger payloads.',
+    activeStage: null, complete: true, tokenIndex: 21 },
 ];
 
 // ================================================================
