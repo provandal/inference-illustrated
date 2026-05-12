@@ -37,6 +37,12 @@ import {
   TPPP2_RESPONSE_TOKENS,
   TPDP2_LIFECYCLE_STEPS,
   TPDP2_INSTANCES,
+  PPDP2_LIFECYCLE_STEPS,
+  PPDP2_INSTANCES,
+  PPDP2_LAYER_RANGES,
+  TPPPDP24_LIFECYCLE_STEPS,
+  TPPPDP24_REPLICAS,
+  TPPPDP24_STAGE_LAYERS,
 } from '../data/stop12Data';
 import { Panel, PanelHeader, InfoBox, Callout } from '../components/ui';
 import PageNav from '../components/PageNav';
@@ -2392,6 +2398,680 @@ function Tpdp2LifecycleAnimation() {
   );
 }
 
+/* ================================================================
+   PP×DP=2 lifecycle animation
+   Same 2-rows-of-4 layout as TP×DP, but within each row the GPUs
+   form a 4-stage pipeline. Handoff curves bulge up (top row) or
+   down (bottom row) so the inter-row gap stays empty.
+   ================================================================ */
+
+function Ppdp2LayerTrack({ gpuBox, gpuStateLocal, decodePass, microbatch }) {
+  // 20 segments per GPU (each GPU = 1 pipeline stage = 20 layers).
+  const trackY = gpuBox.y + TPPP2_GPU_H - 11;
+  const trackH = 7;
+  const trackX = gpuBox.x + 6;
+  const trackW = TPPP2_GPU_W - 12;
+  const total = 20;
+  const segW = trackW / total;
+  const fill = (gpuStateLocal === 'active' || microbatch) ? 'var(--color-blue)'
+    : gpuStateLocal === 'done' ? 'var(--color-text-muted)'
+    : decodePass ? 'var(--color-blue)' : null;
+  const opacity = (gpuStateLocal === 'active' || microbatch) ? 1
+    : gpuStateLocal === 'done' ? 0.5 : decodePass ? 0.55 : 0;
+  return (
+    <g>
+      <rect x={trackX} y={trackY} width={trackW} height={trackH} rx={1.5}
+        fill="var(--color-surface)" stroke="var(--color-border)" strokeWidth={0.5} opacity={0.7} />
+      {fill && Array.from({ length: total }, (_, i) => (
+        <rect key={i}
+          x={trackX + i * segW + 0.2} y={trackY + 1}
+          width={Math.max(0.8, segW - 0.4)} height={trackH - 2}
+          fill={fill} opacity={opacity}
+          style={{ transition: 'opacity 250ms ease' }} />
+      ))}
+    </g>
+  );
+}
+
+function Ppdp2Gpu({ gpuBox, idx, gpuStateLocal, decodePass, microbatch, layerRange }) {
+  const isActive = gpuStateLocal === 'active';
+  const isDone = gpuStateLocal === 'done';
+  const isPulsing = isActive || microbatch;
+  const isSoftGlow = decodePass && !isPulsing;
+  return (
+    <g>
+      <rect x={gpuBox.x} y={gpuBox.y} width={TPPP2_GPU_W} height={TPPP2_GPU_H} rx={5}
+        fill={isPulsing ? 'var(--color-blue-bg)' : 'var(--color-surface-muted)'}
+        stroke={isPulsing ? 'var(--color-blue)' : isSoftGlow ? 'var(--color-blue)' : 'var(--color-border)'}
+        strokeWidth={isPulsing ? 2 : isSoftGlow ? 1.5 : 1}
+        style={{ transition: 'all 300ms ease', opacity: isDone ? 0.6 : 1 }}>
+        {isPulsing && (
+          <animate attributeName="opacity" values="1;0.55;1" dur="900ms" repeatCount="indefinite" />
+        )}
+      </rect>
+      <text x={gpuBox.x + 6} y={gpuBox.y + 13} fontSize={10} fontFamily="monospace" fontWeight={700}
+        fill={isPulsing ? 'var(--color-blue-text)' : 'var(--color-text-secondary)'}>
+        GPU {idx}
+      </text>
+      <text x={gpuBox.x + TPPP2_GPU_W - 6} y={gpuBox.y + 13} fontSize={8} textAnchor="end" fill="var(--color-text-muted)">
+        {layerRange}
+      </text>
+      <Ppdp2LayerTrack gpuBox={gpuBox} gpuStateLocal={gpuStateLocal} decodePass={decodePass} microbatch={microbatch} />
+    </g>
+  );
+}
+
+function Ppdp2HandoffCurve({ fromGpu, toGpu, bulgeUp }) {
+  const sx = fromGpu.x + TPPP2_GPU_W - 4;
+  const sy = fromGpu.cy;
+  const ex = toGpu.x + 4;
+  const ey = toGpu.cy;
+  const direction = bulgeUp ? -1 : 1;
+  const bulge = 22;
+  const path = `M ${sx} ${sy} C ${sx + 6} ${sy + direction * bulge}, ${ex - 6} ${ey + direction * bulge}, ${ex} ${ey}`;
+  const midX = (sx + ex) / 2;
+  const midY = sy + direction * bulge;
+  return (
+    <g>
+      <path d={path} fill="none" stroke="var(--color-blue)" strokeWidth={2.2} markerEnd="url(#ppdp2-arrow-blue)" />
+      <text x={midX} y={midY + (bulgeUp ? -3 : 12)} textAnchor="middle" fontSize={9} fontWeight={700} fill="var(--color-blue-text)">
+        16 KB
+      </text>
+      <circle cx={midX} cy={midY} r={3.5} fill="var(--color-blue)">
+        <animate attributeName="r" values="2;5;2" dur="800ms" repeatCount="indefinite" />
+        <animate attributeName="opacity" values="1;0.4;1" dur="800ms" repeatCount="indefinite" />
+      </circle>
+    </g>
+  );
+}
+
+function Ppdp2BroadcastArrow({ active, row }) {
+  // From the instance's prompt to its FIRST GPU only (the pipeline head).
+  if (!active) return null;
+  const sx = TPDP2_PROMPT_X + TPDP2_PROMPT_W;
+  const sy = (row === 'top' ? TPDP2_TOP_BUBBLE_Y : TPDP2_BOT_BUBBLE_Y) + TPDP2_PROMPT_H / 2;
+  const positions = row === 'top' ? TPPP2_TOP_POS : TPPP2_BOTTOM_POS;
+  const target = positions[0];
+  return (
+    <line x1={sx} y1={sy} x2={target.x - 4} y2={target.cy}
+      stroke="var(--color-primary)" strokeWidth={1.7}
+      markerEnd="url(#ppdp2-arrow-primary)" />
+  );
+}
+
+function Ppdp2TokenPuck({ activeStage, row }) {
+  if (activeStage == null) return null;
+  const positions = row === 'top' ? TPPP2_TOP_POS : TPPP2_BOTTOM_POS;
+  const pos = positions[activeStage];
+  const x = pos.x + TPPP2_GPU_W / 2;
+  const y = row === 'top' ? pos.y - 10 : pos.y + TPPP2_GPU_H + 10;
+  return (
+    <g>
+      <circle cx={x} cy={y} r={4} fill="var(--color-blue)">
+        <animate attributeName="r" from="3" to="6" dur="700ms" repeatCount="indefinite" />
+        <animate attributeName="opacity" from="1" to="0.5" dur="700ms" repeatCount="indefinite" />
+      </circle>
+      <text x={x + 8} y={y + 3} fontSize={8} fill="var(--color-blue-text)" fontWeight={700}>token</text>
+    </g>
+  );
+}
+
+function Ppdp2MicrobatchTokens({ active, row }) {
+  if (!active) return null;
+  const positions = row === 'top' ? TPPP2_TOP_POS : TPPP2_BOTTOM_POS;
+  const labels = row === 'top' ? ['D', 'C', 'B', 'A'] : ['H', 'G', 'F', 'E'];
+  return (
+    <g>
+      {positions.map((pos, i) => {
+        const x = pos.x + TPPP2_GPU_W / 2;
+        const y = row === 'top' ? pos.y - 10 : pos.y + TPPP2_GPU_H + 10;
+        return (
+          <g key={i}>
+            <circle cx={x} cy={y} r={6} fill="var(--color-blue)" opacity={0.9}>
+              <animate attributeName="opacity" values="0.95;0.55;0.95" dur="900ms" repeatCount="indefinite" />
+            </circle>
+            <text x={x} y={y + 3} fontSize={9} textAnchor="middle" fill="white" fontWeight={700}>{labels[i]}</text>
+          </g>
+        );
+      })}
+    </g>
+  );
+}
+
+function Ppdp2EmergeArrow({ active, row, label }) {
+  if (!active) return null;
+  // Only the last GPU of the row emits (PP).
+  const positions = row === 'top' ? TPPP2_TOP_POS : TPPP2_BOTTOM_POS;
+  const last = positions[3];
+  const sx = last.x + TPPP2_GPU_W + 4;
+  const sy = last.cy;
+  const ex = TPDP2_RESP_X - 4;
+  const ey = (row === 'top' ? TPDP2_TOP_BUBBLE_Y : TPDP2_BOT_BUBBLE_Y) + TPDP2_RESP_H / 2;
+  return (
+    <g>
+      <line x1={sx} y1={sy} x2={ex} y2={ey}
+        stroke="var(--color-teal)" strokeWidth={2.2} markerEnd="url(#ppdp2-arrow-teal)" />
+      <circle cx={ex} cy={ey} r={6} fill="var(--color-teal)" opacity={0.95}>
+        <animate attributeName="r" from="3" to="9" dur="700ms" repeatCount="indefinite" />
+        <animate attributeName="opacity" from="1" to="0.45" dur="700ms" repeatCount="indefinite" />
+      </circle>
+      {label && (
+        <text x={ex - 8} y={ey - 10} textAnchor="end" fontSize={10} fontWeight={700} fill="var(--color-teal-text)">{label}</text>
+      )}
+    </g>
+  );
+}
+
+function Ppdp2FeedbackArrow({ active, row }) {
+  if (!active) return null;
+  const positions = row === 'top' ? TPPP2_TOP_POS : TPPP2_BOTTOM_POS;
+  const last = positions[3];
+  const first = positions[0];
+  const sx = last.x + TPPP2_GPU_W - 12;
+  const sy = row === 'top' ? last.y + TPPP2_GPU_H + 8 : last.y - 8;
+  const ex = first.cx;
+  const ey = row === 'top' ? first.y + TPPP2_GPU_H + 8 : first.y - 8;
+  const sweepY = row === 'top' ? 170 : 395;
+  const path = `M ${sx} ${sy} C ${sx} ${sweepY}, ${ex} ${sweepY}, ${ex} ${ey}`;
+  return (
+    <g>
+      <path d={path} fill="none" stroke="var(--color-amber)" strokeWidth={1.6} strokeDasharray="4 3"
+        markerEnd="url(#ppdp2-arrow-amber)" />
+      <text x={(sx + ex) / 2} y={sweepY + (row === 'top' ? 14 : -4)} textAnchor="middle" fontSize={9} fill="var(--color-amber-text)">
+        feedback ({row === 'top' ? 'Pipeline A' : 'Pipeline B'})
+      </text>
+    </g>
+  );
+}
+
+function Ppdp2PipelineRow({ row, instance, current }) {
+  const isTop = row === 'top';
+  const positions = isTop ? TPPP2_TOP_POS : TPPP2_BOTTOM_POS;
+  const bubbleY = isTop ? TPDP2_TOP_BUBBLE_Y : TPDP2_BOT_BUBBLE_Y;
+  const { activeStage, handoff, decodePass, microbatch, complete, promptsArrived, decodeStep } = current;
+
+  const gpuStateLocal = (i) => {
+    if (complete) return 'done';
+    if (microbatch) return 'active';
+    if (decodePass) return 'active'; // soft glow handled by Gpu component
+    if (activeStage === i) return 'active';
+    // when a handoff is in flight, the "done" GPUs are those at or before handoff.from
+    if (handoff && i <= handoff.from) return 'done';
+    if (activeStage != null && i < activeStage) return 'done';
+    return 'pending';
+  };
+
+  const visibleResponse = (decodeStep > 0) ? instance.tokens.slice(0, decodeStep).join('') : '';
+
+  return (
+    <g>
+      {/* Prompt */}
+      {promptsArrived && (
+        <g>
+          <rect x={TPDP2_PROMPT_X} y={bubbleY} width={TPDP2_PROMPT_W} height={TPDP2_PROMPT_H} rx={6}
+            fill="var(--color-primary-bg)" stroke="var(--color-primary)" strokeWidth={1} />
+          <text x={TPDP2_PROMPT_X + 8} y={bubbleY + 14} fontSize={9} fontWeight={700} fill="var(--color-primary-text)">
+            {instance.name}
+          </text>
+          <foreignObject x={TPDP2_PROMPT_X + 6} y={bubbleY + 18} width={TPDP2_PROMPT_W - 12} height={TPDP2_PROMPT_H - 22}>
+            <div xmlns="http://www.w3.org/1999/xhtml" style={{ fontSize: '10.5px', color: 'var(--color-text-secondary)', lineHeight: 1.25, fontStyle: 'italic' }}>
+              "{instance.prompt}"
+            </div>
+          </foreignObject>
+        </g>
+      )}
+
+      {/* GPUs */}
+      {positions.map((gpuBox, i) => (
+        <Ppdp2Gpu key={i}
+          gpuBox={gpuBox}
+          idx={isTop ? i : i + 4}
+          gpuStateLocal={gpuStateLocal(i)}
+          decodePass={!!decodePass}
+          microbatch={!!microbatch}
+          layerRange={PPDP2_LAYER_RANGES[i]} />
+      ))}
+
+      {/* Within-row handoff curve */}
+      {handoff && handoff.from < handoff.to && (
+        <Ppdp2HandoffCurve fromGpu={positions[handoff.from]} toGpu={positions[handoff.to]} bulgeUp={isTop} />
+      )}
+
+      {/* Response */}
+      {(decodeStep > 0 || complete) && (
+        <g>
+          <rect x={TPDP2_RESP_X} y={bubbleY} width={TPDP2_RESP_W} height={TPDP2_RESP_H} rx={6}
+            fill="var(--color-teal-bg)" stroke="var(--color-teal)" strokeWidth={1} />
+          <text x={TPDP2_RESP_X + 8} y={bubbleY + 14} fontSize={9} fontWeight={700} fill="var(--color-teal-text)">
+            response
+          </text>
+          <foreignObject x={TPDP2_RESP_X + 6} y={bubbleY + 18} width={TPDP2_RESP_W - 12} height={TPDP2_RESP_H - 22}>
+            <div xmlns="http://www.w3.org/1999/xhtml" style={{ fontSize: '11px', color: 'var(--color-text)', lineHeight: 1.3, fontFamily: 'monospace' }}>
+              {visibleResponse}
+              {!complete && decodeStep > 0 && (
+                <span style={{ color: 'var(--color-teal-text)' }}>▍</span>
+              )}
+            </div>
+          </foreignObject>
+        </g>
+      )}
+
+      {/* Broadcast (head only) */}
+      <Ppdp2BroadcastArrow active={current.promptsArrived && current.activeStage === 0 && !current.handoff && current.decodeStep === undefined ? false : false} row={row} />
+
+      {/* Token puck for single-token compute */}
+      {!microbatch && !current.feedback && !current.handoff && !decodePass && !complete && (
+        <Ppdp2TokenPuck activeStage={activeStage} row={row} />
+      )}
+
+      {/* Micro-batching tokens */}
+      <Ppdp2MicrobatchTokens active={!!microbatch} row={row} />
+
+      {/* First-token emerge */}
+      <Ppdp2EmergeArrow active={!!current.emerge} row={row} label={current.emerge ? `"${instance.tokens[0]}"` : null} />
+
+      {/* Feedback */}
+      <Ppdp2FeedbackArrow active={!!current.feedback} row={row} />
+    </g>
+  );
+}
+
+function Ppdp2LifecycleAnimation() {
+  const [step, setStep] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const numSteps = PPDP2_LIFECYCLE_STEPS.length;
+  const current = PPDP2_LIFECYCLE_STEPS[step];
+
+  useEffect(() => {
+    if (!isPlaying) return;
+    if (step >= numSteps - 1) { setIsPlaying(false); return; }
+    const delay = current.microbatch ? 2200 : 1400;
+    const t = setTimeout(() => setStep((s) => s + 1), delay);
+    return () => clearTimeout(t);
+  }, [isPlaying, step, numSteps, current.microbatch]);
+
+  const stageLabel = (() => {
+    if (current.activeStage != null) return `Stage ${current.activeStage + 1} of 4 (both pipelines)`;
+    if (current.handoff) return `Handoff ${current.handoff.from + 1}→${current.handoff.to + 1}`;
+    if (current.microbatch) return 'All 4 stages busy';
+    if (current.decodePass) return 'Sweep through 4 stages';
+    return null;
+  })();
+
+  return (
+    <div className="rounded-lg border border-[var(--color-border-light)] bg-[var(--color-surface-muted)] p-3">
+      <div className="flex items-center justify-between mb-2 text-[11px]">
+        <div className="flex items-center gap-2">
+          <span className="px-2 py-0.5 rounded bg-[var(--color-primary-bg)] border border-[var(--color-primary)] text-[var(--color-primary-text)] font-medium">
+            {current.phase}
+          </span>
+          {stageLabel && (
+            <span className="text-[var(--color-text-muted)] font-mono">{stageLabel}</span>
+          )}
+        </div>
+        <div className="font-mono text-[var(--color-text-muted)]">
+          Step {step + 1} / {numSteps}
+        </div>
+      </div>
+      <div className="relative w-full" style={{ aspectRatio: `${TPPP2_W} / ${TPPP2_H}` }}>
+        <svg viewBox={`0 0 ${TPPP2_W} ${TPPP2_H}`} xmlns="http://www.w3.org/2000/svg"
+          className="absolute inset-0 w-full h-full">
+          <defs>
+            <marker id="ppdp2-arrow-primary" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--color-primary)" />
+            </marker>
+            <marker id="ppdp2-arrow-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--color-blue)" />
+            </marker>
+            <marker id="ppdp2-arrow-teal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--color-teal)" />
+            </marker>
+            <marker id="ppdp2-arrow-amber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--color-amber)" />
+            </marker>
+          </defs>
+
+          <Ppdp2PipelineRow row="top"    instance={PPDP2_INSTANCES[0]} current={current} />
+          <Ppdp2PipelineRow row="bottom" instance={PPDP2_INSTANCES[1]} current={current} />
+        </svg>
+      </div>
+
+      <div className="mt-2 p-2 rounded bg-[var(--color-surface)] border border-[var(--color-border-light)] min-h-[58px]">
+        <div className="text-[12px] font-medium text-[var(--color-text)]">{current.label}</div>
+        <div className="text-[11px] text-[var(--color-text-secondary)] leading-relaxed mt-0.5">{current.sub}</div>
+      </div>
+
+      <div className="mt-2 flex items-center gap-2 flex-wrap">
+        <button onClick={() => { setIsPlaying(false); setStep(0); }} className="px-2 py-1 text-[11px] rounded border border-[var(--color-border)] hover:bg-[var(--color-surface-alt)] cursor-pointer text-[var(--color-text-secondary)]">⏮ Restart</button>
+        <button onClick={() => { setIsPlaying(false); setStep((s) => Math.max(0, s - 1)); }} disabled={step === 0} className="px-2 py-1 text-[11px] rounded border border-[var(--color-border)] hover:bg-[var(--color-surface-alt)] cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed text-[var(--color-text-secondary)]">◀ Prev</button>
+        <button
+          onClick={() => {
+            if (step >= numSteps - 1) { setStep(0); setIsPlaying(true); return; }
+            setIsPlaying((p) => !p);
+          }}
+          className="px-3 py-1 text-[11px] rounded border border-[var(--color-primary)] bg-[var(--color-primary-bg)] hover:opacity-90 cursor-pointer text-[var(--color-primary-text)] font-medium"
+        >
+          {isPlaying ? '⏸ Pause' : step >= numSteps - 1 ? '↻ Replay' : '▶ Play'}
+        </button>
+        <button onClick={() => { setIsPlaying(false); setStep((s) => Math.min(numSteps - 1, s + 1)); }} disabled={step === numSteps - 1} className="px-2 py-1 text-[11px] rounded border border-[var(--color-border)] hover:bg-[var(--color-surface-alt)] cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed text-[var(--color-text-secondary)]">Next ▶</button>
+        <input type="range" min={0} max={numSteps - 1} value={step} onChange={(e) => { setIsPlaying(false); setStep(Number(e.target.value)); }} className="anim-scrubber flex-1 min-w-[120px]" />
+      </div>
+    </div>
+  );
+}
+
+/* ================================================================
+   TP×PP×DP=24 lifecycle animation
+   4 independent replicas, each a TP=2 × PP=3 cluster.
+   Across replicas: zero traffic (DP).
+   Within a replica: TP all-reduce within stage, PP handoff between stages.
+   ================================================================ */
+
+const TPPPDP24_W = 720;
+const TPPPDP24_H = 460;
+const TPPPDP24_REPLICA_W = 162;
+const TPPPDP24_REPLICA_GAP = 8;
+const TPPPDP24_REPLICA_X0 = 16; // first replica left edge
+const TPPPDP24_REPLICA_Y0 = 50;
+const TPPPDP24_STAGE_GAP = 16;
+const TPPPDP24_GPU_W = 72;
+const TPPPDP24_GPU_H = 36;
+const TPPPDP24_GPU_GAP = 6;
+const TPPPDP24_PROMPT_H = 30;
+const TPPPDP24_RESP_H = 30;
+
+function tpppdp24ReplicaX(r) { return TPPPDP24_REPLICA_X0 + r * (TPPPDP24_REPLICA_W + TPPPDP24_REPLICA_GAP); }
+function tpppdp24StageY(s) { return TPPPDP24_REPLICA_Y0 + TPPPDP24_PROMPT_H + 8 + s * (TPPPDP24_GPU_H + TPPPDP24_STAGE_GAP); }
+function tpppdp24GpuPos(r, s, t) {
+  const rx = tpppdp24ReplicaX(r);
+  const gpuX = rx + 6 + t * (TPPPDP24_GPU_W + TPPPDP24_GPU_GAP);
+  const gpuY = tpppdp24StageY(s);
+  return {
+    x: gpuX, y: gpuY,
+    cx: gpuX + TPPPDP24_GPU_W / 2,
+    cy: gpuY + TPPPDP24_GPU_H / 2,
+    rightX: gpuX + TPPPDP24_GPU_W,
+    leftX: gpuX,
+    topY: gpuY,
+    bottomY: gpuY + TPPPDP24_GPU_H,
+  };
+}
+
+function Tpppdp24Gpu({ pos, label, stageActive, allreduce, decodePass, complete }) {
+  const pulse = stageActive || decodePass;
+  const ringed = allreduce;
+  return (
+    <g>
+      <rect x={pos.x} y={pos.y} width={TPPPDP24_GPU_W} height={TPPPDP24_GPU_H} rx={4}
+        fill={pulse ? 'var(--color-red-bg)' : 'var(--color-surface-muted)'}
+        stroke={ringed ? 'var(--color-red)' : pulse ? 'var(--color-red)' : 'var(--color-border)'}
+        strokeWidth={pulse || ringed ? 1.5 : 0.8}
+        style={{ transition: 'all 300ms ease', opacity: complete ? 0.55 : 1 }}>
+        {pulse && (
+          <animate attributeName="opacity" values="1;0.55;1" dur="900ms" repeatCount="indefinite" />
+        )}
+      </rect>
+      <text x={pos.x + 4} y={pos.y + 11} fontSize={9} fontFamily="monospace" fontWeight={700}
+        fill={pulse || ringed ? 'var(--color-red-text)' : 'var(--color-text-secondary)'}>
+        {label}
+      </text>
+      <text x={pos.x + TPPPDP24_GPU_W - 4} y={pos.y + 11} fontSize={7} textAnchor="end" fill="var(--color-text-muted)">
+        ½ wt
+      </text>
+    </g>
+  );
+}
+
+function Tpppdp24Replica({ replicaIdx, replica, current }) {
+  const { highlight, activeStage, handoff, decodeStep, complete } = current;
+  const rx = tpppdp24ReplicaX(replicaIdx);
+  const ry = TPPPDP24_REPLICA_Y0;
+
+  // GPU labels: G0..G23
+  const gpuLabel = (s, t) => `G${replicaIdx * 6 + s * 2 + t}`;
+
+  const stageIsActive = (s) => {
+    if (complete || highlight === 'complete') return false;
+    if (highlight === 'condense' && activeStage === s) return true;
+    if ((highlight === 'compute') && activeStage === s) return true;
+    if (highlight === 'decode-pass') return true;
+    return false;
+  };
+  const stageHasAllreduce = (s) => highlight === 'allreduce' && activeStage === s;
+
+  return (
+    <g>
+      {/* Replica boundary */}
+      <rect x={rx + 2} y={ry + 4} width={TPPPDP24_REPLICA_W - 4}
+        height={TPPPDP24_REPLICA_Y0 + 270 - ry}
+        rx={6}
+        fill="none"
+        stroke={complete ? 'var(--color-text-muted)' : 'var(--color-border)'}
+        strokeWidth={0.8}
+        opacity={0.5} />
+
+      {/* Replica label */}
+      <text x={rx + 8} y={ry + 16} fontSize={9} fontWeight={700} fill="var(--color-text-secondary)">
+        {replica.name}
+      </text>
+
+      {/* Prompt */}
+      {(highlight && highlight !== null) && (
+        <g>
+          <rect x={rx + 6} y={ry + 22} width={TPPPDP24_REPLICA_W - 12} height={TPPPDP24_PROMPT_H} rx={4}
+            fill="var(--color-primary-bg)" stroke="var(--color-primary)" strokeWidth={0.8} />
+          <foreignObject x={rx + 10} y={ry + 25} width={TPPPDP24_REPLICA_W - 20} height={TPPPDP24_PROMPT_H - 6}>
+            <div xmlns="http://www.w3.org/1999/xhtml" style={{ fontSize: '9.5px', color: 'var(--color-primary-text)', lineHeight: 1.2, fontStyle: 'italic' }}>
+              "{replica.prompt}"
+            </div>
+          </foreignObject>
+        </g>
+      )}
+
+      {/* Stages: 3 stages, each with 2 GPUs */}
+      {[0, 1, 2].map((s) => (
+        <g key={s}>
+          {[0, 1].map((t) => {
+            const pos = tpppdp24GpuPos(replicaIdx, s, t);
+            return (
+              <Tpppdp24Gpu key={t}
+                pos={pos}
+                label={gpuLabel(s, t)}
+                stageActive={stageIsActive(s)}
+                allreduce={stageHasAllreduce(s)}
+                decodePass={highlight === 'decode-pass'}
+                complete={highlight === 'complete'}
+              />
+            );
+          })}
+
+          {/* TP all-reduce arc between the 2 GPUs of this stage */}
+          {stageHasAllreduce(s) && (
+            (() => {
+              const left = tpppdp24GpuPos(replicaIdx, s, 0);
+              const right = tpppdp24GpuPos(replicaIdx, s, 1);
+              const midX = (left.rightX + right.leftX) / 2;
+              const arcY = left.y - 6;
+              return (
+                <path d={`M ${left.rightX} ${left.cy} Q ${midX} ${arcY} ${right.leftX} ${right.cy}`}
+                  fill="none" stroke="var(--color-red)" strokeWidth={1.5} opacity={0.9} />
+              );
+            })()
+          )}
+
+          {/* Stage layer-range label */}
+          <text x={rx + TPPPDP24_REPLICA_W / 2} y={tpppdp24StageY(s) + TPPPDP24_GPU_H + 10}
+            textAnchor="middle" fontSize={8} fill="var(--color-text-muted)">
+            {TPPPDP24_STAGE_LAYERS[s]}
+          </text>
+
+          {/* PP handoff arrow from this stage to the next (when handoff matches) */}
+          {handoff && handoff.from === s && handoff.to === s + 1 && (
+            <g>
+              {[0, 1].map((t) => {
+                const from = tpppdp24GpuPos(replicaIdx, s, t);
+                const to = tpppdp24GpuPos(replicaIdx, s + 1, t);
+                return (
+                  <line key={t}
+                    x1={from.cx} y1={from.bottomY + 2}
+                    x2={to.cx}   y2={to.topY - 2}
+                    stroke="var(--color-blue)" strokeWidth={1.6}
+                    markerEnd="url(#tpppdp24-arrow-blue)" />
+                );
+              })}
+            </g>
+          )}
+        </g>
+      ))}
+
+      {/* Response (below stage 3) */}
+      {(decodeStep > 0 || complete) && (() => {
+        const stage3 = tpppdp24StageY(2);
+        const respY = stage3 + TPPPDP24_GPU_H + 22;
+        const visible = (decodeStep > 0) ? replica.tokens.slice(0, decodeStep).join('') : '';
+        return (
+          <g>
+            <rect x={rx + 6} y={respY} width={TPPPDP24_REPLICA_W - 12} height={TPPPDP24_RESP_H} rx={4}
+              fill="var(--color-teal-bg)" stroke="var(--color-teal)" strokeWidth={0.8} />
+            <foreignObject x={rx + 10} y={respY + 3} width={TPPPDP24_REPLICA_W - 20} height={TPPPDP24_RESP_H - 6}>
+              <div xmlns="http://www.w3.org/1999/xhtml" style={{ fontSize: '10px', color: 'var(--color-text)', lineHeight: 1.2, fontFamily: 'monospace' }}>
+                {visible}
+                {!complete && decodeStep > 0 && (
+                  <span style={{ color: 'var(--color-teal-text)' }}>▍</span>
+                )}
+              </div>
+            </foreignObject>
+          </g>
+        );
+      })()}
+
+      {/* Emerge fan-in: from both stage-3 GPUs to the response area */}
+      {highlight === 'emerge' && (() => {
+        const left = tpppdp24GpuPos(replicaIdx, 2, 0);
+        const right = tpppdp24GpuPos(replicaIdx, 2, 1);
+        const stage3 = tpppdp24StageY(2);
+        const targetX = rx + TPPPDP24_REPLICA_W / 2;
+        const targetY = stage3 + TPPPDP24_GPU_H + 22 + TPPPDP24_RESP_H / 2;
+        return (
+          <g>
+            <line x1={left.cx} y1={left.bottomY} x2={targetX} y2={targetY}
+              stroke="var(--color-teal)" strokeWidth={1.2} opacity={0.55} />
+            <line x1={right.cx} y1={right.bottomY} x2={targetX} y2={targetY}
+              stroke="var(--color-teal)" strokeWidth={1.2} opacity={0.55} />
+            <circle cx={targetX} cy={targetY} r={5} fill="var(--color-teal)" opacity={0.95}>
+              <animate attributeName="r" from="3" to="7" dur="700ms" repeatCount="indefinite" />
+              <animate attributeName="opacity" from="1" to="0.45" dur="700ms" repeatCount="indefinite" />
+            </circle>
+          </g>
+        );
+      })()}
+
+      {/* Feedback curve: from stage 3 (bottom) back up to stage 1 (top) along the replica's right edge */}
+      {highlight === 'feedback' && (() => {
+        const stage3 = tpppdp24GpuPos(replicaIdx, 2, 1);
+        const stage1 = tpppdp24GpuPos(replicaIdx, 0, 1);
+        const sx = stage3.rightX - 6;
+        const sy = stage3.bottomY + 2;
+        const ex = stage1.cx - 4;
+        const ey = stage1.topY - 2;
+        const sweepX = rx + TPPPDP24_REPLICA_W - 4;
+        const path = `M ${sx} ${sy} C ${sweepX} ${sy + 12}, ${sweepX} ${ey - 12}, ${ex} ${ey}`;
+        return (
+          <path d={path} fill="none" stroke="var(--color-amber)" strokeWidth={1.2} strokeDasharray="3 2"
+            markerEnd="url(#tpppdp24-arrow-amber)" />
+        );
+      })()}
+    </g>
+  );
+}
+
+function Tpppdp24LifecycleAnimation() {
+  const [step, setStep] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const numSteps = TPPPDP24_LIFECYCLE_STEPS.length;
+  const current = TPPPDP24_LIFECYCLE_STEPS[step];
+
+  useEffect(() => {
+    if (!isPlaying) return;
+    if (step >= numSteps - 1) { setIsPlaying(false); return; }
+    const delay = current.highlight === 'condense' ? 2000 : 1400;
+    const t = setTimeout(() => setStep((s) => s + 1), delay);
+    return () => clearTimeout(t);
+  }, [isPlaying, step, numSteps, current.highlight]);
+
+  const stageLabel = (() => {
+    if (current.activeStage != null) return `Stage ${current.activeStage + 1} of 3 (all replicas)`;
+    if (current.handoff) return `PP handoff stage ${current.handoff.from + 1}→${current.handoff.to + 1}`;
+    if (current.highlight === 'decode-pass') return 'All stages, all replicas';
+    return null;
+  })();
+
+  return (
+    <div className="rounded-lg border border-[var(--color-border-light)] bg-[var(--color-surface-muted)] p-3">
+      <div className="flex items-center justify-between mb-2 text-[11px]">
+        <div className="flex items-center gap-2">
+          <span className="px-2 py-0.5 rounded bg-[var(--color-primary-bg)] border border-[var(--color-primary)] text-[var(--color-primary-text)] font-medium">
+            {current.phase}
+          </span>
+          {stageLabel && (
+            <span className="text-[var(--color-text-muted)] font-mono">{stageLabel}</span>
+          )}
+          <span className="text-[var(--color-text-muted)] font-mono">
+            24 GPUs · 4 replicas
+          </span>
+        </div>
+        <div className="font-mono text-[var(--color-text-muted)]">
+          Step {step + 1} / {numSteps}
+        </div>
+      </div>
+
+      <div className="relative w-full" style={{ aspectRatio: `${TPPPDP24_W} / ${TPPPDP24_H}` }}>
+        <svg viewBox={`0 0 ${TPPPDP24_W} ${TPPPDP24_H}`} xmlns="http://www.w3.org/2000/svg"
+          className="absolute inset-0 w-full h-full">
+          <defs>
+            <marker id="tpppdp24-arrow-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--color-blue)" />
+            </marker>
+            <marker id="tpppdp24-arrow-amber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--color-amber)" />
+            </marker>
+          </defs>
+
+          {TPPPDP24_REPLICAS.map((replica, r) => (
+            <Tpppdp24Replica key={r} replicaIdx={r} replica={replica} current={current} />
+          ))}
+
+          {/* Banner caption at top */}
+          <text x={TPPPDP24_W / 2} y={26} textAnchor="middle" fontSize={11} fontWeight={700} fill="var(--color-text-secondary)">
+            4 replicas (DP) × TP=2 × PP=3 = 24 GPUs · no arrow ever crosses a replica boundary
+          </text>
+        </svg>
+      </div>
+
+      <div className="mt-2 p-2 rounded bg-[var(--color-surface)] border border-[var(--color-border-light)] min-h-[58px]">
+        <div className="text-[12px] font-medium text-[var(--color-text)]">{current.label}</div>
+        <div className="text-[11px] text-[var(--color-text-secondary)] leading-relaxed mt-0.5">{current.sub}</div>
+      </div>
+
+      <div className="mt-2 flex items-center gap-2 flex-wrap">
+        <button onClick={() => { setIsPlaying(false); setStep(0); }} className="px-2 py-1 text-[11px] rounded border border-[var(--color-border)] hover:bg-[var(--color-surface-alt)] cursor-pointer text-[var(--color-text-secondary)]">⏮ Restart</button>
+        <button onClick={() => { setIsPlaying(false); setStep((s) => Math.max(0, s - 1)); }} disabled={step === 0} className="px-2 py-1 text-[11px] rounded border border-[var(--color-border)] hover:bg-[var(--color-surface-alt)] cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed text-[var(--color-text-secondary)]">◀ Prev</button>
+        <button
+          onClick={() => {
+            if (step >= numSteps - 1) { setStep(0); setIsPlaying(true); return; }
+            setIsPlaying((p) => !p);
+          }}
+          className="px-3 py-1 text-[11px] rounded border border-[var(--color-primary)] bg-[var(--color-primary-bg)] hover:opacity-90 cursor-pointer text-[var(--color-primary-text)] font-medium"
+        >
+          {isPlaying ? '⏸ Pause' : step >= numSteps - 1 ? '↻ Replay' : '▶ Play'}
+        </button>
+        <button onClick={() => { setIsPlaying(false); setStep((s) => Math.min(numSteps - 1, s + 1)); }} disabled={step === numSteps - 1} className="px-2 py-1 text-[11px] rounded border border-[var(--color-border)] hover:bg-[var(--color-surface-alt)] cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed text-[var(--color-text-secondary)]">Next ▶</button>
+        <input type="range" min={0} max={numSteps - 1} value={step} onChange={(e) => { setIsPlaying(false); setStep(Number(e.target.value)); }} className="anim-scrubber flex-1 min-w-[120px]" />
+      </div>
+    </div>
+  );
+}
+
 /* ---------- Full config renderer ---------- */
 function ConfigGrid({ config }) {
   const { groups, arrows, arrowLabel, layout } = config;
@@ -2420,6 +3100,16 @@ function ConfigGrid({ config }) {
   // TP=4 × DP=2 gets the 2-instance independent animation
   if (config.id === 'tp4dp2') {
     return <Tpdp2LifecycleAnimation />;
+  }
+
+  // PP=4 × DP=2 gets the 2-pipeline independent animation
+  if (config.id === 'pp4dp2') {
+    return <Ppdp2LifecycleAnimation />;
+  }
+
+  // TP=2 × PP=3 × DP=4 (24 GPUs) gets the all-three animation
+  if (config.id === 'tp2pp3dp4') {
+    return <Tpppdp24LifecycleAnimation />;
   }
 
   // For simple single-row configs (TP, PP)

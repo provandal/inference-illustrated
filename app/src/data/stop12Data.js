@@ -476,6 +476,170 @@ export const TPDP2_LIFECYCLE_STEPS = [
 ];
 
 // ================================================================
+// PAGE 1 (PP=4 × DP=2) — Lifecycle animation
+// 8 GPUs in 2 rows of 4. Each row is a 4-stage pipeline.
+// Two independent pipelines, zero traffic between rows.
+// ================================================================
+export const PPDP2_INSTANCES = [
+  { name: 'Pipeline A', prompt: 'Author of Hamlet?', tokens: ['Shake', 'speare', '.'] },
+  { name: 'Pipeline B', prompt: 'Water boils at?',   tokens: ['100',   '°',     'C.'] },
+];
+export const PPDP2_LAYER_RANGES = ['L1-20', 'L21-40', 'L41-60', 'L61-80'];
+
+// activeStage:    0..3 — within-row stage (same for both pipelines, lockstep)
+// handoff:        { from, to } — within-row stage indices, applied to both pipelines
+// condense:       cascading remaining stages
+// decodePass:     soft glow across all stages
+// microbatch:     all stages busy with different tokens (in both pipelines)
+export const PPDP2_LIFECYCLE_STEPS = [
+  { phase: 'Setup',
+    label: 'Two pipelines idle',
+    sub: '8 H100s organized as 2 independent 4-stage pipelines. Each pipeline holds the full model split by layer: L1-20, L21-40, L41-60, L61-80. The two pipelines never talk to each other.',
+    activeStage: null },
+  { phase: 'Prompts',
+    label: 'Two different prompts arrive',
+    sub: 'A load balancer routes each user to one pipeline\'s head GPU. Once routed, the user lives in that pipeline.',
+    activeStage: null, promptsArrived: true },
+  { phase: 'Prefill',
+    label: 'Stage 1 compute — both pipelines',
+    sub: 'GPU 0 (top) and GPU 4 (bottom) process layers 1-20 for their own prompt. GPUs 1-3 and 5-7 idle.',
+    activeStage: 0, promptsArrived: true },
+  { phase: 'Prefill',
+    label: 'Handoff stage 1 → stage 2',
+    sub: 'Each pipeline\'s head sends 16 KB to its next stage (GPU 0→1 in top, GPU 4→5 in bottom). The curves bulge up for the top row and down for the bottom row — never across the middle gap.',
+    handoff: { from: 0, to: 1 }, promptsArrived: true },
+  { phase: 'Prefill',
+    label: 'Stage 2 compute',
+    sub: 'GPU 1 and GPU 5 process layers 21-40. Other GPUs idle.',
+    activeStage: 1, promptsArrived: true },
+  { phase: 'Prefill',
+    label: 'Handoff stage 2 → stage 3',
+    sub: '16 KB to GPU 2 and GPU 6.',
+    handoff: { from: 1, to: 2 }, promptsArrived: true },
+  { phase: 'Prefill',
+    label: 'Stage 3 compute',
+    sub: 'GPU 2 and GPU 6 process layers 41-60.',
+    activeStage: 2, promptsArrived: true },
+  { phase: 'Prefill',
+    label: 'Handoff stage 3 → stage 4',
+    sub: '16 KB to GPU 3 and GPU 7.',
+    handoff: { from: 2, to: 3 }, promptsArrived: true },
+  { phase: 'Prefill',
+    label: 'Stage 4 compute',
+    sub: 'GPU 3 and GPU 7 process layers 61-80. Each pipeline\'s tail holds the LM head shard.',
+    activeStage: 3, promptsArrived: true },
+  { phase: 'Decode',
+    label: 'First tokens emerge — one per pipeline',
+    sub: 'GPU 3 and GPU 7 each sample their pipeline\'s first token. Two different tokens for two different users.',
+    activeStage: 3, promptsArrived: true, emerge: true, decodeStep: 1 },
+  { phase: 'Decode',
+    label: 'Each pipeline feeds its token back to its head',
+    sub: 'GPU 3 sends its token ID back to GPU 0; GPU 7 sends back to GPU 4. Two tiny inter-stage messages — never across rows.',
+    feedback: true, promptsArrived: true, decodeStep: 1 },
+  { phase: 'Decode',
+    label: 'Decode pass — token 2',
+    sub: 'Each pipeline traverses all 4 stages with 3 handoffs per token. KV cache from prefill sits on each GPU for its layers.',
+    decodePass: true, promptsArrived: true, decodeStep: 2 },
+  { phase: 'Decode',
+    label: 'Micro-batching (steady state)',
+    sub: 'In production, each pipeline is filled with different users\' tokens — token A in stage 4, token B in stage 3, etc. All 8 GPUs busy simultaneously, while the two pipelines remain independent.',
+    microbatch: true, promptsArrived: true, decodeStep: 2 },
+  { phase: 'Decode',
+    label: 'Decode pass — token 3',
+    sub: 'One more pass to complete the response in each pipeline.',
+    decodePass: true, promptsArrived: true, decodeStep: 3 },
+  { phase: 'Done',
+    label: 'Two responses delivered, zero inter-pipeline bytes',
+    sub: 'Each pipeline served its own user via 4 stages with 3 handoffs per token. Compared to TP×DP: similar throughput, but PP handoffs are tiny point-to-point sends instead of all-reduces — cheaper per byte, harder to keep busy without micro-batching.',
+    complete: true, promptsArrived: true, decodeStep: 3 },
+];
+
+// ================================================================
+// PAGE 1 (TP=2 × PP=3 × DP=4) — Lifecycle animation (24 GPUs)
+// 4 independent replicas. Each replica: TP=2 within stage × PP=3 between stages.
+// Within replica: all-reduce within each TP pair, PP handoff between stages.
+// Between replicas: zero traffic.
+// ================================================================
+export const TPPPDP24_REPLICAS = [
+  { name: 'R1', prompt: 'Hello in French?',   tokens: ['Bon',  'jour',  '.']  },
+  { name: 'R2', prompt: 'Color of sky?',      tokens: ['B',    'lue',   '.']  },
+  { name: 'R3', prompt: 'Largest ocean?',     tokens: ['Pa',   'cific', '.']  },
+  { name: 'R4', prompt: '2 × 3?',             tokens: ['S',    'ix',    '.']  },
+];
+export const TPPPDP24_STAGE_LAYERS = ['L1-27', 'L28-54', 'L55-80'];
+
+// activeStage: 0..2 — current PP stage (same across all 4 replicas)
+// highlight:   broadcast | compute | allreduce | condense | pp-handoff
+//              | emerge | feedback | decode-pass | complete
+// handoff:     { from, to } stage indices for the PP handoff step
+export const TPPPDP24_LIFECYCLE_STEPS = [
+  { phase: 'Setup',
+    label: 'Four replicas idle',
+    sub: '24 GPUs organized as 4 completely independent replicas (DP=4). Each replica is itself a TP=2 × PP=3 cluster: 3 pipeline stages, each stage is a 2-GPU tensor-parallel pair. Across replicas: zero communication.',
+    highlight: null },
+  { phase: 'Prompts',
+    label: 'Four different prompts arrive',
+    sub: 'A load balancer routes each user to one replica. From there the user lives inside that 6-GPU replica.',
+    highlight: 'prompts-arrive' },
+  { phase: 'Prompts',
+    label: 'Each prompt broadcasts to its stage-1 TP pair',
+    sub: 'Inside each replica, the embedding is replicated to both GPUs of stage 1 (TP=2).',
+    highlight: 'broadcast', activeStage: 0 },
+  { phase: 'Prefill',
+    label: 'Stage 1 — attention compute (all replicas)',
+    sub: 'Two GPUs per replica compute their 1/2 slice of attention for layer 1. Across 4 replicas, 8 GPUs are active — but only within their own replica.',
+    highlight: 'compute', activeStage: 0 },
+  { phase: 'Prefill',
+    label: 'Stage 1 — attention all-reduce (TP=2, in each replica)',
+    sub: 'In each replica, the 2 GPUs of stage 1 sum their partials over NVLink. 4 independent 2-way all-reduces happen in parallel — no replica talks to any other.',
+    highlight: 'allreduce', activeStage: 0 },
+  { phase: 'Prefill',
+    label: 'Stage 1 — FFN compute and all-reduce',
+    sub: 'FFN slice on both GPUs of stage 1, then a second all-reduce within the pair.',
+    highlight: 'compute', activeStage: 0 },
+  { phase: 'Prefill',
+    label: 'Stage 1 condense (L1-27)',
+    sub: 'Each replica\'s stage 1 finishes layers 1-27 with the same TP=2 dance every layer.',
+    highlight: 'condense', activeStage: 0 },
+  { phase: 'Pipeline',
+    label: 'PP handoff stage 1 → stage 2 (in every replica)',
+    sub: 'Inside each replica, each stage-1 GPU sends 16 KB to its corresponding stage-2 GPU. 2 parallel sends per replica × 4 replicas = 8 sends. None cross replica boundaries.',
+    highlight: 'pp-handoff', handoff: { from: 0, to: 1 } },
+  { phase: 'Prefill',
+    label: 'Stage 2 condense (L28-54)',
+    sub: 'Each replica\'s stage 2 runs the same TP=2 sequence for layers 28-54.',
+    highlight: 'condense', activeStage: 1 },
+  { phase: 'Pipeline',
+    label: 'PP handoff stage 2 → stage 3',
+    sub: '8 more 16 KB sends — 2 per replica, all staying inside their replicas.',
+    highlight: 'pp-handoff', handoff: { from: 1, to: 2 } },
+  { phase: 'Prefill',
+    label: 'Stage 3 condense (L55-80)',
+    sub: 'Each replica\'s stage 3 finishes layers 55-80 plus the LM head shard.',
+    highlight: 'condense', activeStage: 2 },
+  { phase: 'Decode',
+    label: 'First tokens emerge — one per replica',
+    sub: 'After the final all-reduce in stage 3, both GPUs of each replica\'s tail pair hold the same logits. Sampling produces the same token in lock-step within each replica. Four different tokens emerge across the four replicas.',
+    highlight: 'emerge', decodeStep: 1 },
+  { phase: 'Decode',
+    label: 'Each replica feeds back to its own stage 1',
+    sub: 'Four independent autoregressive loops, none crossing replica boundaries.',
+    highlight: 'feedback', decodeStep: 1 },
+  { phase: 'Decode',
+    label: 'Decode pass — token 2',
+    sub: 'Per decode pass: 80 × 2-way all-reduces (vs 8-way in TP=8 or 4-way in TP×PP) plus 2 PP handoffs of 2×16 KB each. The smaller TP group makes each all-reduce faster; the PP and DP axes multiply throughput.',
+    highlight: 'decode-pass', decodeStep: 2 },
+  { phase: 'Decode',
+    label: 'Decode pass — token 3',
+    sub: 'Pattern continues. KV cache grows in every replica simultaneously.',
+    highlight: 'decode-pass', decodeStep: 3 },
+  { phase: 'Done',
+    label: 'Four responses delivered',
+    sub: 'This is how the biggest production clusters look — hundreds or thousands of GPUs sliced along all three axes. TP groups stay inside NVLink domains, PP can cross nodes, DP spans the cluster. Per-axis tuning matches each communication pattern to the right network tier.',
+    highlight: 'complete', decodeStep: 3 },
+];
+
+// ================================================================
 // PAGE 2 — Data Parallelism animation
 // ================================================================
 export const DP_STEPS = [
