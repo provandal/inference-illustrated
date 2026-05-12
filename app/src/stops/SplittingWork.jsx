@@ -1702,6 +1702,11 @@ function Tppp2LayerTrack({ gpuBox, isTopRow, currentLayer, highlight }) {
 function Tppp2Gpu({ gpuBox, idx, rowActive, compute, allreduce, decodePass, currentLayer, highlight, isTopRow }) {
   const pulse = (rowActive && compute) || decodePass;
   const ringed = rowActive && allreduce;
+  // Track must not pick up row-specific highlights (broadcast/compute/allreduce/condense)
+  // unless this GPU's row is the active one. decode-pass and complete are global.
+  const trackHighlight = (highlight === 'complete' || highlight === 'decode-pass')
+    ? highlight
+    : (rowActive ? highlight : null);
   return (
     <g>
       <rect
@@ -1723,7 +1728,7 @@ function Tppp2Gpu({ gpuBox, idx, rowActive, compute, allreduce, decodePass, curr
       <text x={gpuBox.x + TPPP2_GPU_W - 6} y={gpuBox.y + 13} fontSize={8} textAnchor="end" fill="var(--color-text-muted)">
         1/4 wt
       </text>
-      <Tppp2LayerTrack gpuBox={gpuBox} isTopRow={isTopRow} currentLayer={currentLayer} highlight={highlight} />
+      <Tppp2LayerTrack gpuBox={gpuBox} isTopRow={isTopRow} currentLayer={rowActive ? currentLayer : null} highlight={trackHighlight} />
     </g>
   );
 }
@@ -1764,19 +1769,29 @@ function Tppp2AllReduceArcs({ active, row }) {
 }
 
 function Tppp2BroadcastArrows({ active }) {
+  // Each arrow curves UP over the GPU row so it doesn't pierce other GPU boxes
+  // on the way to its target. The further the target GPU, the higher the arc.
+  // Rendered after the GPU rects so it stays visible.
   const sx = TPPP2_PROMPT_X + TPPP2_PROMPT_W;
   const sy = TPPP2_PROMPT_Y + TPPP2_PROMPT_H / 2;
   return (
     <g style={{ transition: 'opacity 350ms ease', opacity: active ? 1 : 0 }}>
-      {TPPP2_TOP_POS.map((g, i) => (
-        <line key={i}
-          x1={sx} y1={sy}
-          x2={g.x - 3} y2={g.cy}
-          stroke="var(--color-primary)" strokeWidth={1.5}
-          opacity={0.85}
-          markerEnd="url(#tppp2-arrow-primary)"
-        />
-      ))}
+      {TPPP2_TOP_POS.map((g, i) => {
+        const ex = g.cx;
+        const ey = g.topEdge - 4;
+        const midX = (sx + ex) / 2;
+        const peakY = Math.max(12, 60 - i * 10);
+        return (
+          <path key={i}
+            d={`M ${sx} ${sy} Q ${midX} ${peakY} ${ex} ${ey}`}
+            fill="none"
+            stroke="var(--color-primary)"
+            strokeWidth={1.5}
+            opacity={0.85}
+            markerEnd="url(#tppp2-arrow-primary)"
+          />
+        );
+      })}
     </g>
   );
 }
@@ -1966,9 +1981,6 @@ function Tppp2LifecycleAnimation() {
             </text>
           </g>
 
-          {/* Broadcast arrows from prompt to top row */}
-          <Tppp2BroadcastArrows active={current.highlight === 'broadcast'} />
-
           {/* Top-row all-reduce arcs */}
           <Tppp2AllReduceArcs active={current.activeRow === 'top' && allreduce} row="top" />
 
@@ -2000,6 +2012,10 @@ function Tppp2LifecycleAnimation() {
               highlight={current.highlight}
             />
           ))}
+
+          {/* Broadcast arrows from prompt to top row — rendered AFTER the GPUs so
+              the curves stay visible above the row and aren't clipped by any GPU. */}
+          <Tppp2BroadcastArrows active={current.highlight === 'broadcast'} />
 
           {/* PP handoff arrows (between rows) */}
           <Tppp2PipelineHandoffs active={current.highlight === 'pp-handoff'} />
