@@ -304,6 +304,108 @@ export const DP8_LIFECYCLE_STEPS = [
 ];
 
 // ================================================================
+// PAGE 1 (TP=4 × PP=2) — Lifecycle animation
+// 8 GPUs in 2 rows of 4. Top row: TP=4 holding layers 1-40.
+// Bottom row: TP=4 holding layers 41-80.
+// Communication: all-reduce within each row, point-to-point handoff between rows.
+// ================================================================
+export const TPPP2_PROMPT = 'Write a haiku about TP × PP parallelism.';
+export const TPPP2_RESPONSE_LINES = [
+  'Four shards stack atop',
+  'Whispers across, then a leap',
+  'Eight homes, one journey.',
+];
+export const TPPP2_RESPONSE_TOKENS = [
+  'Four', ' shards', ' stack', ' atop', ',', '\n',
+  'Whispers', ' across', ',', ' then', ' a', ' leap', ',', '\n',
+  'Eight', ' homes', ',', ' one', ' journey', '.',
+];
+
+// activeRow:  'top' | 'bottom' | null
+// highlight:  'broadcast' | 'compute' | 'allreduce' | 'condense' | 'pp-handoff'
+//             | 'emerge' | 'feedback' | 'decode-pass' | 'complete' | null
+// layerInRow: 1..40, current layer within the active row
+// tokenIndex: 0..19
+export const TPPP2_LIFECYCLE_STEPS = [
+  { phase: 'Setup',
+    label: 'Cluster idle',
+    sub: '8 H100s in 2 rows of 4. Top row (GPUs 0-3): TP=4 for layers 1-40, each holds 1/4 of every layer\'s weight matrices. Bottom row (GPUs 4-7): same idea for layers 41-80.',
+    activeRow: null },
+  { phase: 'Prompt',
+    label: 'Embedding broadcast to top row',
+    sub: 'Tokenizer (CPU) produces integer IDs. The embedding is replicated to all 4 top-row GPUs — start of layer 1.',
+    activeRow: 'top', highlight: 'broadcast' },
+  { phase: 'Prefill',
+    label: 'Top L1 — attention compute',
+    sub: 'All 4 top-row GPUs compute their 1/4 slice of attention for layer 1. Bottom row idle. Pipeline bubble.',
+    activeRow: 'top', highlight: 'compute', layerInRow: 1 },
+  { phase: 'Prefill',
+    label: 'Top L1 — attention all-reduce (4 GPUs)',
+    sub: '4-way mesh of partials. 6 arcs above the top row light up. After the all-reduce every top-row GPU has the full attention output for layer 1.',
+    activeRow: 'top', highlight: 'allreduce', layerInRow: 1 },
+  { phase: 'Prefill',
+    label: 'Top L1 — FFN compute',
+    sub: 'Parallel FFN slice on every top-row GPU.',
+    activeRow: 'top', highlight: 'compute', layerInRow: 1 },
+  { phase: 'Prefill',
+    label: 'Top L1 — FFN all-reduce',
+    sub: 'Second all-reduce of layer 1. Now the layer-1 output is replicated across all 4 top-row GPUs.',
+    activeRow: 'top', highlight: 'allreduce', layerInRow: 1 },
+  { phase: 'Prefill',
+    label: 'Top L2-40 (fast-forward)',
+    sub: '39 more layers × 2 all-reduces = 78 more all-reduces in the top row. NVLink keeps each one in microseconds.',
+    activeRow: 'top', highlight: 'condense', layerInRow: 40 },
+  { phase: 'Pipeline',
+    label: 'PP handoff to bottom row',
+    sub: 'Each top-row GPU sends its 16 KB activation to the corresponding bottom-row GPU (GPU 0→4, 1→5, 2→6, 3→7). 4 parallel point-to-point sends, 64 KB total. No collective.',
+    activeRow: null, highlight: 'pp-handoff' },
+  { phase: 'Prefill',
+    label: 'Bottom L41 — attention compute',
+    sub: 'Bottom row picks up. All 4 bottom-row GPUs compute their 1/4 slice of attention for layer 41.',
+    activeRow: 'bottom', highlight: 'compute', layerInRow: 1 },
+  { phase: 'Prefill',
+    label: 'Bottom L41 — attention all-reduce',
+    sub: 'All-reduce within the bottom row. 6 arcs below the bottom row light up.',
+    activeRow: 'bottom', highlight: 'allreduce', layerInRow: 1 },
+  { phase: 'Prefill',
+    label: 'Bottom L41 — FFN compute',
+    sub: 'Parallel FFN slice in the bottom row.',
+    activeRow: 'bottom', highlight: 'compute', layerInRow: 1 },
+  { phase: 'Prefill',
+    label: 'Bottom L41 — FFN all-reduce',
+    sub: 'Second all-reduce of layer 41.',
+    activeRow: 'bottom', highlight: 'allreduce', layerInRow: 1 },
+  { phase: 'Prefill',
+    label: 'Bottom L42-80 (fast-forward)',
+    sub: '39 more layers × 2 all-reduces = 78 more all-reduces in the bottom row. Total prefill: 160 all-reduces + 1 PP handoff.',
+    activeRow: 'bottom', highlight: 'condense', layerInRow: 40 },
+  { phase: 'Decode',
+    label: 'First token emerges from bottom row',
+    sub: 'After the bottom row\'s final all-reduce, every bottom-row GPU holds the same logits. Sampling produces the same token on all 4 ranks — no extra communication needed.',
+    activeRow: 'bottom', highlight: 'emerge', tokenIndex: 0 },
+  { phase: 'Decode',
+    label: 'Token feeds back to top row',
+    sub: 'The new token rejoins the embedding on all 4 top-row GPUs. Autoregression — back into layer 1 of the top row.',
+    highlight: 'feedback', tokenIndex: 0 },
+  { phase: 'Decode',
+    label: 'Decode pass — token 2',
+    sub: 'One token, 80 layers, 160 all-reduces (4-way, much cheaper than TP=8\'s 8-way) plus 1 PP handoff.',
+    highlight: 'decode-pass', tokenIndex: 1 },
+  { phase: 'Decode',
+    label: 'Decode pass — token 3',
+    sub: 'Same pattern. The PP boundary is crossed once per decode pass with 4 parallel 16 KB sends.',
+    highlight: 'decode-pass', tokenIndex: 2 },
+  { phase: 'Decode',
+    label: '… 16 more decode passes',
+    sub: 'Tokens stream out. KV cache grows in both rows simultaneously — each row caches the layers it owns.',
+    highlight: 'decode-pass', tokenIndex: 18 },
+  { phase: 'Done',
+    label: 'Response complete',
+    sub: 'Full haiku streamed back. Per decode pass: 160 4-way all-reduces + 1 PP handoff (64 KB). Compared to TP=8: smaller all-reduce groups (4 vs 8 ranks) plus one tiny PP send.',
+    highlight: 'complete', tokenIndex: 19 },
+];
+
+// ================================================================
 // PAGE 2 — Data Parallelism animation
 // ================================================================
 export const DP_STEPS = [

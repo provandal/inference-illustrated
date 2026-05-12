@@ -32,6 +32,9 @@ import {
   PP8_RESPONSE_TOKENS,
   DP8_LIFECYCLE_STEPS,
   DP8_LANES,
+  TPPP2_LIFECYCLE_STEPS,
+  TPPP2_PROMPT,
+  TPPP2_RESPONSE_TOKENS,
 } from '../data/stop12Data';
 import { Panel, PanelHeader, InfoBox, Callout } from '../components/ui';
 import PageNav from '../components/PageNav';
@@ -1612,6 +1615,443 @@ function Dp8LifecycleAnimation() {
   );
 }
 
+/* ================================================================
+   TP×PP=2 lifecycle animation
+   8 GPUs in 2 rows of 4. TP=4 within each row (all-reduce arcs),
+   PP=2 between rows (4 parallel 16 KB handoffs).
+   ================================================================ */
+
+const TPPP2_W = 720;
+const TPPP2_H = 460;
+const TPPP2_GPU_W = 90;
+const TPPP2_GPU_H = 42;
+const TPPP2_ROW_X = [180, 280, 380, 480];
+const TPPP2_TOP_Y = 80;
+const TPPP2_BOTTOM_Y = 200;
+const TPPP2_TOP_POS = TPPP2_ROW_X.map((x) => ({
+  x, y: TPPP2_TOP_Y,
+  cx: x + TPPP2_GPU_W / 2,
+  cy: TPPP2_TOP_Y + TPPP2_GPU_H / 2,
+  topEdge: TPPP2_TOP_Y,
+  bottomEdge: TPPP2_TOP_Y + TPPP2_GPU_H,
+}));
+const TPPP2_BOTTOM_POS = TPPP2_ROW_X.map((x) => ({
+  x, y: TPPP2_BOTTOM_Y,
+  cx: x + TPPP2_GPU_W / 2,
+  cy: TPPP2_BOTTOM_Y + TPPP2_GPU_H / 2,
+  topEdge: TPPP2_BOTTOM_Y,
+  bottomEdge: TPPP2_BOTTOM_Y + TPPP2_GPU_H,
+}));
+const TPPP2_PROMPT_X = 20;
+const TPPP2_PROMPT_Y = 80;
+const TPPP2_PROMPT_W = 140;
+const TPPP2_PROMPT_H = 80;
+const TPPP2_RESP_X = 580;
+const TPPP2_RESP_Y = 200;
+const TPPP2_RESP_W = 130;
+const TPPP2_RESP_H = 130;
+
+function Tppp2LayerTrack({ gpuBox, isTopRow, currentLayer, highlight }) {
+  // 40-segment track per GPU (each row owns 40 layers).
+  const trackY = gpuBox.y + TPPP2_GPU_H - 11;
+  const trackH = 7;
+  const trackX = gpuBox.x + 6;
+  const trackW = TPPP2_GPU_W - 12;
+  const total = 40;
+  const segW = trackW / total;
+
+  const isCondense = highlight === 'condense';
+  const isDecodePass = highlight === 'decode-pass';
+  const isComplete = highlight === 'complete';
+
+  const segStyle = (n) => {
+    if (isComplete)   return { fill: 'var(--color-text-muted)', opacity: 0.45 };
+    if (isDecodePass) return { fill: 'var(--color-red)',        opacity: 0.7  };
+    if (isCondense)   return n <= 1
+      ? { fill: 'var(--color-text-muted)', opacity: 0.55 }
+      : { fill: 'var(--color-amber)',      opacity: 0.85 };
+    if (currentLayer && n  < currentLayer) return { fill: 'var(--color-text-muted)', opacity: 0.5 };
+    if (currentLayer && n === currentLayer) return { fill: 'var(--color-red)',        opacity: 1.0 };
+    return null;
+  };
+
+  return (
+    <g>
+      <rect x={trackX} y={trackY} width={trackW} height={trackH}
+        rx={1.5} fill="var(--color-surface)" stroke="var(--color-border)" strokeWidth={0.5} opacity={0.7} />
+      {Array.from({ length: total }, (_, i) => {
+        const n = i + 1;
+        const s = segStyle(n);
+        if (!s) return null;
+        return (
+          <rect key={i}
+            x={trackX + i * segW + 0.2}
+            y={trackY + 1}
+            width={Math.max(0.6, segW - 0.4)}
+            height={trackH - 2}
+            fill={s.fill}
+            opacity={s.opacity}
+            style={{ transition: 'opacity 250ms ease' }}
+          />
+        );
+      })}
+    </g>
+  );
+}
+
+function Tppp2Gpu({ gpuBox, idx, rowActive, compute, allreduce, decodePass, currentLayer, highlight, isTopRow }) {
+  const pulse = (rowActive && compute) || decodePass;
+  const ringed = rowActive && allreduce;
+  return (
+    <g>
+      <rect
+        x={gpuBox.x} y={gpuBox.y} width={TPPP2_GPU_W} height={TPPP2_GPU_H}
+        rx={5}
+        fill={pulse ? 'var(--color-red-bg)' : 'var(--color-surface-muted)'}
+        stroke={ringed ? 'var(--color-red)' : pulse ? 'var(--color-red)' : 'var(--color-border)'}
+        strokeWidth={pulse || ringed ? 2 : 1}
+        style={{ transition: 'all 300ms ease', opacity: rowActive || highlight === 'complete' || highlight === 'decode-pass' ? 1 : 0.7 }}
+      >
+        {pulse && (
+          <animate attributeName="opacity" values="1;0.55;1" dur="900ms" repeatCount="indefinite" />
+        )}
+      </rect>
+      <text x={gpuBox.x + 6} y={gpuBox.y + 13} fontSize={10} fontFamily="monospace" fontWeight={700}
+        fill={pulse || ringed ? 'var(--color-red-text)' : 'var(--color-text-secondary)'}>
+        GPU {idx}
+      </text>
+      <text x={gpuBox.x + TPPP2_GPU_W - 6} y={gpuBox.y + 13} fontSize={8} textAnchor="end" fill="var(--color-text-muted)">
+        1/4 wt
+      </text>
+      <Tppp2LayerTrack gpuBox={gpuBox} isTopRow={isTopRow} currentLayer={currentLayer} highlight={highlight} />
+    </g>
+  );
+}
+
+function Tppp2AllReduceArcs({ active, row }) {
+  // 6 arcs connecting the 4 GPUs in a row. Bulge UP for the top row, DOWN for the bottom.
+  const positions = row === 'top' ? TPPP2_TOP_POS : TPPP2_BOTTOM_POS;
+  const direction = row === 'top' ? -1 : 1;
+  const anchorY = row === 'top' ? TPPP2_TOP_Y : TPPP2_BOTTOM_Y + TPPP2_GPU_H;
+  const arcs = [];
+  for (let i = 0; i < 4; i++) {
+    for (let j = i + 1; j < 4; j++) {
+      const a = positions[i];
+      const b = positions[j];
+      const distance = Math.abs(b.cx - a.cx);
+      const bulge = 20 + distance * 0.18;
+      const startX = a.cx;
+      const endX = b.cx;
+      const startY = anchorY;
+      const endY = anchorY;
+      const midX = (startX + endX) / 2;
+      const midY = anchorY + direction * bulge;
+      const isGpu0 = i === 0;
+      arcs.push(
+        <path
+          key={`${i}-${j}`}
+          d={`M ${startX} ${startY} Q ${midX} ${midY} ${endX} ${endY}`}
+          fill="none"
+          stroke="var(--color-red)"
+          strokeWidth={isGpu0 ? 2 : 1}
+          opacity={active ? (isGpu0 ? 0.95 : 0.2) : 0}
+          style={{ transition: 'opacity 350ms ease' }}
+        />
+      );
+    }
+  }
+  return <g>{arcs}</g>;
+}
+
+function Tppp2BroadcastArrows({ active }) {
+  const sx = TPPP2_PROMPT_X + TPPP2_PROMPT_W;
+  const sy = TPPP2_PROMPT_Y + TPPP2_PROMPT_H / 2;
+  return (
+    <g style={{ transition: 'opacity 350ms ease', opacity: active ? 1 : 0 }}>
+      {TPPP2_TOP_POS.map((g, i) => (
+        <line key={i}
+          x1={sx} y1={sy}
+          x2={g.x - 3} y2={g.cy}
+          stroke="var(--color-primary)" strokeWidth={1.5}
+          opacity={0.85}
+          markerEnd="url(#tppp2-arrow-primary)"
+        />
+      ))}
+    </g>
+  );
+}
+
+function Tppp2PipelineHandoffs({ active }) {
+  if (!active) return null;
+  // 4 vertical arrows from top row bottom to bottom row top.
+  return (
+    <g>
+      {TPPP2_TOP_POS.map((top, i) => {
+        const bot = TPPP2_BOTTOM_POS[i];
+        const x1 = top.cx;
+        const y1 = top.bottomEdge + 1;
+        const x2 = bot.cx;
+        const y2 = bot.topEdge - 2;
+        const midY = (y1 + y2) / 2;
+        return (
+          <g key={i}>
+            <line x1={x1} y1={y1} x2={x2} y2={y2}
+              stroke="var(--color-blue)" strokeWidth={2.2}
+              markerEnd="url(#tppp2-arrow-blue)" />
+            <circle cx={x1} cy={y1} r={3.5} fill="var(--color-blue)">
+              <animate attributeName="cy" from={y1} to={y2} dur="800ms" repeatCount="indefinite" />
+              <animate attributeName="opacity" values="1;0.4;1" dur="800ms" repeatCount="indefinite" />
+            </circle>
+            {i === 1 && (
+              <text x={x1 + 8} y={midY + 4} fontSize={10} fontWeight={700} fill="var(--color-blue-text)">
+                16 KB × 4
+              </text>
+            )}
+          </g>
+        );
+      })}
+    </g>
+  );
+}
+
+function Tppp2FirstTokenEmerge({ active, label }) {
+  if (!active) return null;
+  // Fan-in from all 4 bottom-row GPUs into a single convergence point at the response.
+  const targetX = TPPP2_RESP_X - 6;
+  const targetY = TPPP2_RESP_Y + 50;
+  return (
+    <g>
+      {TPPP2_BOTTOM_POS.map((g, i) => (
+        <line key={i}
+          x1={g.x + TPPP2_GPU_W} y1={g.cy}
+          x2={targetX} y2={targetY}
+          stroke="var(--color-teal)" strokeWidth={1.4} opacity={0.6}
+          markerEnd="url(#tppp2-arrow-teal)" />
+      ))}
+      <circle cx={targetX} cy={targetY} r={7} fill="var(--color-teal)" opacity={0.95}>
+        <animate attributeName="r" from="4" to="10" dur="700ms" repeatCount="indefinite" />
+        <animate attributeName="opacity" from="1" to="0.45" dur="700ms" repeatCount="indefinite" />
+      </circle>
+      {label && (
+        <text x={targetX - 12} y={targetY - 14} textAnchor="end" fontSize={11} fontWeight={700} fill="var(--color-teal-text)">
+          {label}
+        </text>
+      )}
+      <text x={targetX - 12} y={targetY + 18} textAnchor="end" fontSize={9} fill="var(--color-text-muted)" fontStyle="italic">
+        all 4 bottom-row ranks have the same token
+      </text>
+    </g>
+  );
+}
+
+function Tppp2FeedbackArrow({ active }) {
+  if (!active) return null;
+  // Curve from the right side (response area) all the way back to the prompt on the left.
+  const startX = TPPP2_RESP_X + 10;
+  const startY = TPPP2_RESP_Y + TPPP2_RESP_H + 4;
+  const endX = TPPP2_PROMPT_X + TPPP2_PROMPT_W / 2;
+  const endY = TPPP2_PROMPT_Y + TPPP2_PROMPT_H + 4;
+  const path = `M ${startX} ${startY} C ${startX} ${startY + 70}, ${endX} ${endY + 90}, ${endX} ${endY}`;
+  return (
+    <g>
+      <path d={path} fill="none" stroke="var(--color-amber)" strokeWidth={1.8} strokeDasharray="4 3"
+        markerEnd="url(#tppp2-arrow-amber)" />
+      <text x={(startX + endX) / 2} y={445} textAnchor="middle" fontSize={10} fill="var(--color-amber-text)">
+        feedback (autoregression)
+      </text>
+    </g>
+  );
+}
+
+function Tppp2LifecycleAnimation() {
+  const [step, setStep] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const numSteps = TPPP2_LIFECYCLE_STEPS.length;
+  const current = TPPP2_LIFECYCLE_STEPS[step];
+
+  useEffect(() => {
+    if (!isPlaying) return;
+    if (step >= numSteps - 1) { setIsPlaying(false); return; }
+    const delay = current.highlight === 'condense' ? 2000 : 1400;
+    const t = setTimeout(() => setStep((s) => s + 1), delay);
+    return () => clearTimeout(t);
+  }, [isPlaying, step, numSteps, current.highlight]);
+
+  const tokenIdx = current.tokenIndex;
+  const visibleResponse = typeof tokenIdx === 'number'
+    ? TPPP2_RESPONSE_TOKENS.slice(0, tokenIdx + 1).join('')
+    : '';
+
+  const topActive = current.activeRow === 'top' || current.highlight === 'decode-pass' || current.highlight === 'complete';
+  const bottomActive = current.activeRow === 'bottom' || current.highlight === 'decode-pass' || current.highlight === 'complete';
+  const compute = current.highlight === 'compute';
+  const allreduce = current.highlight === 'allreduce';
+  const layerLabel = (() => {
+    if (current.activeRow && current.layerInRow && current.layerInRow <= 3) {
+      const global = current.activeRow === 'top' ? current.layerInRow : 40 + current.layerInRow;
+      return `Layer ${global} of 80`;
+    }
+    if (current.highlight === 'condense') {
+      return current.activeRow === 'top' ? 'Layers 2-40 (top row)' : 'Layers 42-80 (bottom row)';
+    }
+    if (current.highlight === 'pp-handoff') return 'Between rows';
+    if (current.highlight === 'decode-pass') return 'All 80 layers, 4-way all-reduce, 1 PP handoff';
+    return null;
+  })();
+
+  return (
+    <div className="rounded-lg border border-[var(--color-border-light)] bg-[var(--color-surface-muted)] p-3">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-2 text-[11px]">
+        <div className="flex items-center gap-2">
+          <span className="px-2 py-0.5 rounded bg-[var(--color-primary-bg)] border border-[var(--color-primary)] text-[var(--color-primary-text)] font-medium">
+            {current.phase}
+          </span>
+          {layerLabel && (
+            <span className="text-[var(--color-text-muted)] font-mono">{layerLabel}</span>
+          )}
+        </div>
+        <div className="font-mono text-[var(--color-text-muted)]">
+          Step {step + 1} / {numSteps}
+        </div>
+      </div>
+
+      {/* Animation canvas */}
+      <div className="relative w-full" style={{ aspectRatio: `${TPPP2_W} / ${TPPP2_H}` }}>
+        <svg
+          viewBox={`0 0 ${TPPP2_W} ${TPPP2_H}`}
+          xmlns="http://www.w3.org/2000/svg"
+          className="absolute inset-0 w-full h-full"
+        >
+          <defs>
+            <marker id="tppp2-arrow-primary" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--color-primary)" />
+            </marker>
+            <marker id="tppp2-arrow-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--color-blue)" />
+            </marker>
+            <marker id="tppp2-arrow-teal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--color-teal)" />
+            </marker>
+            <marker id="tppp2-arrow-amber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--color-amber)" />
+            </marker>
+          </defs>
+
+          {/* Prompt bubble */}
+          <g>
+            <rect x={TPPP2_PROMPT_X} y={TPPP2_PROMPT_Y} width={TPPP2_PROMPT_W} height={TPPP2_PROMPT_H} rx={8} fill="var(--color-primary-bg)" stroke="var(--color-primary)" strokeWidth={1.5} />
+            <text x={TPPP2_PROMPT_X + 10} y={TPPP2_PROMPT_Y + 16} fontSize={10} fontWeight={700} fill="var(--color-primary-text)">PROMPT</text>
+            <foreignObject x={TPPP2_PROMPT_X + 8} y={TPPP2_PROMPT_Y + 22} width={TPPP2_PROMPT_W - 16} height={TPPP2_PROMPT_H - 28}>
+              <div xmlns="http://www.w3.org/1999/xhtml" style={{ fontSize: '10.5px', color: 'var(--color-text-secondary)', lineHeight: 1.3, fontStyle: 'italic' }}>
+                "{TPPP2_PROMPT}"
+              </div>
+            </foreignObject>
+          </g>
+
+          {/* Response bubble */}
+          <g>
+            <rect x={TPPP2_RESP_X} y={TPPP2_RESP_Y} width={TPPP2_RESP_W} height={TPPP2_RESP_H} rx={8} fill="var(--color-teal-bg)" stroke="var(--color-teal)" strokeWidth={1.5} />
+            <text x={TPPP2_RESP_X + 10} y={TPPP2_RESP_Y + 16} fontSize={10} fontWeight={700} fill="var(--color-teal-text)">RESPONSE</text>
+            <foreignObject x={TPPP2_RESP_X + 8} y={TPPP2_RESP_Y + 22} width={TPPP2_RESP_W - 16} height={TPPP2_RESP_H - 36}>
+              <div xmlns="http://www.w3.org/1999/xhtml" style={{ fontSize: '11px', color: 'var(--color-text)', lineHeight: 1.4, whiteSpace: 'pre-wrap', fontFamily: 'monospace' }}>
+                {visibleResponse}
+                {typeof tokenIdx === 'number' && current.highlight !== 'complete' && (
+                  <span style={{ color: 'var(--color-teal-text)' }}>▍</span>
+                )}
+              </div>
+            </foreignObject>
+            <text x={TPPP2_RESP_X + TPPP2_RESP_W - 8} y={TPPP2_RESP_Y + TPPP2_RESP_H - 6} fontSize={9} textAnchor="end" fill="var(--color-text-muted)" fontFamily="monospace">
+              tokens: {typeof tokenIdx === 'number' ? tokenIdx + 1 : 0}
+            </text>
+          </g>
+
+          {/* Broadcast arrows from prompt to top row */}
+          <Tppp2BroadcastArrows active={current.highlight === 'broadcast'} />
+
+          {/* Top-row all-reduce arcs */}
+          <Tppp2AllReduceArcs active={current.activeRow === 'top' && allreduce} row="top" />
+
+          {/* Bottom-row all-reduce arcs */}
+          <Tppp2AllReduceArcs active={current.activeRow === 'bottom' && allreduce} row="bottom" />
+
+          {/* Top row GPUs */}
+          {TPPP2_TOP_POS.map((gpuBox, i) => (
+            <Tppp2Gpu key={`top-${i}`}
+              gpuBox={gpuBox} idx={i} isTopRow={true}
+              rowActive={topActive && current.activeRow === 'top'}
+              compute={compute && current.activeRow === 'top'}
+              allreduce={allreduce && current.activeRow === 'top'}
+              decodePass={current.highlight === 'decode-pass'}
+              currentLayer={current.activeRow === 'top' ? current.layerInRow : null}
+              highlight={current.highlight}
+            />
+          ))}
+
+          {/* Bottom row GPUs */}
+          {TPPP2_BOTTOM_POS.map((gpuBox, i) => (
+            <Tppp2Gpu key={`bot-${i}`}
+              gpuBox={gpuBox} idx={i + 4} isTopRow={false}
+              rowActive={bottomActive && current.activeRow === 'bottom'}
+              compute={compute && current.activeRow === 'bottom'}
+              allreduce={allreduce && current.activeRow === 'bottom'}
+              decodePass={current.highlight === 'decode-pass'}
+              currentLayer={current.activeRow === 'bottom' ? current.layerInRow : null}
+              highlight={current.highlight}
+            />
+          ))}
+
+          {/* PP handoff arrows (between rows) */}
+          <Tppp2PipelineHandoffs active={current.highlight === 'pp-handoff'} />
+
+          {/* First-token emerge from bottom row (fan-in) */}
+          <Tppp2FirstTokenEmerge active={current.highlight === 'emerge'} label={current.highlight === 'emerge' ? `"${TPPP2_RESPONSE_TOKENS[0].trim()}"` : null} />
+
+          {/* Feedback */}
+          <Tppp2FeedbackArrow active={current.highlight === 'feedback'} />
+
+          {/* Condense overlay */}
+          {current.highlight === 'condense' && (
+            <g>
+              {(current.activeRow === 'top' ? TPPP2_TOP_POS : TPPP2_BOTTOM_POS).map((g, i) => (
+                <rect key={i}
+                  x={g.x - 4} y={g.y - 4}
+                  width={TPPP2_GPU_W + 8} height={TPPP2_GPU_H + 8}
+                  rx={6} fill="none" stroke="var(--color-amber)" strokeWidth={2} strokeDasharray="6 4">
+                  <animate attributeName="stroke-dashoffset" from="0" to="20" dur="900ms" repeatCount="indefinite" />
+                </rect>
+              ))}
+            </g>
+          )}
+        </svg>
+      </div>
+
+      {/* Caption */}
+      <div className="mt-2 p-2 rounded bg-[var(--color-surface)] border border-[var(--color-border-light)] min-h-[58px]">
+        <div className="text-[12px] font-medium text-[var(--color-text)]">{current.label}</div>
+        <div className="text-[11px] text-[var(--color-text-secondary)] leading-relaxed mt-0.5">{current.sub}</div>
+      </div>
+
+      {/* Controls */}
+      <div className="mt-2 flex items-center gap-2 flex-wrap">
+        <button onClick={() => { setIsPlaying(false); setStep(0); }} className="px-2 py-1 text-[11px] rounded border border-[var(--color-border)] hover:bg-[var(--color-surface-alt)] cursor-pointer text-[var(--color-text-secondary)]">⏮ Restart</button>
+        <button onClick={() => { setIsPlaying(false); setStep((s) => Math.max(0, s - 1)); }} disabled={step === 0} className="px-2 py-1 text-[11px] rounded border border-[var(--color-border)] hover:bg-[var(--color-surface-alt)] cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed text-[var(--color-text-secondary)]">◀ Prev</button>
+        <button
+          onClick={() => {
+            if (step >= numSteps - 1) { setStep(0); setIsPlaying(true); return; }
+            setIsPlaying((p) => !p);
+          }}
+          className="px-3 py-1 text-[11px] rounded border border-[var(--color-primary)] bg-[var(--color-primary-bg)] hover:opacity-90 cursor-pointer text-[var(--color-primary-text)] font-medium"
+        >
+          {isPlaying ? '⏸ Pause' : step >= numSteps - 1 ? '↻ Replay' : '▶ Play'}
+        </button>
+        <button onClick={() => { setIsPlaying(false); setStep((s) => Math.min(numSteps - 1, s + 1)); }} disabled={step === numSteps - 1} className="px-2 py-1 text-[11px] rounded border border-[var(--color-border)] hover:bg-[var(--color-surface-alt)] cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed text-[var(--color-text-secondary)]">Next ▶</button>
+        <input type="range" min={0} max={numSteps - 1} value={step} onChange={(e) => { setIsPlaying(false); setStep(Number(e.target.value)); }} className="anim-scrubber flex-1 min-w-[120px]" />
+      </div>
+    </div>
+  );
+}
+
 /* ---------- Full config renderer ---------- */
 function ConfigGrid({ config }) {
   const { groups, arrows, arrowLabel, layout } = config;
@@ -1630,6 +2070,11 @@ function ConfigGrid({ config }) {
   // DP=8 gets its 8-lane independent-engines animation
   if (config.id === 'dp8') {
     return <Dp8LifecycleAnimation />;
+  }
+
+  // TP=4 × PP=2 gets the 2-row layout animation
+  if (config.id === 'tp4pp2') {
+    return <Tppp2LifecycleAnimation />;
   }
 
   // For simple single-row configs (TP, PP)
