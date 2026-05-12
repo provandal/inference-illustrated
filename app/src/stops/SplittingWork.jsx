@@ -35,6 +35,8 @@ import {
   TPPP2_LIFECYCLE_STEPS,
   TPPP2_PROMPT,
   TPPP2_RESPONSE_TOKENS,
+  TPDP2_LIFECYCLE_STEPS,
+  TPDP2_INSTANCES,
 } from '../data/stop12Data';
 import { Panel, PanelHeader, InfoBox, Callout } from '../components/ui';
 import PageNav from '../components/PageNav';
@@ -2068,6 +2070,328 @@ function Tppp2LifecycleAnimation() {
   );
 }
 
+/* ================================================================
+   TP×DP=2 lifecycle animation
+   8 GPUs in 2 rows of 4. Each row is an independent TP=4 instance
+   serving its own user. All-reduce within each row, zero arrows
+   between rows. Reuses TP×PP geometry constants for consistency.
+   ================================================================ */
+
+const TPDP2_PROMPT_W = 130;
+const TPDP2_PROMPT_H = 42;
+const TPDP2_RESP_W = 130;
+const TPDP2_RESP_H = 42;
+const TPDP2_PROMPT_X = 20;
+const TPDP2_RESP_X = 580;
+// Row Y positions: align prompt/response with their row's GPU
+const TPDP2_TOP_BUBBLE_Y = TPPP2_TOP_Y;
+const TPDP2_BOT_BUBBLE_Y = TPPP2_BOTTOM_Y;
+
+function Tpdp2Gpu({ gpuBox, idx, instanceActive, compute, allreduce, decodePass, currentLayer, highlight }) {
+  const pulse = (instanceActive && compute) || decodePass;
+  const ringed = instanceActive && allreduce;
+  const trackHighlight = (highlight === 'complete' || highlight === 'decode-pass')
+    ? highlight
+    : (instanceActive ? highlight : null);
+  return (
+    <g>
+      <rect
+        x={gpuBox.x} y={gpuBox.y} width={TPPP2_GPU_W} height={TPPP2_GPU_H}
+        rx={5}
+        fill={pulse ? 'var(--color-red-bg)' : 'var(--color-surface-muted)'}
+        stroke={ringed ? 'var(--color-red)' : pulse ? 'var(--color-red)' : 'var(--color-border)'}
+        strokeWidth={pulse || ringed ? 2 : 1}
+        style={{ transition: 'all 300ms ease' }}
+      >
+        {pulse && (
+          <animate attributeName="opacity" values="1;0.55;1" dur="900ms" repeatCount="indefinite" />
+        )}
+      </rect>
+      <text x={gpuBox.x + 6} y={gpuBox.y + 13} fontSize={10} fontFamily="monospace" fontWeight={700}
+        fill={pulse || ringed ? 'var(--color-red-text)' : 'var(--color-text-secondary)'}>
+        GPU {idx}
+      </text>
+      <text x={gpuBox.x + TPPP2_GPU_W - 6} y={gpuBox.y + 13} fontSize={8} textAnchor="end" fill="var(--color-text-muted)">
+        1/4 wt
+      </text>
+      <Tppp2LayerTrack gpuBox={gpuBox} isTopRow={idx < 4} currentLayer={instanceActive ? currentLayer : null} highlight={trackHighlight} />
+    </g>
+  );
+}
+
+function Tpdp2BroadcastArrows({ active, row }) {
+  // Each instance's prompt broadcasts to its own 4 GPUs.
+  const sx = TPDP2_PROMPT_X + TPDP2_PROMPT_W;
+  const sy = (row === 'top' ? TPDP2_TOP_BUBBLE_Y : TPDP2_BOT_BUBBLE_Y) + TPDP2_PROMPT_H / 2;
+  const positions = row === 'top' ? TPPP2_TOP_POS : TPPP2_BOTTOM_POS;
+  // Curve up (for top row) or down (for bottom row) so arrows don't pierce GPUs.
+  const direction = row === 'top' ? -1 : 1;
+  const anchorY = row === 'top' ? TPPP2_TOP_Y : TPPP2_BOTTOM_Y + TPPP2_GPU_H;
+  return (
+    <g style={{ transition: 'opacity 350ms ease', opacity: active ? 1 : 0 }}>
+      {positions.map((g, i) => {
+        const ex = g.cx;
+        const ey = row === 'top' ? g.topEdge - 4 : g.bottomEdge + 4;
+        const midX = (sx + ex) / 2;
+        const peakOffset = 30 - i * 6;
+        const peakY = anchorY + direction * Math.max(8, peakOffset);
+        return (
+          <path key={i}
+            d={`M ${sx} ${sy} Q ${midX} ${peakY} ${ex} ${ey}`}
+            fill="none"
+            stroke="var(--color-primary)"
+            strokeWidth={1.5}
+            opacity={0.85}
+            markerEnd="url(#tpdp2-arrow-primary)"
+          />
+        );
+      })}
+    </g>
+  );
+}
+
+function Tpdp2EmergeFan({ active, row, label }) {
+  if (!active) return null;
+  const positions = row === 'top' ? TPPP2_TOP_POS : TPPP2_BOTTOM_POS;
+  const targetX = TPDP2_RESP_X - 6;
+  const targetY = (row === 'top' ? TPDP2_TOP_BUBBLE_Y : TPDP2_BOT_BUBBLE_Y) + TPDP2_RESP_H / 2;
+  return (
+    <g>
+      {positions.map((g, i) => (
+        <line key={i}
+          x1={g.x + TPPP2_GPU_W} y1={g.cy}
+          x2={targetX} y2={targetY}
+          stroke="var(--color-teal)" strokeWidth={1.4} opacity={0.55}
+          markerEnd="url(#tpdp2-arrow-teal)" />
+      ))}
+      <circle cx={targetX} cy={targetY} r={6} fill="var(--color-teal)" opacity={0.95}>
+        <animate attributeName="r" from="3" to="9" dur="700ms" repeatCount="indefinite" />
+        <animate attributeName="opacity" from="1" to="0.45" dur="700ms" repeatCount="indefinite" />
+      </circle>
+      {label && (
+        <text x={targetX - 10} y={targetY - 12} textAnchor="end" fontSize={10} fontWeight={700} fill="var(--color-teal-text)">
+          {label}
+        </text>
+      )}
+    </g>
+  );
+}
+
+function Tpdp2FeedbackArrow({ active, row }) {
+  if (!active) return null;
+  // Each instance's feedback loops within its own row — a small C curve from
+  // the response back to the prompt, dipping into the middle gap (top row)
+  // or below the bottom row (bottom row).
+  const bubbleY = (row === 'top' ? TPDP2_TOP_BUBBLE_Y : TPDP2_BOT_BUBBLE_Y) + TPDP2_RESP_H / 2;
+  const sx = TPDP2_RESP_X;
+  const sy = bubbleY;
+  const ex = TPDP2_PROMPT_X + TPDP2_PROMPT_W;
+  const ey = bubbleY;
+  const direction = row === 'top' ? 1 : -1;  // top loops down into gap, bottom loops down further
+  const sweepY = row === 'top' ? 175 : 395;   // mid-gap (top), below-bottom (bottom)
+  const path = `M ${sx} ${sy + direction * 4} C ${sx} ${sweepY}, ${ex} ${sweepY}, ${ex} ${ey + direction * 4}`;
+  return (
+    <g>
+      <path d={path} fill="none" stroke="var(--color-amber)" strokeWidth={1.6} strokeDasharray="4 3"
+        markerEnd="url(#tpdp2-arrow-amber)" />
+      <text x={(sx + ex) / 2} y={sweepY + (row === 'top' ? 12 : -4)} textAnchor="middle" fontSize={9} fill="var(--color-amber-text)">
+        feedback ({row === 'top' ? 'Instance A' : 'Instance B'})
+      </text>
+    </g>
+  );
+}
+
+function Tpdp2InstanceRow({ row, idx0, idx1, idx2, idx3, instance, current }) {
+  const isTop = row === 'top';
+  const positions = isTop ? TPPP2_TOP_POS : TPPP2_BOTTOM_POS;
+  const bubbleY = isTop ? TPDP2_TOP_BUBBLE_Y : TPDP2_BOT_BUBBLE_Y;
+  const { highlight, layer, decodeStep } = current;
+  const promptsVisible = highlight !== null && highlight !== undefined;
+  const compute = highlight === 'compute';
+  const allreduce = highlight === 'allreduce';
+  const decodePass = highlight === 'decode-pass';
+  const complete = highlight === 'complete';
+  const instanceActive =
+    highlight === 'broadcast' ||
+    highlight === 'compute' ||
+    highlight === 'allreduce' ||
+    highlight === 'condense' ||
+    highlight === 'emerge' ||
+    decodePass ||
+    complete;
+
+  const visibleResponse = (decodeStep > 0)
+    ? instance.tokens.slice(0, decodeStep).join('')
+    : '';
+
+  return (
+    <g>
+      {/* Prompt bubble */}
+      {promptsVisible && (
+        <g>
+          <rect x={TPDP2_PROMPT_X} y={bubbleY} width={TPDP2_PROMPT_W} height={TPDP2_PROMPT_H} rx={6} fill="var(--color-primary-bg)" stroke="var(--color-primary)" strokeWidth={1} />
+          <text x={TPDP2_PROMPT_X + 8} y={bubbleY + 14} fontSize={9} fontWeight={700} fill="var(--color-primary-text)">
+            {instance.name}
+          </text>
+          <foreignObject x={TPDP2_PROMPT_X + 6} y={bubbleY + 18} width={TPDP2_PROMPT_W - 12} height={TPDP2_PROMPT_H - 22}>
+            <div xmlns="http://www.w3.org/1999/xhtml" style={{ fontSize: '10.5px', color: 'var(--color-text-secondary)', lineHeight: 1.25, fontStyle: 'italic' }}>
+              "{instance.prompt}"
+            </div>
+          </foreignObject>
+        </g>
+      )}
+
+      {/* GPUs */}
+      {positions.map((gpuBox, i) => (
+        <Tpdp2Gpu key={i}
+          gpuBox={gpuBox}
+          idx={isTop ? i : i + 4}
+          instanceActive={instanceActive}
+          compute={compute}
+          allreduce={allreduce}
+          decodePass={decodePass}
+          currentLayer={layer}
+          highlight={highlight}
+        />
+      ))}
+
+      {/* Response bubble */}
+      {(decodeStep > 0 || complete) && (
+        <g>
+          <rect x={TPDP2_RESP_X} y={bubbleY} width={TPDP2_RESP_W} height={TPDP2_RESP_H} rx={6} fill="var(--color-teal-bg)" stroke="var(--color-teal)" strokeWidth={1} />
+          <text x={TPDP2_RESP_X + 8} y={bubbleY + 14} fontSize={9} fontWeight={700} fill="var(--color-teal-text)">
+            response
+          </text>
+          <foreignObject x={TPDP2_RESP_X + 6} y={bubbleY + 18} width={TPDP2_RESP_W - 12} height={TPDP2_RESP_H - 22}>
+            <div xmlns="http://www.w3.org/1999/xhtml" style={{ fontSize: '11px', color: 'var(--color-text)', lineHeight: 1.3, fontFamily: 'monospace' }}>
+              {visibleResponse}
+              {!complete && decodeStep > 0 && (
+                <span style={{ color: 'var(--color-teal-text)' }}>▍</span>
+              )}
+            </div>
+          </foreignObject>
+        </g>
+      )}
+
+      {/* Condense overlay */}
+      {highlight === 'condense' && (
+        <g>
+          {positions.map((g, i) => (
+            <rect key={i}
+              x={g.x - 3} y={g.y - 3}
+              width={TPPP2_GPU_W + 6} height={TPPP2_GPU_H + 6}
+              rx={5} fill="none" stroke="var(--color-amber)" strokeWidth={1.8} strokeDasharray="6 4">
+              <animate attributeName="stroke-dashoffset" from="0" to="20" dur="900ms" repeatCount="indefinite" />
+            </rect>
+          ))}
+        </g>
+      )}
+    </g>
+  );
+}
+
+function Tpdp2LifecycleAnimation() {
+  const [step, setStep] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const numSteps = TPDP2_LIFECYCLE_STEPS.length;
+  const current = TPDP2_LIFECYCLE_STEPS[step];
+
+  useEffect(() => {
+    if (!isPlaying) return;
+    if (step >= numSteps - 1) { setIsPlaying(false); return; }
+    const delay = current.highlight === 'condense' ? 2000 : 1400;
+    const t = setTimeout(() => setStep((s) => s + 1), delay);
+    return () => clearTimeout(t);
+  }, [isPlaying, step, numSteps, current.highlight]);
+
+  const layerLabel = (() => {
+    if (current.highlight === 'condense') return 'Layers 2-80 (both rows)';
+    if (current.layer && current.layer <= 3) return `Layer ${current.layer} of 80 (both rows)`;
+    if (current.highlight === 'decode-pass') return 'All 80 layers per instance';
+    return null;
+  })();
+
+  return (
+    <div className="rounded-lg border border-[var(--color-border-light)] bg-[var(--color-surface-muted)] p-3">
+      <div className="flex items-center justify-between mb-2 text-[11px]">
+        <div className="flex items-center gap-2">
+          <span className="px-2 py-0.5 rounded bg-[var(--color-primary-bg)] border border-[var(--color-primary)] text-[var(--color-primary-text)] font-medium">
+            {current.phase}
+          </span>
+          {layerLabel && (
+            <span className="text-[var(--color-text-muted)] font-mono">{layerLabel}</span>
+          )}
+        </div>
+        <div className="font-mono text-[var(--color-text-muted)]">
+          Step {step + 1} / {numSteps}
+        </div>
+      </div>
+
+      <div className="relative w-full" style={{ aspectRatio: `${TPPP2_W} / ${TPPP2_H}` }}>
+        <svg
+          viewBox={`0 0 ${TPPP2_W} ${TPPP2_H}`}
+          xmlns="http://www.w3.org/2000/svg"
+          className="absolute inset-0 w-full h-full"
+        >
+          <defs>
+            <marker id="tpdp2-arrow-primary" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--color-primary)" />
+            </marker>
+            <marker id="tpdp2-arrow-teal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--color-teal)" />
+            </marker>
+            <marker id="tpdp2-arrow-amber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--color-amber)" />
+            </marker>
+          </defs>
+
+          {/* All-reduce arcs — both rows light simultaneously */}
+          <Tppp2AllReduceArcs active={current.highlight === 'allreduce'} row="top" />
+          <Tppp2AllReduceArcs active={current.highlight === 'allreduce'} row="bottom" />
+
+          {/* Instance A (top row) — prompt, GPUs, response, condense overlay */}
+          <Tpdp2InstanceRow row="top"    instance={TPDP2_INSTANCES[0]} current={current} />
+          {/* Instance B (bottom row) */}
+          <Tpdp2InstanceRow row="bottom" instance={TPDP2_INSTANCES[1]} current={current} />
+
+          {/* Broadcast arrows (curves over/under the row) — rendered AFTER GPUs */}
+          <Tpdp2BroadcastArrows active={current.highlight === 'broadcast'} row="top" />
+          <Tpdp2BroadcastArrows active={current.highlight === 'broadcast'} row="bottom" />
+
+          {/* Emerge fan-ins, one per instance */}
+          <Tpdp2EmergeFan active={current.highlight === 'emerge'} row="top"    label={current.highlight === 'emerge' ? `"${TPDP2_INSTANCES[0].tokens[0]}"` : null} />
+          <Tpdp2EmergeFan active={current.highlight === 'emerge'} row="bottom" label={current.highlight === 'emerge' ? `"${TPDP2_INSTANCES[1].tokens[0]}"` : null} />
+
+          {/* Per-instance feedback loops */}
+          <Tpdp2FeedbackArrow active={current.highlight === 'feedback'} row="top" />
+          <Tpdp2FeedbackArrow active={current.highlight === 'feedback'} row="bottom" />
+        </svg>
+      </div>
+
+      <div className="mt-2 p-2 rounded bg-[var(--color-surface)] border border-[var(--color-border-light)] min-h-[58px]">
+        <div className="text-[12px] font-medium text-[var(--color-text)]">{current.label}</div>
+        <div className="text-[11px] text-[var(--color-text-secondary)] leading-relaxed mt-0.5">{current.sub}</div>
+      </div>
+
+      <div className="mt-2 flex items-center gap-2 flex-wrap">
+        <button onClick={() => { setIsPlaying(false); setStep(0); }} className="px-2 py-1 text-[11px] rounded border border-[var(--color-border)] hover:bg-[var(--color-surface-alt)] cursor-pointer text-[var(--color-text-secondary)]">⏮ Restart</button>
+        <button onClick={() => { setIsPlaying(false); setStep((s) => Math.max(0, s - 1)); }} disabled={step === 0} className="px-2 py-1 text-[11px] rounded border border-[var(--color-border)] hover:bg-[var(--color-surface-alt)] cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed text-[var(--color-text-secondary)]">◀ Prev</button>
+        <button
+          onClick={() => {
+            if (step >= numSteps - 1) { setStep(0); setIsPlaying(true); return; }
+            setIsPlaying((p) => !p);
+          }}
+          className="px-3 py-1 text-[11px] rounded border border-[var(--color-primary)] bg-[var(--color-primary-bg)] hover:opacity-90 cursor-pointer text-[var(--color-primary-text)] font-medium"
+        >
+          {isPlaying ? '⏸ Pause' : step >= numSteps - 1 ? '↻ Replay' : '▶ Play'}
+        </button>
+        <button onClick={() => { setIsPlaying(false); setStep((s) => Math.min(numSteps - 1, s + 1)); }} disabled={step === numSteps - 1} className="px-2 py-1 text-[11px] rounded border border-[var(--color-border)] hover:bg-[var(--color-surface-alt)] cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed text-[var(--color-text-secondary)]">Next ▶</button>
+        <input type="range" min={0} max={numSteps - 1} value={step} onChange={(e) => { setIsPlaying(false); setStep(Number(e.target.value)); }} className="anim-scrubber flex-1 min-w-[120px]" />
+      </div>
+    </div>
+  );
+}
+
 /* ---------- Full config renderer ---------- */
 function ConfigGrid({ config }) {
   const { groups, arrows, arrowLabel, layout } = config;
@@ -2091,6 +2415,11 @@ function ConfigGrid({ config }) {
   // TP=4 × PP=2 gets the 2-row layout animation
   if (config.id === 'tp4pp2') {
     return <Tppp2LifecycleAnimation />;
+  }
+
+  // TP=4 × DP=2 gets the 2-instance independent animation
+  if (config.id === 'tp4dp2') {
+    return <Tpdp2LifecycleAnimation />;
   }
 
   // For simple single-row configs (TP, PP)

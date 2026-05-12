@@ -406,6 +406,76 @@ export const TPPP2_LIFECYCLE_STEPS = [
 ];
 
 // ================================================================
+// PAGE 1 (TP=4 × DP=2) — Lifecycle animation
+// 8 GPUs in 2 rows of 4. Each row is an independent TP=4 instance
+// running the FULL model. Zero traffic between rows.
+// ================================================================
+export const TPDP2_INSTANCES = [
+  { name: 'Instance A', prompt: 'Capital of France?', tokens: ['Par', 'is', '.'] },
+  { name: 'Instance B', prompt: 'Largest planet?',    tokens: ['Jup', 'iter', '.'] },
+];
+
+// activeBoth: true when both instances act in lockstep
+// highlight: 'prompts-arrive' | 'broadcast' | 'compute' | 'allreduce'
+//          | 'condense' | 'emerge' | 'feedback' | 'decode-pass' | 'complete'
+// layer: current layer 1..80 in BOTH rows (lockstep)
+// decodeStep: 0..3 — count of tokens revealed in BOTH responses
+export const TPDP2_LIFECYCLE_STEPS = [
+  { phase: 'Setup',
+    label: 'Two TP=4 instances idle',
+    sub: '8 H100s organized as 2 completely independent TP=4 instances. Each row holds a full copy of Llama-3 70B, sliced 4 ways across its 4 GPUs. No GPU in Instance A talks to any GPU in Instance B during inference.',
+    highlight: null },
+  { phase: 'Prompts',
+    label: 'Two different prompts arrive',
+    sub: 'A load balancer routes each user to one instance. Once routed, the user lives entirely within that 4-GPU instance.',
+    highlight: 'prompts-arrive' },
+  { phase: 'Prompts',
+    label: 'Each prompt broadcasts within its instance',
+    sub: 'Instance A\'s embedding is replicated to all 4 of its GPUs. Instance B does the same with its own embedding. The two embeddings are unrelated.',
+    highlight: 'broadcast' },
+  { phase: 'Prefill',
+    label: 'L1 attention compute — both instances in parallel',
+    sub: 'All 4 GPUs in each instance compute their 1/4 slice of attention. Eight GPUs working at once on two completely different queries.',
+    highlight: 'compute', layer: 1 },
+  { phase: 'Prefill',
+    label: 'L1 attention all-reduce — INSIDE each instance',
+    sub: 'All-reduce happens within each instance. Instance A\'s 4 arcs light up above the top row; Instance B\'s 4 arcs light below the bottom row. No arrow ever crosses the gap between the two rows.',
+    highlight: 'allreduce', layer: 1 },
+  { phase: 'Prefill',
+    label: 'L1 FFN compute',
+    sub: 'Parallel FFN slice on every GPU in both instances.',
+    highlight: 'compute', layer: 1 },
+  { phase: 'Prefill',
+    label: 'L1 FFN all-reduce',
+    sub: 'Second all-reduce within each instance.',
+    highlight: 'allreduce', layer: 1 },
+  { phase: 'Prefill',
+    label: 'L2-80 fast-forward — both instances',
+    sub: '79 more layers × 2 all-reduces = 158 more all-reduces per instance. Each instance holds the full 80 layers (DP duplicates the model).',
+    highlight: 'condense', layer: 80 },
+  { phase: 'Decode',
+    label: 'First tokens emerge — one per instance',
+    sub: 'Each instance independently samples its own first token from its own logits. Two different tokens for two different users.',
+    highlight: 'emerge', decodeStep: 1 },
+  { phase: 'Decode',
+    label: 'Each instance feeds its token back to its own prompt',
+    sub: 'Two separate autoregressive loops, running entirely within their respective rows. Instance A\'s next-token is computed only from Instance A\'s state; same for B.',
+    highlight: 'feedback', decodeStep: 1 },
+  { phase: 'Decode',
+    label: 'Decode pass — token 2',
+    sub: 'Both instances generate in parallel but completely uncoordinated. A slow GPU in one instance does not stall the other.',
+    highlight: 'decode-pass', decodeStep: 2 },
+  { phase: 'Decode',
+    label: 'Decode pass — token 3',
+    sub: 'Same again. Zero bytes have crossed between Instance A and Instance B.',
+    highlight: 'decode-pass', decodeStep: 3 },
+  { phase: 'Done',
+    label: 'Two responses delivered, zero inter-instance bytes',
+    sub: 'Each instance served its own user. Trade-off vs TP=8: weights duplicated 2 times (more HBM cost), but each all-reduce now spans 4 ranks instead of 8 (faster collective).',
+    highlight: 'complete', decodeStep: 3 },
+];
+
+// ================================================================
 // PAGE 2 — Data Parallelism animation
 // ================================================================
 export const DP_STEPS = [
