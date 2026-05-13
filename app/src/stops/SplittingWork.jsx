@@ -2781,7 +2781,9 @@ const TPPPDP24_PROMPT_H = 30;
 const TPPPDP24_RESP_H = 30;
 
 function tpppdp24ReplicaX(r) { return TPPPDP24_REPLICA_X0 + r * (TPPPDP24_REPLICA_W + TPPPDP24_REPLICA_GAP); }
-function tpppdp24StageY(s) { return TPPPDP24_REPLICA_Y0 + TPPPDP24_PROMPT_H + 8 + s * (TPPPDP24_GPU_H + TPPPDP24_STAGE_GAP); }
+// The prompt is rendered at y = ry + 22 (after the replica label area).
+// Stage 1 must start AFTER the prompt: 22 (label area) + PROMPT_H + 8 (gap).
+function tpppdp24StageY(s) { return TPPPDP24_REPLICA_Y0 + 22 + TPPPDP24_PROMPT_H + 8 + s * (TPPPDP24_GPU_H + TPPPDP24_STAGE_GAP); }
 function tpppdp24GpuPos(r, s, t) {
   const rx = tpppdp24ReplicaX(r);
   const gpuX = rx + 6 + t * (TPPPDP24_GPU_W + TPPPDP24_GPU_GAP);
