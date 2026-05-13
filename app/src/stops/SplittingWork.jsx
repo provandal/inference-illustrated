@@ -51,13 +51,37 @@ import PageNav from '../components/PageNav';
    Shared animation control strip (play/pause + scrubber)
    ================================================================ */
 function AnimControls({ isPlaying, onPlayToggle, value, max, onChange, label, labelMax }) {
+  // onChange is responsible for pausing playback (callers do setIsPlaying(false)
+  // inside it). Prev / Next / Restart route through onChange, so they pause too.
+  const atEnd = value >= max;
   return (
-    <div className="pt-3 border-t border-[var(--color-border-light)] flex items-center gap-3">
+    <div className="pt-3 border-t border-[var(--color-border-light)] flex items-center gap-2 flex-wrap">
+      <button
+        onClick={() => onChange(0)}
+        className="px-2 py-1 text-[11px] rounded border border-[var(--color-border)] hover:bg-[var(--color-surface-alt)] transition-colors cursor-pointer text-[var(--color-text-secondary)]"
+        title="Restart"
+      >
+        ⏮ Restart
+      </button>
+      <button
+        onClick={() => onChange(Math.max(0, value - 1))}
+        disabled={value === 0}
+        className="px-2 py-1 text-[11px] rounded border border-[var(--color-border)] hover:bg-[var(--color-surface-alt)] transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed text-[var(--color-text-secondary)]"
+      >
+        ◀ Prev
+      </button>
       <button
         onClick={onPlayToggle}
-        className="px-3 py-1 text-[11px] rounded border border-[var(--color-border)] hover:bg-[var(--color-surface-alt)] transition-colors cursor-pointer text-[var(--color-text-secondary)]"
+        className="px-3 py-1 text-[11px] rounded border border-[var(--color-primary)] bg-[var(--color-primary-bg)] hover:opacity-90 transition-colors cursor-pointer text-[var(--color-primary-text)] font-medium"
       >
-        {isPlaying ? 'Pause' : value >= max ? 'Replay' : 'Play'}
+        {isPlaying ? '⏸ Pause' : atEnd ? '↻ Replay' : '▶ Play'}
+      </button>
+      <button
+        onClick={() => onChange(Math.min(max, value + 1))}
+        disabled={value === max}
+        className="px-2 py-1 text-[11px] rounded border border-[var(--color-border)] hover:bg-[var(--color-surface-alt)] transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed text-[var(--color-text-secondary)]"
+      >
+        Next ▶
       </button>
       <input
         type="range"
@@ -65,7 +89,7 @@ function AnimControls({ isPlaying, onPlayToggle, value, max, onChange, label, la
         max={max}
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="anim-scrubber flex-1"
+        className="anim-scrubber flex-1 min-w-[120px]"
       />
       <span className="text-[11px] font-mono text-[var(--color-text-muted)] min-w-[110px] text-right">
         {label} / {labelMax}
