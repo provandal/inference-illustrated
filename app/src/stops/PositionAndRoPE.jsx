@@ -203,8 +203,249 @@ function AttentionMatrix({ wordById }) {
 }
 
 /* ================================================================
+   PAGE 2 — First Try: Add a Position Vector (Sinusoidal PE)
+   Position slider + heatmap of the resulting d=64 position vector.
+   Below, three adjacent positions side-by-side show that nearby
+   positions produce similar vectors.
+   ================================================================ */
+function SinusoidalPage() {
+  const [pos, setPos] = useState(SINUSOIDAL_DEMO.defaultPos);
+  const vec = useMemo(() => sinusoidalPE(pos, SINUSOIDAL_DEMO.dim), [pos]);
+  const prevVec = useMemo(() => sinusoidalPE(Math.max(0, pos - 1), SINUSOIDAL_DEMO.dim), [pos]);
+  const nextVec = useMemo(() => sinusoidalPE(pos + 1, SINUSOIDAL_DEMO.dim), [pos]);
+
+  return (
+    <div>
+      <Panel>
+        <PanelHeader>The 2017 idea: add a sinusoidal position vector</PanelHeader>
+        <InfoBox>
+          For position <em>pos</em> and dimension <em>i</em>, the original
+          Transformer paper uses
+          <span className="font-mono mx-1">PE(pos, 2i) = sin(pos / 10000<sup>2i/d</sup>)</span>
+          and
+          <span className="font-mono mx-1">PE(pos, 2i+1) = cos(pos / 10000<sup>2i/d</sup>)</span>.
+          Low-i dimensions oscillate slowly (encode coarse position); high-i
+          dimensions oscillate quickly (encode fine position). The combined
+          vector is a unique fingerprint for every position.
+        </InfoBox>
+
+        <div className="px-4 pb-4">
+          <div className="flex items-center gap-3 mb-3">
+            <span className="text-[11px] font-mono text-[var(--color-text-muted)] min-w-[60px]">
+              Position
+            </span>
+            <input
+              type="range"
+              min={0}
+              max={SINUSOIDAL_DEMO.maxPos}
+              value={pos}
+              onChange={(e) => setPos(Number(e.target.value))}
+              className="anim-scrubber flex-1"
+            />
+            <span className="text-[12px] font-mono text-[var(--color-primary-text)] font-bold min-w-[48px] text-right">
+              pos = {pos}
+            </span>
+          </div>
+
+          <div className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] mb-1 font-medium">
+            PE vector at this position (d = {SINUSOIDAL_DEMO.dim})
+          </div>
+          <PEHeatmap vec={vec} />
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4">
+            <PEHeatmapCard label={`pos = ${Math.max(0, pos - 1)}`} vec={prevVec} />
+            <PEHeatmapCard label={`pos = ${pos}`} vec={vec} highlight />
+            <PEHeatmapCard label={`pos = ${pos + 1}`} vec={nextVec} />
+          </div>
+        </div>
+      </Panel>
+
+      <Callout
+        type="info"
+        message="<strong>Why this is a clever choice.</strong> Adjacent positions produce very similar vectors (high cosine similarity), and distant positions produce very different ones. The sinusoidal structure is also <em>shift-friendly</em>: the relationship between any two positions depends only on their difference, not their absolute values \u2014 in theory. The next page shows why &lsquo;in theory&rsquo; falls apart."
+      />
+    </div>
+  );
+}
+
+function PEHeatmap({ vec }) {
+  const cellW = 100 / vec.length;
+  return (
+    <div className="flex h-6 rounded border border-[var(--color-border-light)] overflow-hidden">
+      {vec.map((v, i) => (
+        <div
+          key={i}
+          style={{
+            width: `${cellW}%`,
+            background: peCellColor(v),
+          }}
+          title={`d${i}: ${v.toFixed(3)}`}
+        />
+      ))}
+    </div>
+  );
+}
+
+function PEHeatmapCard({ label, vec, highlight }) {
+  return (
+    <div
+      className="rounded border p-2"
+      style={{
+        background: highlight ? 'var(--color-primary-bg)' : 'var(--color-surface-muted)',
+        borderColor: highlight ? 'var(--color-primary)' : 'var(--color-border-light)',
+      }}
+    >
+      <div className="text-[10px] font-mono mb-1" style={{ color: highlight ? 'var(--color-primary-text)' : 'var(--color-text-muted)' }}>
+        {label}
+      </div>
+      <PEHeatmap vec={vec} />
+    </div>
+  );
+}
+
+// Map a PE component in [-1, 1] to a diverging colormap (red \u2194 white \u2194 teal).
+function peCellColor(v) {
+  const x = Math.max(-1, Math.min(1, v));
+  if (x >= 0) {
+    return `color-mix(in srgb, var(--color-teal) ${Math.round(x * 80)}%, var(--color-surface))`;
+  }
+  return `color-mix(in srgb, var(--color-red) ${Math.round(-x * 80)}%, var(--color-surface))`;
+}
+
+/* ================================================================
+   PAGE 3 — Why Add-at-Input Fails
+   Two parts:
+   (a) signal-decay slider showing how much of the original PE survives
+       after L layers of residual writes,
+   (b) extrapolation table: model trained to 4K, tested at 8K/32K \u2192 broken.
+   ================================================================ */
+function AddAtInputFailsPage() {
+  const [layer, setLayer] = useState(SIGNAL_DECAY_DEMO.defaultLayer);
+  const survival = residualPESurvival(layer);
+  const survivalPct = Math.round(survival * 100);
+  return (
+    <div>
+      <Panel>
+        <PanelHeader>Problem 1 \u2014 the residual stream attenuates the position signal</PanelHeader>
+        <InfoBox>
+          The position vector is added <em>once</em>, at the input. From there
+          it lives in the residual stream alongside content. Every layer\u2019s
+          attention and FFN write their own signal into the residual stream,
+          and the position fingerprint gets relatively quieter at each step.
+          By layer 80 it\u2019s mostly buried.
+        </InfoBox>
+
+        <div className="px-4 pb-4">
+          <div className="flex items-center gap-3 mb-3">
+            <span className="text-[11px] font-mono text-[var(--color-text-muted)] min-w-[60px]">Layer</span>
+            <input
+              type="range"
+              min={1}
+              max={SIGNAL_DECAY_DEMO.totalLayers}
+              value={layer}
+              onChange={(e) => setLayer(Number(e.target.value))}
+              className="anim-scrubber flex-1"
+            />
+            <span className="text-[12px] font-mono text-[var(--color-primary-text)] font-bold min-w-[60px] text-right">
+              L = {layer}
+            </span>
+          </div>
+
+          <div className="rounded-lg border border-[var(--color-border-light)] bg-[var(--color-surface-muted)] p-3">
+            <div className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] mb-2 font-medium">
+              Position-signal amplitude after {layer} layer{layer === 1 ? '' : 's'}
+            </div>
+            <div className="relative h-7 rounded bg-[var(--color-surface)] border border-[var(--color-border-light)] overflow-hidden">
+              <div
+                className="h-full transition-all"
+                style={{
+                  width: `${survivalPct}%`,
+                  background:
+                    survival > 0.6
+                      ? 'var(--color-teal)'
+                      : survival > 0.3
+                        ? 'var(--color-amber)'
+                        : 'var(--color-red)',
+                }}
+              />
+              <div
+                className="absolute inset-0 flex items-center justify-center text-[11px] font-mono font-bold"
+                style={{ color: 'var(--color-text)' }}
+              >
+                {survivalPct}% of original position signal
+              </div>
+            </div>
+            <div className="text-[11px] text-[var(--color-text-secondary)] mt-2 italic">
+              Toy decay model. The point is qualitative: a one-shot add at the
+              input is fighting an uphill battle against 80 layers of residual
+              writes. RoPE solves this by re-applying position at every layer.
+            </div>
+          </div>
+        </div>
+      </Panel>
+
+      <Panel className="mt-4">
+        <PanelHeader>Problem 2 \u2014 sinusoidal PE doesn\u2019t extrapolate</PanelHeader>
+        <InfoBox>
+          If a model only saw positions 0\u2013{EXTRAPOLATION_FAILURE.trainedMax} during
+          training, the sinusoids at any larger position fall in regions the
+          model never learned to interpret. Output quality collapses well
+          before any &ldquo;hard&rdquo; limit.
+        </InfoBox>
+        <div className="px-4 pb-4 overflow-x-auto">
+          <table className="w-full border-collapse text-[12px]">
+            <thead>
+              <tr className="text-[var(--color-text-muted)] text-left">
+                <th className="px-3 py-2 border-b border-[var(--color-border-light)] font-mono">Position</th>
+                <th className="px-3 py-2 border-b border-[var(--color-border-light)]">Regime</th>
+                <th className="px-3 py-2 border-b border-[var(--color-border-light)]">Quality</th>
+                <th className="px-3 py-2 border-b border-[var(--color-border-light)]">Note</th>
+              </tr>
+            </thead>
+            <tbody>
+              {EXTRAPOLATION_FAILURE.examples.map((ex) => (
+                <tr key={ex.pos}>
+                  <td className="px-3 py-2 border-b border-[var(--color-border-light)] font-mono">{ex.pos.toLocaleString()}</td>
+                  <td className="px-3 py-2 border-b border-[var(--color-border-light)] text-[var(--color-text-secondary)]">{ex.status}</td>
+                  <td className="px-3 py-2 border-b border-[var(--color-border-light)]">
+                    <QualityBadge quality={ex.quality} />
+                  </td>
+                  <td className="px-3 py-2 border-b border-[var(--color-border-light)] text-[var(--color-text-secondary)]">{ex.note}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Panel>
+
+      <Callout
+        type="warning"
+        message="<strong>Bottom line.</strong> Adding a position vector at the input is a workable hack but doesn\u2019t scale: position info erodes through depth, and the model can\u2019t safely run beyond the context lengths it saw in training. RoPE fixes both by changing where and how position is applied."
+      />
+    </div>
+  );
+}
+
+function QualityBadge({ quality }) {
+  const styles = {
+    perfect:  { bg: 'var(--color-teal-bg)',  border: 'var(--color-teal)',  text: 'var(--color-teal-text)'  },
+    good:     { bg: 'var(--color-teal-bg)',  border: 'var(--color-teal)',  text: 'var(--color-teal-text)'  },
+    degraded: { bg: 'var(--color-amber-bg)', border: 'var(--color-amber)', text: 'var(--color-amber-text)' },
+    broken:   { bg: 'var(--color-red-bg)',   border: 'var(--color-red)',   text: 'var(--color-red-text)'   },
+  };
+  const s = styles[quality] || styles.degraded;
+  return (
+    <span
+      className="px-2 py-0.5 rounded text-[10px] font-medium border"
+      style={{ background: s.bg, borderColor: s.border, color: s.text }}
+    >
+      {quality}
+    </span>
+  );
+}
+
+/* ================================================================
    Placeholder pages (filled in progressively).
-   Each shows the page title so we can navigate the scaffolding.
    ================================================================ */
 function PlaceholderPage({ title }) {
   return (
@@ -257,8 +498,8 @@ export default function PositionAndRoPE() {
       {/* Page content */}
       <div className="min-h-[200px]">
         {page.id === 'position-blind' && <PositionBlindPage />}
-        {page.id === 'sinusoidal'      && <PlaceholderPage title="First Try \u2014 Add a Position Vector" />}
-        {page.id === 'add-at-input'    && <PlaceholderPage title="Why Add-at-Input Fails" />}
+        {page.id === 'sinusoidal'      && <SinusoidalPage />}
+        {page.id === 'add-at-input'    && <AddAtInputFailsPage />}
         {page.id === 'rotate-idea'     && <PlaceholderPage title="RoPE \u2014 Rotate, Don\u2019t Add" />}
         {page.id === 'rope-math'       && <PlaceholderPage title="The Math (Just Enough)" />}
         {page.id === 'frequencies'     && <PlaceholderPage title="Many Frequencies, Many Roles" />}
