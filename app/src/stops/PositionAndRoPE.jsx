@@ -933,6 +933,198 @@ function RopeAndCachePage() {
 }
 
 /* ================================================================
+   PAGE 8 — Stretching the Window: Long-Context Extension
+   Comparator across four techniques + production reference.
+   Click a technique to see its formula, target context, quality, note.
+   ================================================================ */
+function LongContextPage() {
+  const [techId, setTechId] = useState('none');
+  const tech = LONG_CONTEXT_TECHNIQUES.find((t) => t.id === techId) || LONG_CONTEXT_TECHNIQUES[0];
+
+  return (
+    <div>
+      <Panel>
+        <PanelHeader>Four ways to push RoPE beyond its trained context length</PanelHeader>
+        <InfoBox>
+          A model trained on positions 0\u20134095 doesn\u2019t generalise to 128K
+          out of the box. The high-frequency RoPE pairs make full revolutions
+          on never-seen offsets, and quality crashes. The fix is to <em>scale
+          the frequencies</em> so the wavelengths the model trained on still
+          cover the new range. Each technique below is a different recipe for
+          that scaling.
+        </InfoBox>
+
+        <div className="px-4 pb-4">
+          <div className="flex flex-wrap gap-2 mb-4">
+            {LONG_CONTEXT_TECHNIQUES.map((t) => (
+              <button
+                key={t.id}
+                onClick={() => setTechId(t.id)}
+                className={`px-3 py-1.5 text-[11px] font-medium rounded border transition-all cursor-pointer ${
+                  techId === t.id
+                    ? 'bg-[var(--color-primary-bg)] border-[var(--color-primary)] text-[var(--color-primary-text)] shadow-sm'
+                    : 'border-[var(--color-border)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-alt)]'
+                }`}
+              >
+                {t.name}
+              </button>
+            ))}
+          </div>
+
+          <div className="rounded-lg border border-[var(--color-border-light)] bg-[var(--color-surface-muted)] p-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+              <Metric label="Target context" value={tech.targetContext} />
+              <Metric label="Effective base scale" value={`${tech.effectiveBaseFactor.toFixed(2)}\u00d7`} />
+              <Metric label="Quality" value={tech.quality} highlight />
+            </div>
+
+            <div className="rounded border border-[var(--color-border-light)] bg-[var(--color-surface)] p-3 mb-3">
+              <div className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] font-medium mb-1">
+                What it does
+              </div>
+              <div className="font-mono text-[13px] text-[var(--color-text)] mb-2">{tech.formula}</div>
+              <div className="text-[11px] text-[var(--color-text-secondary)] leading-relaxed italic">
+                {tech.note}
+              </div>
+            </div>
+          </div>
+
+          {/* All-techniques compact summary */}
+          <div className="mt-4 overflow-x-auto">
+            <table className="w-full border-collapse text-[11px]">
+              <thead>
+                <tr className="text-[var(--color-text-muted)] text-left">
+                  <th className="px-3 py-2 border-b border-[var(--color-border-light)]">Technique</th>
+                  <th className="px-3 py-2 border-b border-[var(--color-border-light)]">Reaches</th>
+                  <th className="px-3 py-2 border-b border-[var(--color-border-light)]">Quality</th>
+                  <th className="px-3 py-2 border-b border-[var(--color-border-light)] font-mono">Formula sketch</th>
+                </tr>
+              </thead>
+              <tbody>
+                {LONG_CONTEXT_TECHNIQUES.map((t) => (
+                  <tr
+                    key={t.id}
+                    className={t.id === techId ? 'bg-[var(--color-primary-bg)]' : ''}
+                  >
+                    <td className="px-3 py-2 border-b border-[var(--color-border-light)] font-medium text-[var(--color-text)]">{t.name}</td>
+                    <td className="px-3 py-2 border-b border-[var(--color-border-light)] font-mono text-[var(--color-text-secondary)]">{t.targetContext}</td>
+                    <td className="px-3 py-2 border-b border-[var(--color-border-light)] text-[var(--color-text-secondary)]">{t.quality}</td>
+                    <td className="px-3 py-2 border-b border-[var(--color-border-light)] font-mono text-[var(--color-text-secondary)]">{t.formula}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </Panel>
+
+      <Callout
+        type="good"
+        message="<strong>What we ship in 2026.</strong> Production models picked YaRN-style per-band scaling combined with a higher RoPE base (Llama-3.1 uses base=500,000 instead of 10,000). Together those two changes \u2014 a higher base plus smart per-band scaling \u2014 are what makes 128K-context inference feasible. Every other piece of the long-context story (cache compression, attention sinks, sliding windows) layers on top of RoPE."
+      />
+    </div>
+  );
+}
+
+function Metric({ label, value, highlight }) {
+  return (
+    <div className="rounded border p-2"
+      style={{
+        background: highlight ? 'var(--color-teal-bg)' : 'var(--color-surface)',
+        borderColor: highlight ? 'var(--color-teal)' : 'var(--color-border-light)',
+      }}
+    >
+      <div className="text-[10px] uppercase tracking-wider font-medium"
+        style={{ color: highlight ? 'var(--color-teal-text)' : 'var(--color-text-muted)' }}
+      >
+        {label}
+      </div>
+      <div className="text-[14px] font-bold mt-1"
+        style={{ color: highlight ? 'var(--color-teal-text)' : 'var(--color-text)' }}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
+/* ================================================================
+   PAGE 9 — Stop 8 at a Glance (Summary)
+   Side-by-side comparison of old (sinusoidal) vs new (RoPE).
+   Forward links to Stops 12, 15, and 17 \u2014 where this comes back.
+   ================================================================ */
+function SummaryPage() {
+  // Pivot the flat STOP_SUMMARY into rows where col -> value.
+  const rowOrder = ['Where applied', 'How', 'Position kind', 'Survives layers?', 'Extrapolates?'];
+  const colOrder = ['Old (sinusoidal)', 'RoPE'];
+  const lookup = useMemo(() => {
+    const map = {};
+    STOP_SUMMARY.forEach((entry) => {
+      map[`${entry.row}::${entry.col}`] = entry.value;
+    });
+    return map;
+  }, []);
+
+  return (
+    <div>
+      <Panel>
+        <PanelHeader>Old (sinusoidal) vs RoPE \u2014 the side-by-side</PanelHeader>
+        <div className="px-4 pb-4 overflow-x-auto">
+          <table className="w-full border-collapse text-[12px]">
+            <thead>
+              <tr>
+                <th className="px-3 py-2 border-b border-[var(--color-border-light)] text-left font-mono text-[var(--color-text-muted)]">Aspect</th>
+                {colOrder.map((c) => (
+                  <th key={c} className="px-3 py-2 border-b border-[var(--color-border-light)] text-left font-medium text-[var(--color-text)]">{c}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rowOrder.map((r) => (
+                <tr key={r}>
+                  <td className="px-3 py-2 border-b border-[var(--color-border-light)] font-mono text-[var(--color-text-muted)]">{r}</td>
+                  {colOrder.map((c) => (
+                    <td key={c} className="px-3 py-2 border-b border-[var(--color-border-light)] text-[var(--color-text-secondary)]">
+                      {lookup[`${r}::${c}`]}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Panel>
+
+      <Panel className="mt-4">
+        <PanelHeader>Where this comes back in Act 2</PanelHeader>
+        <div className="px-4 pb-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+          {FORWARD_LINKS.map((link) => (
+            <div key={link.stop} className="rounded-lg border border-[var(--color-border-light)] bg-[var(--color-surface-muted)] p-3">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[var(--color-primary-bg)] border border-[var(--color-primary)] text-[var(--color-primary-text)] font-bold">
+                  Stop {link.stop}
+                </span>
+                <span className="text-[12px] font-medium text-[var(--color-text)]">
+                  {link.label}
+                </span>
+              </div>
+              <div className="text-[11px] text-[var(--color-text-secondary)] leading-relaxed italic">
+                {link.why}
+              </div>
+            </div>
+          ))}
+        </div>
+      </Panel>
+
+      <Callout
+        type="good"
+        message="<strong>End of Stop 8.</strong> The attention machinery is now complete: Q, K, V (Stop 3), dot product (Stop 5), softmax (Stop 6), value blending (Stop 7), and position via RoPE (this stop). Stop 9 layers on multi-head attention; Stop 10 stacks layers; Stop 11 names the KV cache. After that, we cross into Act 2 and start asking what it costs to actually serve this at scale."
+      />
+    </div>
+  );
+}
+
+/* ================================================================
    Placeholder pages (filled in progressively).
    ================================================================ */
 function PlaceholderPage({ title }) {
@@ -992,8 +1184,8 @@ export default function PositionAndRoPE() {
         {page.id === 'rope-math'       && <RopeMathPage />}
         {page.id === 'frequencies'     && <FrequenciesPage />}
         {page.id === 'rope-and-cache'  && <RopeAndCachePage />}
-        {page.id === 'long-context'    && <PlaceholderPage title="Stretching the Window" />}
-        {page.id === 'summary'         && <PlaceholderPage title="Stop 8 at a Glance" />}
+        {page.id === 'long-context'    && <LongContextPage />}
+        {page.id === 'summary'         && <SummaryPage />}
       </div>
 
       {/* Page nav */}
