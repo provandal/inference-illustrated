@@ -445,6 +445,257 @@ function QualityBadge({ quality }) {
 }
 
 /* ================================================================
+   PAGE 4 — RoPE: Rotate, Don't Add
+   Single 2D dimension-pair. Sliders for position m (Q) and n (K).
+   Show pre-rotation arrows (dim) and post-rotation arrows (bright).
+   Display dot products: Q\u00b7K (pre) vs Q\u2032\u00b7K\u2032 (post). The post-rotation
+   dot depends on (n\u2212m) only \u2014 the next page proves this algebraically.
+   ================================================================ */
+function RotateIdeaPage() {
+  const [m, setM] = useState(ROTATE_DEMO.defaultPosM);
+  const [n, setN] = useState(ROTATE_DEMO.defaultPosN);
+  const theta = ROTATE_DEMO.defaultTheta;
+  const q = ROTATE_DEMO.qVector;
+  const k = ROTATE_DEMO.kVector;
+  const qRot = useMemo(() => rotate2D(q, m * theta), [m, theta, q]);
+  const kRot = useMemo(() => rotate2D(k, n * theta), [n, theta, k]);
+  const preDot  = useMemo(() => dot2D(q, k),         [q, k]);
+  const postDot = useMemo(() => dot2D(qRot, kRot),   [qRot, kRot]);
+
+  return (
+    <div>
+      <Panel>
+        <PanelHeader>One dimension-pair, two rotating arrows</PanelHeader>
+        <InfoBox>
+          RoPE treats each Q and K vector as d/2 pairs of dimensions. Below is
+          one such pair, drawn in 2D. Move the sliders to rotate Q (by m\u03b8) and
+          K (by n\u03b8). The dim gray arrows are the originals; the bright ones
+          are after rotation.
+        </InfoBox>
+
+        <div className="px-4 pb-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <RotationCanvas q={q} k={k} qRot={qRot} kRot={kRot} m={m} n={n} theta={theta} />
+
+            <div className="flex flex-col gap-3 text-[12px] font-mono">
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] mb-1 font-medium">
+                  Position of Q (m)
+                </div>
+                <input
+                  type="range" min={0} max={12} value={m}
+                  onChange={(e) => setM(Number(e.target.value))}
+                  className="anim-scrubber w-full"
+                />
+                <div className="text-[12px] text-[var(--color-text-secondary)] mt-1">
+                  m = <span className="font-bold text-[var(--color-red-text)]">{m}</span>,
+                  &nbsp;rotation = m\u00d7\u03b8 = {(m * theta).toFixed(2)} rad
+                </div>
+              </div>
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] mb-1 font-medium">
+                  Position of K (n)
+                </div>
+                <input
+                  type="range" min={0} max={12} value={n}
+                  onChange={(e) => setN(Number(e.target.value))}
+                  className="anim-scrubber w-full"
+                />
+                <div className="text-[12px] text-[var(--color-text-secondary)] mt-1">
+                  n = <span className="font-bold text-[var(--color-teal-text)]">{n}</span>,
+                  &nbsp;rotation = n\u00d7\u03b8 = {(n * theta).toFixed(2)} rad
+                </div>
+              </div>
+
+              <div className="mt-2 p-3 rounded border border-[var(--color-border-light)] bg-[var(--color-surface-muted)]">
+                <div className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] mb-1 font-medium">
+                  Dot products
+                </div>
+                <div className="text-[12px]">
+                  Q&middot;K (pre-rotation): <span className="font-bold">{preDot.toFixed(3)}</span>
+                </div>
+                <div className="text-[12px] mt-1">
+                  Q\u2032&middot;K\u2032 (post-rotation): <span className="font-bold text-[var(--color-primary-text)]">{postDot.toFixed(3)}</span>
+                </div>
+                <div className="text-[11px] text-[var(--color-text-secondary)] mt-2 italic leading-relaxed">
+                  Move both sliders by the same amount and watch the
+                  post-rotation dot product stay constant. Move only one and
+                  watch it change. The post-dot depends only on (n \u2212 m).
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Panel>
+
+      <Callout
+        type="good"
+        message="<strong>Two wins fall out of this design.</strong> (1) Rotation happens at every attention layer, so position never gets buried in the residual stream. (2) Absolute positions cancel inside the dot product, so only relative position matters \u2014 which makes long-context generalisation work."
+      />
+    </div>
+  );
+}
+
+function RotationCanvas({ q, k, qRot, kRot, m, n, theta }) {
+  const W = 340, H = 340, CX = W / 2, CY = H / 2, SCALE = 110;
+  const toScreen = ([x, y]) => [CX + x * SCALE, CY - y * SCALE];
+  const [qx, qy]   = toScreen(q);
+  const [kx, ky]   = toScreen(k);
+  const [qrx, qry] = toScreen(qRot);
+  const [krx, kry] = toScreen(kRot);
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full max-w-[340px] rounded border border-[var(--color-border-light)] bg-[var(--color-surface-muted)]">
+      <defs>
+        <marker id="arrow-red"  viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--color-red)" />
+        </marker>
+        <marker id="arrow-teal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--color-teal)" />
+        </marker>
+        <marker id="arrow-dim"  viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--color-text-muted)" />
+        </marker>
+      </defs>
+      {/* Axes */}
+      <line x1={0} y1={CY} x2={W} y2={CY} stroke="var(--color-border-light)" />
+      <line x1={CX} y1={0} x2={CX} y2={H} stroke="var(--color-border-light)" />
+      {/* Unit circle */}
+      <circle cx={CX} cy={CY} r={SCALE} fill="none" stroke="var(--color-border)" strokeDasharray="3 3" opacity={0.6} />
+      {/* Pre-rotation Q and K (dim) */}
+      <line x1={CX} y1={CY} x2={qx} y2={qy} stroke="var(--color-text-muted)" strokeWidth={1.5} opacity={0.5} markerEnd="url(#arrow-dim)" />
+      <line x1={CX} y1={CY} x2={kx} y2={ky} stroke="var(--color-text-muted)" strokeWidth={1.5} opacity={0.5} markerEnd="url(#arrow-dim)" />
+      <text x={qx + 6} y={qy - 6} fontSize={10} fill="var(--color-text-muted)" fontFamily="monospace">Q</text>
+      <text x={kx + 6} y={ky - 6} fontSize={10} fill="var(--color-text-muted)" fontFamily="monospace">K</text>
+      {/* Post-rotation Q' and K' (bright) */}
+      <line x1={CX} y1={CY} x2={qrx} y2={qry} stroke="var(--color-red)"  strokeWidth={2.2} markerEnd="url(#arrow-red)" />
+      <line x1={CX} y1={CY} x2={krx} y2={kry} stroke="var(--color-teal)" strokeWidth={2.2} markerEnd="url(#arrow-teal)" />
+      <text x={qrx + 8} y={qry - 4} fontSize={12} fontWeight={700} fill="var(--color-red-text)"  fontFamily="monospace">Q\u2032 (pos {m})</text>
+      <text x={krx + 8} y={kry - 4} fontSize={12} fontWeight={700} fill="var(--color-teal-text)" fontFamily="monospace">K\u2032 (pos {n})</text>
+      {/* Relative-rotation arc, very small */}
+      <text x={W - 8} y={H - 10} fontSize={9} textAnchor="end" fill="var(--color-text-muted)" fontFamily="monospace">
+        (n\u2212m)\u03b8 = {((n - m) * theta).toFixed(2)} rad
+      </text>
+    </svg>
+  );
+}
+
+/* ================================================================
+   PAGE 5 — The Math (Just Enough)
+   Five-step algebraic derivation that absolute positions cancel.
+   Plus a plot of the dot product Q\u00b7R((n\u2212m)\u03b8)K as a function of (n\u2212m).
+   ================================================================ */
+function RopeMathPage() {
+  const q = ROTATE_DEMO.qVector;
+  const k = ROTATE_DEMO.kVector;
+  const theta = ROTATE_DEMO.defaultTheta;
+  // Compute Q\u00b7R(d\u00b7\u03b8)K for d in -20..+20
+  const points = useMemo(() => {
+    const out = [];
+    for (let d = -20; d <= 20; d++) {
+      const kr = rotate2D(k, d * theta);
+      out.push({ d, v: dot2D(q, kr) });
+    }
+    return out;
+  }, [q, k, theta]);
+
+  return (
+    <div>
+      <Panel>
+        <PanelHeader>Five lines of algebra: absolute positions cancel</PanelHeader>
+        <InfoBox>
+          We can prove the &ldquo;only relative position matters&rdquo; claim
+          directly. The key facts: (a) rotations are orthogonal matrices, so
+          R<sup>T</sup>(\u03c6) = R(\u2212\u03c6); and (b) successive 2D
+          rotations <em>add</em> their angles, so R(a)R(b) = R(a+b).
+        </InfoBox>
+
+        <div className="px-4 pb-4">
+          <ol className="space-y-2">
+            {ROPE_MATH_STEPS.map((step, idx) => (
+              <li key={step.id} className="flex items-start gap-3">
+                <div className="flex-shrink-0 w-6 h-6 rounded-full bg-[var(--color-primary-bg)] border border-[var(--color-primary)] text-[var(--color-primary-text)] text-[11px] font-bold flex items-center justify-center font-mono">
+                  {idx + 1}
+                </div>
+                <div className="flex-1">
+                  <div className="font-mono text-[13px] text-[var(--color-text)]">
+                    {step.lhs}
+                  </div>
+                  <div className="text-[11px] text-[var(--color-text-secondary)] italic mt-0.5 leading-relaxed">
+                    {step.note}
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </Panel>
+
+      <Panel className="mt-4">
+        <PanelHeader>The dot product as a function of relative position</PanelHeader>
+        <InfoBox>
+          Below: the post-rotation dot product Q&middot;R((n\u2212m)\u03b8)K plotted
+          against the relative offset (n\u2212m). The wave is what RoPE buys you.
+          Nearby tokens produce one consistent score; tokens far apart produce
+          another. Critically, the curve depends only on the offset \u2014 you
+          could shift both positions by +1000 and the picture wouldn\u2019t move.
+        </InfoBox>
+        <div className="px-4 pb-4">
+          <RelativeDotPlot points={points} theta={theta} />
+        </div>
+      </Panel>
+
+      <Callout
+        type="good"
+        message="<strong>Why this matters for long context.</strong> If the score depends only on (n\u2212m), then a model trained to recognise relative offsets of \u00b1100 will keep working when you slide the whole window to absolute positions 50,000\u201350,200 \u2014 the offsets are still in range. That property is precisely what makes RoPE extrapolate well."
+      />
+    </div>
+  );
+}
+
+function RelativeDotPlot({ points, theta }) {
+  const W = 640, H = 200, M = { l: 36, r: 14, t: 14, b: 28 };
+  const xs = points.map(p => p.d);
+  const ys = points.map(p => p.v);
+  const xMin = Math.min(...xs), xMax = Math.max(...xs);
+  const yMin = Math.min(-1, ...ys), yMax = Math.max(1, ...ys);
+  const xScale = (x) => M.l + ((x - xMin) / (xMax - xMin)) * (W - M.l - M.r);
+  const yScale = (y) => H - M.b - ((y - yMin) / (yMax - yMin)) * (H - M.t - M.b);
+  const path = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${xScale(p.d)} ${yScale(p.v)}`).join(' ');
+  const zeroY = yScale(0);
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full rounded border border-[var(--color-border-light)] bg-[var(--color-surface-muted)]">
+      {/* x-axis */}
+      <line x1={M.l} y1={zeroY} x2={W - M.r} y2={zeroY} stroke="var(--color-border-light)" />
+      {/* y-axis */}
+      <line x1={M.l} y1={M.t} x2={M.l} y2={H - M.b} stroke="var(--color-border-light)" />
+      {/* Tick labels */}
+      {[-20, -10, 0, 10, 20].map((t) => (
+        <g key={t}>
+          <line x1={xScale(t)} y1={H - M.b} x2={xScale(t)} y2={H - M.b + 3} stroke="var(--color-border)" />
+          <text x={xScale(t)} y={H - M.b + 14} fontSize={9} textAnchor="middle" fill="var(--color-text-muted)" fontFamily="monospace">{t}</text>
+        </g>
+      ))}
+      {[-1, 0, 1].map((t) => (
+        <g key={t}>
+          <line x1={M.l - 3} y1={yScale(t)} x2={M.l} y2={yScale(t)} stroke="var(--color-border)" />
+          <text x={M.l - 6} y={yScale(t) + 3} fontSize={9} textAnchor="end" fill="var(--color-text-muted)" fontFamily="monospace">{t.toFixed(1)}</text>
+        </g>
+      ))}
+      {/* Axis labels */}
+      <text x={(M.l + W - M.r) / 2} y={H - 4} fontSize={10} textAnchor="middle" fill="var(--color-text-muted)" fontFamily="monospace">(n \u2212 m)</text>
+      <text x={4} y={M.t + 4} fontSize={10} fill="var(--color-text-muted)" fontFamily="monospace">Q\u00b7K\u2032</text>
+      {/* The plot */}
+      <path d={path} fill="none" stroke="var(--color-primary)" strokeWidth={2} />
+      {/* Markers at offsets that look interesting */}
+      {points.filter(p => p.d % 5 === 0).map((p) => (
+        <circle key={p.d} cx={xScale(p.d)} cy={yScale(p.v)} r={2.5} fill="var(--color-primary)" />
+      ))}
+      <text x={W - M.r - 4} y={M.t + 10} fontSize={9} textAnchor="end" fill="var(--color-text-muted)" fontFamily="monospace">\u03b8 = {theta} rad/pos</text>
+    </svg>
+  );
+}
+
+/* ================================================================
    Placeholder pages (filled in progressively).
    ================================================================ */
 function PlaceholderPage({ title }) {
@@ -500,8 +751,8 @@ export default function PositionAndRoPE() {
         {page.id === 'position-blind' && <PositionBlindPage />}
         {page.id === 'sinusoidal'      && <SinusoidalPage />}
         {page.id === 'add-at-input'    && <AddAtInputFailsPage />}
-        {page.id === 'rotate-idea'     && <PlaceholderPage title="RoPE \u2014 Rotate, Don\u2019t Add" />}
-        {page.id === 'rope-math'       && <PlaceholderPage title="The Math (Just Enough)" />}
+        {page.id === 'rotate-idea'     && <RotateIdeaPage />}
+        {page.id === 'rope-math'       && <RopeMathPage />}
         {page.id === 'frequencies'     && <PlaceholderPage title="Many Frequencies, Many Roles" />}
         {page.id === 'rope-and-cache'  && <PlaceholderPage title="RoPE Meets the KV Cache" />}
         {page.id === 'long-context'    && <PlaceholderPage title="Stretching the Window" />}
