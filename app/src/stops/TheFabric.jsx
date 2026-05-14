@@ -17,7 +17,7 @@ import {
   FABRIC_TRAFFIC,
   TRAFFIC_VISUAL,
   SUMMARY_TABLE,
-} from '../data/stop15Data';
+} from '../data/stop16Data';
 import { Panel, PanelHeader, InfoBox, Callout } from '../components/ui';
 import PageNav from '../components/PageNav';
 import { useStore } from '../store';
@@ -26,7 +26,7 @@ import { useStore } from '../store';
 
 const NARRATIONS = {
   'four-protocols':
-    'Every KV cache transfer we&rsquo;ve discussed in Stops 12 and 13 &mdash; disaggregated P/D handoff, tier promotion, tier demotion, cache sharing &mdash; travels over a physical interconnect using a specific protocol. The choice of protocol determines the transfer latency, which directly impacts the user&rsquo;s Time-to-First-Token. In our scenario (8&times; H100, Llama-3 70B, FP8), a 28,000-token cache is 4.48 GB (after FP8 compression from Stop 14). Here&rsquo;s what that transfer looks like over each protocol family:',
+    'Every KV cache transfer we&rsquo;ve discussed in Stops 12 and 13 &mdash; disaggregated P/D handoff, tier promotion, tier demotion, cache sharing &mdash; travels over a physical interconnect using a specific protocol. The choice of protocol determines the transfer latency, which directly impacts the user&rsquo;s Time-to-First-Token. In our scenario (8&times; H100, Llama-3 70B, FP8), a 28,000-token cache is 4.48 GB (after FP8 compression from Stop 15). Here&rsquo;s what that transfer looks like over each protocol family:',
 
   'nvlink-domains':
     'The highest-bandwidth interconnect in the AI infrastructure stack is the vendor&rsquo;s <strong>scale-up fabric</strong>. A <strong>scale-up domain</strong> is the set of GPUs interconnected by a high-bandwidth all-to-all fabric &mdash; NVIDIA&rsquo;s NVLink, AMD&rsquo;s Infinity Fabric, or future interconnects. Everything inside a scale-up domain communicates at memory-semantic speeds; everything outside must use Ethernet or InfiniBand. This is one of the most important and often misunderstood aspects of modern AI architecture. NVIDIA has been steadily expanding the reach of NVLink from 2&ndash;4 GPUs on a single board, through 8-GPU nodes, to hundreds of GPUs across multiple racks.',
@@ -353,7 +353,7 @@ function NvlinkDomainsPage() {
       </InfoBox>
 
       <InfoBox>
-        For disaggregated inference (Stop 12), if both the prefill GPU and the decode
+        For disaggregated inference (Stop 13), if both the prefill GPU and the decode
         GPU are within the same scale-up domain, the KV cache transfer adds ~1.2 ms to
         TTFT. If they&rsquo;re in different domains (connected by Ethernet/IB), it
         adds ~90 ms. This is why NVIDIA&rsquo;s rack-scale systems are so valuable
@@ -563,7 +563,7 @@ function RdmaPage() {
       <InfoBox>
         <strong>Spectrum-X specifically</strong> adds AI-optimized features on top of standard
         RoCEv2: adaptive routing, enhanced congestion control, and telemetry that understands
-        inference traffic patterns. For ICMS access (Stop 13), Spectrum-X is NVIDIA&rsquo;s
+        inference traffic patterns. For ICMS access (Stop 14), Spectrum-X is NVIDIA&rsquo;s
         recommended fabric because it provides the predictable, low-jitter connectivity that
         RDMA-based KV cache retrieval requires.
       </InfoBox>
@@ -1265,7 +1265,7 @@ function SummaryPage() {
 
       {/* Evolving diagram description */}
       <Panel className="mt-4">
-        <PanelHeader>Evolving diagram &mdash; Stop 15 version</PanelHeader>
+        <PanelHeader>Evolving diagram &mdash; Stop 16 version</PanelHeader>
         <div className="p-4 space-y-2">
           {[
             { color: 'var(--color-primary)', weight: 'thick',  label: 'NVLink between GPUs within a domain', detail: '3.6 TB/s per GPU' },
@@ -1292,15 +1292,15 @@ function SummaryPage() {
         </div>
       </Panel>
 
-      {/* Bridge to Stop 16 */}
+      {/* Bridge to Stop 17 */}
       <Panel className="mt-4">
-        <PanelHeader>Bridge to Stop 16</PanelHeader>
+        <PanelHeader>Bridge to Stop 17</PanelHeader>
         <div className="p-4 space-y-3 text-[13px] text-[var(--color-text-secondary)] leading-relaxed">
           <p>
             We now know <strong className="text-[var(--color-text)]">WHAT</strong> the
             cache is (Stops 8&ndash;10), <strong className="text-[var(--color-text)]">WHERE</strong> it
-            lives (Stop 13), how to make
-            it <strong className="text-[var(--color-text)]">SMALLER</strong> (Stop 14),
+            lives (Stop 14), how to make
+            it <strong className="text-[var(--color-text)]">SMALLER</strong> (Stop 15),
             and <strong className="text-[var(--color-text)]">HOW</strong> it moves (this stop).
             The remaining question: when a request arrives, <strong className="text-[var(--color-text)]">WHERE
             should it go?</strong>
@@ -1316,7 +1316,7 @@ function SummaryPage() {
           </p>
           <p>
             These routing decisions &mdash; balancing cache locality, GPU load, prefix
-            sharing, and memory pressure &mdash; are the subject of Stop 16.
+            sharing, and memory pressure &mdash; are the subject of Stop 17.
           </p>
         </div>
       </Panel>

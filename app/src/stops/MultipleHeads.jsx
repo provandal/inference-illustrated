@@ -5,7 +5,7 @@ import {
   HEAD_SPECIALIZATIONS,
   CACHE_SCALING,
   GQA_COMPARISON,
-} from '../data/stop8Data';
+} from '../data/stop9Data';
 import { Panel, PanelHeader, InfoBox, Callout } from '../components/ui';
 import PageNav from '../components/PageNav';
 import { useStore } from '../store';
@@ -14,7 +14,7 @@ import { useStore } from '../store';
 
 const NARRATIONS = {
   intro:
-    '<strong>Stop 8: Why Multiple Heads?</strong> In Stop 7, the complete attention pipeline processed "faulty" through one set of W<sub>Q</sub>, W<sub>K</sub>, W<sub>V</sub> &mdash; one attention "head." That head connected "faulty" to "storage controller," discovering a coreference pattern. But our sentence has many simultaneous relationships that one head cannot capture all at once.',
+    '<strong>Stop 9: Why Multiple Heads?</strong> In Stop 7, the complete attention pipeline processed "faulty" through one set of W<sub>Q</sub>, W<sub>K</sub>, W<sub>V</sub> &mdash; one attention "head." That head connected "faulty" to "storage controller," discovering a coreference pattern. But our sentence has many simultaneous relationships that one head cannot capture all at once.',
 
   'heads-divide':
     'Each head doesn\u2019t get a <strong>copy</strong> of the full embedding &mdash; it gets a <strong>slice</strong>. The model\u2019s embedding dimension d<sub>model</sub> is divided evenly among all heads, keeping total computation roughly constant while forcing each head to specialize on its portion.',
@@ -32,7 +32,7 @@ const NARRATIONS = {
     'If every Q head stored its own K and V, the cache would be unmanageable. The industry\u2019s answer: let groups of Q heads <strong>share</strong> K/V vectors. Three approaches have emerged, each trading expressiveness for memory.',
 
   bridge:
-    '<strong>Looking ahead.</strong> Everything we\u2019ve seen so far &mdash; embedding, Q/K/V projections, dot-product scoring, softmax, value blending, multi-head parallelism, concatenation, output projection &mdash; happens in a <strong>single layer</strong>. Stop 9 shows what happens when you stack 80 of them.',
+    '<strong>Looking ahead.</strong> Everything we\u2019ve seen so far &mdash; embedding, Q/K/V projections, dot-product scoring, softmax, value blending, multi-head parallelism, concatenation, output projection &mdash; happens in a <strong>single layer</strong>. Stop 10 shows what happens when you stack 80 of them.',
 };
 
 // --- Page Content Components ---
@@ -678,7 +678,7 @@ function GqaPage() {
 
       <Callout
         type="good"
-        message="<strong>GQA is the current sweet spot.</strong> It preserves most of MHA&rsquo;s quality while cutting the KV cache by 8&times;. MLA (DeepSeek) pushes further with compression, trading compute for memory. Full treatment of these techniques comes in Act 2, Stop 14."
+        message="<strong>GQA is the current sweet spot.</strong> It preserves most of MHA&rsquo;s quality while cutting the KV cache by 8&times;. MLA (DeepSeek) pushes further with compression, trading compute for memory. Full treatment of these techniques comes in Act 2, Stop 15."
       />
     </div>
   );
@@ -709,7 +709,7 @@ function BridgePage() {
         long-range dependencies. The representation gets progressively refined.
       </p>
       <p>
-        <strong className="text-[var(--color-text)]">Stop 9</strong> shows
+        <strong className="text-[var(--color-text)]">Stop 10</strong> shows
         why stacking layers is worth this cost &mdash; and how the feed-forward
         network in each layer digests what attention gathered.
       </p>

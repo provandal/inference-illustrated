@@ -6,7 +6,7 @@ import {
   MEMORY_WALL_SCENARIOS,
   PREFILL_VS_DECODE,
   ACT2_PREVIEW,
-} from '../data/stop10Data';
+} from '../data/stop11Data';
 import { Panel, PanelHeader, InfoBox, Callout } from '../components/ui';
 import PageNav from '../components/PageNav';
 import { useStore } from '../store';
@@ -15,7 +15,7 @@ import { useStore } from '../store';
 
 const NARRATIONS = {
   intro:
-    '<strong>Stop 10: And Now, The Cache &mdash; The Bridge.</strong> Over nine stops we assembled the transformer from the ground up. At every step, one structure has been growing in the background: the KV cache. Now it is time to trace how inference actually works &mdash; step by step, token by token &mdash; and confront what the cache costs.',
+    '<strong>Stop 11: And Now, The Cache &mdash; The Bridge.</strong> Over nine stops we assembled the transformer from the ground up. At every step, one structure has been growing in the background: the KV cache. Now it is time to trace how inference actually works &mdash; step by step, token by token &mdash; and confront what the cache costs.',
 
   'two-phases':
     'You send a 2,000-token message to a model like Claude or Llama. What happens next unfolds in two phases with fundamentally different computational profiles. Tracing the full mechanical sequence &mdash; from prompt entry through token selection to autoregressive generation &mdash; is the single most important concept for everything that follows.',
@@ -51,16 +51,16 @@ function IntroPage() {
             <strong className="text-[var(--color-text)]">Embeddings</strong> give tokens
             a numerical identity (Stops 1, 3). <strong className="text-[var(--color-text)]">Q, K, V</strong> enable
             matching and information retrieval (Stops 3, 5, 6, 7). <strong className="text-[var(--color-text)]">Multi-head
-            attention</strong> provides parallel perspectives (Stop 8). <strong className="text-[var(--color-text)]">FFN</strong> adds
-            non-linear processing and stores learned knowledge (Stop 9). <strong className="text-[var(--color-text)]">Layers</strong> stack
-            for progressive refinement (Stop 9). <strong className="text-[var(--color-text)]">Residual
+            attention</strong> provides parallel perspectives (Stop 9). <strong className="text-[var(--color-text)]">FFN</strong> adds
+            non-linear processing and stores learned knowledge (Stop 10). <strong className="text-[var(--color-text)]">Layers</strong> stack
+            for progressive refinement (Stop 10). <strong className="text-[var(--color-text)]">Residual
             connections</strong> preserve information across depth (Stop 7).
           </p>
           <p>
             At every step, K and V vectors were cached. We first met the KV cache
             in Stop 3, when we learned that K and V are persistent while Q is
-            ephemeral. We calculated its per-token size in Stop 8. We saw it
-            multiply across layers in Stop 9.
+            ephemeral. We calculated its per-token size in Stop 9. We saw it
+            multiply across layers in Stop 10.
           </p>
           <p>
             <strong className="text-[var(--color-text)]">Now it&rsquo;s time to put the
@@ -132,7 +132,7 @@ function TwoPhasesPage() {
             },
             {
               num: '4',
-              text: 'Attention weights are computed via softmax (Stop 6), Values are blended using those weights (Stop 7), and the FFN processes each token (Stop 9). The 2,000 enriched representations flow into the next layer.',
+              text: 'Attention weights are computed via softmax (Stop 6), Values are blended using those weights (Stop 7), and the FFN processes each token (Stop 10). The 2,000 enriched representations flow into the next layer.',
             },
           ].map((step) => (
             <div key={step.num} className="flex gap-3 items-start text-[13px]">
@@ -543,7 +543,7 @@ function CalculationPage() {
             </div>
             <div className="flex gap-2">
               <span className="font-mono text-[var(--color-text)] min-w-[90px] text-right">KV_heads</span>
-              <span>= number of KV head groups (GQA &mdash; Stop 8)</span>
+              <span>= number of KV head groups (GQA &mdash; Stop 9)</span>
             </div>
             <div className="flex gap-2">
               <span className="font-mono text-[var(--color-text)] min-w-[90px] text-right">d<sub>head</sub></span>
@@ -571,7 +571,7 @@ function CalculationPage() {
           <div className="text-[13px] text-[var(--color-text-secondary)] leading-relaxed space-y-2">
             <p>
               That coefficient &mdash; 327,680 bytes &mdash; is the amount of cache added
-              for each additional token. This is the same per-token number from Stop 8;
+              for each additional token. This is the same per-token number from Stop 9;
               now you can see every factor in the formula and trace where each one comes from.
             </p>
             <div className="font-mono text-[12px] text-[var(--color-text)] space-y-1 pl-4">

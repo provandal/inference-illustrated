@@ -1,371 +1,432 @@
-// Stop 16: Intelligent Routing — Where Should This Request Go?
+// Stop 16: The Fabric — How the Cache Moves
 
 export const PAGES = [
-  { id: 'round-robin-cost',    label: 'Round-Robin Is 40x Too Expensive',  type: 'static' },
-  { id: 'routing-decision',    label: 'The Routing Decision',              type: 'interactive' },
-  { id: 'prefix-sharing',      label: 'Prefix Sharing',                    type: 'interactive' },
-  { id: 'llm-d',               label: 'The llm-d Approach',                type: 'static' },
-  { id: 'dynamo-router',       label: 'Dynamo Smart Router',               type: 'static' },
-  { id: 'decision-tree',       label: 'The Routing Decision Tree',         type: 'interactive' },
-  { id: 'feedback-loop',       label: 'The Cache Placement Feedback Loop', type: 'static' },
-  { id: 'summary',             label: 'Stop 16 at a Glance',               type: 'static' },
+  { id: 'four-protocols',    label: 'Four Protocols, Four Distances',    type: 'static' },
+  { id: 'nvlink-domains',    label: 'Scale-Up Domains',                 type: 'static' },
+  { id: 'rdma',              label: 'RDMA — Crossing the Boundary',     type: 'static' },
+  { id: 'cxl',               label: 'CXL — Memory, Not Network',        type: 'static' },
+  { id: 'nvme',              label: 'NVMe-oF — Reaching Storage',       type: 'static' },
+  { id: 'complete-path',     label: 'The Complete Data Path',           type: 'static' },
+  { id: 'fabric-contention', label: 'What Competes for the Fabric',     type: 'static' },
+  { id: 'summary',           label: 'Stop 16 at a Glance',              type: 'static' },
 ];
 
-// --- Narration (rendered with dangerouslySetInnerHTML; NO double-escaping) ---
-
-export const NARRATIONS = {
-  'round-robin-cost':
-    'In our scenario, 32 concurrent users on 8 GPUs. User 17 has been chatting for 20 minutes. Their KV cache (8K tokens, 1.28 GB at FP8) is warm on Decode GPU 3. User 17 sends a follow-up message. A round-robin load balancer picks the next GPU in rotation — say, GPU 5. GPU 5 has no idea who User 17 is. It has no cached context. It must run full prefill on the entire conversation history: 8K tokens through all 80 layers. Cost: ~500 ms of GPU compute, consuming GPU 5’s full capacity during that time. Meanwhile, GPU 3 has User 17’s entire cache sitting in HBM, ready to go. If the request had gone to GPU 3, the follow-up would have needed only incremental prefill on the new message (~200 tokens, ~12 ms). The cache hit saves 488 ms of GPU compute and avoids blocking GPU 5’s other users. <strong>One wrong routing decision. 40× more compute.</strong> And this happens on every request in a round-robin system.',
-
-  'routing-decision':
-    'A cache-aware router must answer three questions for every incoming request: <strong>Which GPU has the relevant cache? How loaded is that GPU? And is the cache benefit worth sending to a busier GPU?</strong> These questions are in tension. The GPU with the best cache match might also be the most loaded. The least loaded GPU might have no relevant cache at all. The router must balance these competing signals in real time, for every request.',
-
-  'prefix-sharing':
-    'So far we’ve looked at routing for individual users — sending User 17 to the GPU that has User 17’s cache. But there’s a second, even more powerful optimization: recognizing when multiple users share the <em>same</em> tokens at the beginning of their prompts. To understand this, we need to define what a <strong>prefix</strong> is in the context of KV cache, and why it creates such a large opportunity for reuse.',
-
-  'llm-d':
-    'The <strong>llm-d</strong> project (Red Hat, Google Cloud, IBM Research, NVIDIA, CoreWeave) is the most mature open-source implementation of KV-cache-aware routing for Kubernetes-native inference. It achieved <strong>57× faster response times</strong> and <strong>2× throughput</strong> on identical hardware by replacing round-robin with intelligent scheduling. Here’s how it works.',
-
-  'dynamo-router':
-    'NVIDIA Dynamo includes its own KV-aware routing layer, with some capabilities that complement or overlap with llm-d’s approach. Here’s how they compare.',
-
-  'decision-tree':
-    'Let’s walk through the complete routing logic for several request types in our scenario. <strong>Pick a scenario below</strong> and watch the router think through the decision — cache lookup, scoring, selection, data movement — with real numbers for each case.',
-
-  'feedback-loop':
-    'Routing doesn’t just react to cache placement — it <strong>drives</strong> cache placement. The router’s decisions determine which GPUs accumulate which users’ caches. Over time, a well-tuned router creates natural cache affinity groups: sets of users whose conversations are co-located on the same GPU, maximizing cache reuse and minimizing cross-GPU transfers.',
-
-  summary:
-    'Intelligent routing turns the KV cache from a per-GPU optimization into a cluster-wide resource. The router is the control plane that connects everything from Stops 11 through 15: it decides which GPU gets the request (batching from Stop 11), whether it goes to prefill or decode pools (disaggregation from Stop 12), which tier the cache is retrieved from (hierarchy from Stop 13), and which fabric carries the data (protocols from Stop 15).',
-};
-
-// --- Page 1: Round-robin vs cache-aware comparison ---
-
-export const ROUTING_COMPARISON = [
-  { metric: 'Prefill compute',      roundRobin: '8K tokens × 80 layers = ~500 ms', cacheAware: '200 tokens × 80 layers = ~12 ms' },
-  { metric: 'TTFT',                 roundRobin: '~500 ms (full recompute)',        cacheAware: '~12 ms (incremental prefill)' },
-  { metric: 'GPU blocked',          roundRobin: 'GPU 5 for 500 ms',                cacheAware: 'GPU 3 for 12 ms' },
-  { metric: 'Other users impacted', roundRobin: 'GPU 5’s batch stalled during prefill', cacheAware: 'Minimal impact' },
-  { metric: 'Cache storage',        roundRobin: '1.28 GB duplicated on GPU 5 (now on both 3 and 5)', cacheAware: 'No duplication' },
-  { metric: 'Cost multiplier',      roundRobin: '~40×',                             cacheAware: '1×', highlight: true },
-];
-
-// --- Page 2: 8 GPU fleet status ---
-
-export const GPU_FLEET = [
-  { id: 0, load: 45, userRange: 'Users 1–4',   cached: 'system prompt + conversations', hasUser17: false },
-  { id: 1, load: 72, userRange: 'Users 5–8',   cached: null, hasUser17: false },
-  { id: 2, load: 30, userRange: 'Users 9–12',  cached: null, hasUser17: false },
-  { id: 3, load: 65, userRange: 'Users 13–17', cached: 'Users 13–17 (incl. User 17’s 8K cache)', hasUser17: true },
-  { id: 4, load: 55, userRange: 'Users 18–21', cached: null, hasUser17: false },
-  { id: 5, load: 20, userRange: 'Users 22–25', cached: null, hasUser17: false },
-  { id: 6, load: 80, userRange: 'Users 26–29', cached: null, hasUser17: false },
-  { id: 7, load: 40, userRange: 'Users 30–32', cached: null, hasUser17: false },
-];
-
-// Scoring steps for the 3-step animation on Page 2
-// Each step highlights different fields on each GPU tile.
-export const ROUTING_STEPS = [
+// Page 1: Protocol overview table (sorted by latency per Patch 1)
+export const PROTOCOL_OVERVIEW = [
   {
-    key: 'idle',
-    label: 'Ready',
-    title: 'Request arrives: User 17, 200-token follow-up',
-    description: 'The router receives User 17’s request. Before routing, every GPU is a candidate. Click “Score request” to watch the router walk through its decision.',
+    protocol: 'NVLink 6',
+    bandwidth: '3.6 TB/s per GPU',
+    transferTime: '~1.2 ms',
+    latencyClass: 'Nanoseconds',
+    distance: 'Within scale-up domain (NVL8 to NVL576+)',
+    primaryUse: 'TP all-reduce, P/D transfer within domain',
   },
   {
-    key: 'cache',
-    label: 'Step 1 — Cache affinity',
-    title: 'Step 1 — Cache affinity scoring',
-    description: 'The router queries the KV cache index: “Which GPUs have User 17’s prefix cached?” Only GPU 3 has any of it (100% match, 8K tokens). Every other GPU scores 0%.',
+    protocol: 'CXL 2.0',
+    bandwidth: '64 GB/s (x16 PCIe 5.0)',
+    transferTime: '~70 ms',
+    latencyClass: '<100 ns',
+    distance: 'Intra-rack (CPU to pooled DRAM)',
+    primaryUse: 'Memory-tier KV cache pooling',
   },
   {
-    key: 'load',
-    label: 'Step 2 — Load scoring',
-    title: 'Step 2 — Load scoring',
-    description: 'The router scores each GPU on available capacity (100% − current load). GPU 5 has the most headroom at 80% capacity. GPU 6 has the least at 20%.',
+    protocol: 'InfiniBand NDR',
+    bandwidth: '50 GB/s (400 Gbps)',
+    transferTime: '~90 ms',
+    latencyClass: '1\u20132 \u00b5s',
+    distance: 'Inter-domain / inter-pod',
+    primaryUse: 'P/D transfer across scale-up domains',
   },
   {
-    key: 'combined',
-    label: 'Step 3 — Combined',
-    title: 'Step 3 — Combined decision (cache × 0.8 + capacity × 0.2)',
-    description: 'The router computes a weighted score. Cache affinity is heavily favored because the cost of a miss is so high. GPU 3 wins by a wide margin: 87 points vs. 16 for GPU 5.',
+    protocol: 'RoCEv2 / Spectrum-X',
+    bandwidth: '50 GB/s (400 Gbps)',
+    transferTime: '~90 ms',
+    latencyClass: '5\u201310 \u00b5s',
+    distance: 'Inter-domain / inter-pod',
+    primaryUse: 'P/D transfer, ICMS access',
   },
   {
-    key: 'routed',
-    label: 'Routed',
-    title: 'Routed → GPU 3',
-    description: 'User 17’s request goes to GPU 3. Only ~200 new tokens need incremental prefill (~12 ms TTFT). The cache did its job.',
+    protocol: 'NVMe/RoCE',
+    bandwidth: '14\u2013100+ GB/s',
+    transferTime: '~45\u2013320 ms',
+    latencyClass: '10\u2013100 \u00b5s',
+    distance: 'Multi-rack',
+    primaryUse: 'G3/G3.5/G4 storage tier access',
   },
 ];
 
-// Combined scoring table for Step 3
-export const SCORING_TABLE = [
-  { gpu: 'GPU 3', id: 3, cacheScore: 100, capacity: 35, points: 87, winner: true },
-  { gpu: 'GPU 5', id: 5, cacheScore: 0,   capacity: 80, points: 16, winner: false },
-  { gpu: 'GPU 2', id: 2, cacheScore: 0,   capacity: 70, points: 14, winner: false },
-  { gpu: 'GPU 7', id: 7, cacheScore: 0,   capacity: 60, points: 12, winner: false },
-  { gpu: 'GPU 0', id: 0, cacheScore: 0,   capacity: 55, points: 11, winner: false },
-  { gpu: 'GPU 4', id: 4, cacheScore: 0,   capacity: 45, points: 9,  winner: false },
-  { gpu: 'GPU 1', id: 1, cacheScore: 0,   capacity: 28, points: 6,  winner: false },
-  { gpu: 'GPU 6', id: 6, cacheScore: 0,   capacity: 20, points: 4,  winner: false },
-];
-
-// --- Page 3: Prefix sharing ---
-
-export const PREFIX_SOURCES = [
+// Page 2: Scale-up domain sizes (Patch 2)
+export const NVLINK_DOMAINS = [
   {
-    num: 1,
-    title: 'System prompts',
-    tagline: 'Same 2K tokens for all 500 engineers',
-    body: 'Every conversation with the 500-engineer assistant begins with the same system prompt — instructions telling the model how to behave, what tools are available, what format to use. That ~2,000 tokens of instructions is identical for User 1 and User 500. The KV cache for those tokens is the same regardless of which user sent the request.',
-    blocks: [
-      { label: 'System prompt: ~2K', kind: 'shared', tokens: 2000 },
-      { label: 'User msg: ~200', kind: 'unique', tokens: 200 },
-    ],
+    config: 'NVL2',
+    gpus: 2,
+    scope: 'NVLink bridge (2-GPU workstation/HPC)',
+    bwPerGpu: '600 GB/s (NVLink 4 bridge)',
+    totalBw: '1.2 TB/s',
+    status: 'Legacy (A100/H100 workstation)',
   },
   {
-    num: 2,
-    title: 'RAG contexts',
-    tagline: '20 engineers querying the same policy document',
-    body: 'In RAG pipelines, retrieved documents are prepended to the user’s question. When 20 engineers ask questions about the same 8K-token policy document, the first 10K tokens (system prompt + document) are identical across all 20 queries. Only the 200-token question differs.',
-    blocks: [
-      { label: 'System: 2K', kind: 'shared', tokens: 2000 },
-      { label: 'Document: 8K (shared across 20 users)', kind: 'shared', tokens: 8000 },
-      { label: 'Question: 200', kind: 'unique', tokens: 200 },
-    ],
+    config: 'GB200 NVL4',
+    gpus: 4,
+    scope: 'Superchip board (4 Blackwell + 2 Grace)',
+    bwPerGpu: '1.8 TB/s (NVLink 5)',
+    totalBw: '7.2 TB/s',
+    status: 'Production (2025, HPC/AI)',
   },
   {
-    num: 3,
-    title: 'Multi-turn conversations',
-    tagline: 'History is the prefix',
-    body: 'In a multi-turn conversation, each new message includes all previous turns as context. Turn 5 contains turns 1–4 as its prefix. If the KV cache for turns 1–4 is still in HBM, the model only needs to compute the new message’s tokens. This is the “returning user” case — the conversation history <em>is</em> the prefix.',
-    blocks: [
-      { label: 'Turns 1–4: ~6K (history)', kind: 'shared', tokens: 6000 },
-      { label: 'Turn 5: 250', kind: 'unique', tokens: 250 },
-    ],
-  },
-];
-
-// Prefix tree match examples for Page 3
-export const PREFIX_MATCHES = [
-  {
-    label: 'Full match',
-    color: 'teal',
-    dot: 'var(--color-teal)',
-    text: 'The entire prefix is cached. Skip to the first uncached token and begin prefill from there.',
-    bar: { cached: 100, fresh: 0 },
-    savings: '~12 ms prefill avoided',
+    config: 'HGX NVL8',
+    gpus: 8,
+    scope: 'Single node',
+    bwPerGpu: '1.8 TB/s (NVLink 5, Blackwell)',
+    totalBw: '14.4 TB/s',
+    status: 'Production (2024\u2013)',
   },
   {
-    label: 'Partial match',
-    color: 'amber',
-    dot: 'var(--color-amber)',
-    text: 'Some prefix tokens are cached, others aren’t. Resume prefill from the first uncached token.',
-    bar: { cached: 60, fresh: 40 },
-    savings: '~7 ms prefill avoided',
+    config: 'GB200 NVL72',
+    gpus: 72,
+    scope: 'Single rack (18 compute trays)',
+    bwPerGpu: '1.8 TB/s (NVLink 5)',
+    totalBw: '130 TB/s',
+    status: 'Production (2025\u2013)',
   },
   {
-    label: 'No match',
-    color: 'red',
-    dot: 'var(--color-red)',
-    text: 'No shared prefix exists on this GPU. Full prefill required from the root.',
-    bar: { cached: 0, fresh: 100 },
-    savings: '0 ms avoided',
+    config: 'Vera Rubin NVL72',
+    gpus: 72,
+    scope: 'Single rack (18 compute trays)',
+    bwPerGpu: '3.6 TB/s (NVLink 6)',
+    totalBw: '260 TB/s',
+    status: 'H2 2026',
+  },
+  {
+    config: 'Vera Rubin NVL144 CPX',
+    gpus: 144,
+    scope: 'Rubin SXM + CPX accelerators (only ~48 on NVLink fabric)',
+    bwPerGpu: '3.6 TB/s (NVLink 6)',
+    totalBw: 'N/A (not a 144-GPU all-to-all domain)',
+    status: 'De-prioritized (see note below)',
+  },
+  {
+    config: 'Vera Rubin Ultra NVL576',
+    gpus: 576,
+    scope: 'Multi-rack (Kyber optical)',
+    bwPerGpu: '3.6 TB/s (NVLink 6)',
+    totalBw: '2+ PB/s',
+    status: 'Announced (2027+)',
+  },
+  {
+    config: 'Future (NVL1152)',
+    gpus: '1,152',
+    scope: 'Multi-rack (Kyber optical)',
+    bwPerGpu: 'TBD (NVLink 7?)',
+    totalBw: 'TBD',
+    status: 'Roadmap (Feynman)',
   },
 ];
 
-export const PREFIX_ROUTING_SAVINGS = [
-  { metric: 'System prompt prefill',            without: '32 users × 2K tokens = 64K tokens',       withRouting: '8 GPUs × 2K = 16K tokens' },
-  { metric: 'Per-user TTFT (new conversation)', without: '~60 ms (2K prefix + user message)',       withRouting: '~30 ms (user message only)' },
-  { metric: 'GPU compute saved',                without: '0',                                       withRouting: '48K tokens worth of prefill (~288 ms aggregate)' },
-  { metric: 'Equivalent GPU time freed',        without: '0',                                       withRouting: '~1.5 GPU-seconds per batch cycle' },
+// Page 3: RDMA data path steps (Patch 3 applied)
+export const RDMA_DATA_PATH = [
+  { step: 1, description: 'Prefill GPU completes computation.' },
+  { step: 2, description: 'KVBM marks the cache blocks as ready for transfer (committed state from Stop 14). KVBM then instructs NIXL to execute the transfer. NIXL initiates an RDMA WRITE operation \u2014 the prefill GPU\u2019s NIC (ConnectX-7 or ConnectX-9) reads the cache blocks directly from GPU HBM via GPUDirect RDMA, bypassing the CPU entirely. (KVBM is the orchestrator that decides WHAT moves and WHEN. NIXL is the execution layer that performs the actual data transfer using the appropriate transport protocol.)' },
+  { step: 3, description: 'The data travels over the fabric (Ethernet or IB) to the decode node\u2019s NIC.' },
+  { step: 4, description: 'The decode node\u2019s NIC writes the data directly into the decode GPU\u2019s HBM \u2014 again bypassing the CPU.' },
+  { step: 5, description: 'Total CPU involvement: zero. The entire transfer is NIC-to-NIC with GPU memory on both ends.' },
 ];
 
-export const PREFIX_BENCHMARKS = [
-  { metric: 'Cache hit rate',   value: '87%',      note: 'with precise prefix-cache-aware scheduling' },
-  { metric: 'TTFT improvement', value: '57× faster', note: 'median, compared to round-robin' },
-  { metric: 'Throughput gain',  value: '2×',        note: 'on identical hardware' },
+// Page 3: IB vs RoCEv2 comparison
+export const IB_VS_ROCE = [
+  { property: 'Bandwidth',             ib: '50 GB/s per port',                    roce: '50 GB/s per port' },
+  { property: 'Latency',               ib: '1\u20132 \u00b5s',                    roce: '5\u201310 \u00b5s' },
+  { property: 'Congestion control',    ib: 'Credit-based (built-in lossless)',     roce: 'Requires PFC + ECN + DCQCN tuning' },
+  { property: 'Routing',               ib: 'Subnet manager (centralized)',         roce: 'Standard IP routing (ECMP)' },
+  { property: 'Multi-vendor',          ib: 'NVIDIA-centric (Quantum switches)',    roce: 'Broad ecosystem (Spectrum-X, Arista, Cisco, Juniper)' },
+  { property: 'Operational complexity', ib: 'Lower (self-tuning fabric)',          roce: 'Higher (PFC/ECN configuration critical)' },
+  { property: 'Scalability',           ib: 'Excellent within a fabric partition',  roce: 'Excellent across L3 boundaries' },
+  { property: 'Cost',                  ib: 'Higher (dedicated fabric)',            roce: 'Lower (shared Ethernet infrastructure)' },
+  { property: 'Best for',             ib: 'Large-scale training, ultra-low latency inference', roce: 'Inference clusters, converged fabrics, cost-sensitive' },
 ];
 
-// --- Page 4: llm-d architecture ---
-
-export const LLMD_COMPONENTS = [
-  {
-    num: 1,
-    title: 'KV Cache Indexer',
-    text: 'A high-performance service that maintains a near-real-time global view of KV cache block locality across all vLLM pods. It subscribes to KVEvents streamed from each vLLM instance — structured metadata emitted as KV blocks are created or evicted. The indexer tracks which blocks reside on which pods and on which tier (GPU, CPU, storage).',
-    detail: 'For infrastructure architects: this is conceptually a distributed key-value store where the keys are token-sequence hashes and the values are (pod_id, tier, block_address) tuples. The memory overhead is negligible — llm-d documents a 1,000,000:1 data-to-metadata ratio. The entire index for a large cluster fits in a few hundred MB.',
-  },
-  {
-    num: 2,
-    title: 'Inference Scheduler (EPP — External Processing Pod)',
-    text: 'Sits behind the Kubernetes Gateway API and makes routing decisions for every incoming request. For each request, it tokenizes the prompt prefix, queries the KV Cache Indexer for pods with that prefix cached, and scores each candidate pod on cache affinity, load (KV utilization + queue depth), and — experimentally — predicted TTFT/TPOT from an ML model trained on live traffic. The highest-scoring pod wins.',
-    detail: null,
-  },
-  {
-    num: 3,
-    title: 'Disaggregated Serving Sidecar',
-    text: 'For disaggregated deployments (Stop 12), the scheduler also decides which prefill instance handles a new request and which decode instance receives the KV cache afterward. The sidecar coordinates the P/D handoff, instructing vLLM to transfer KV cache via NIXL over the appropriate interconnect (NVLink within the scale-up domain, RDMA across domains).',
-    detail: null,
-  },
+// Page 4: CXL vs RDMA comparison
+export const CXL_VS_RDMA = [
+  { property: 'Access model',    rdma: 'Copy: source NIC reads, fabric transfers, dest NIC writes', cxl: 'Memory: direct load/store to shared memory pool' },
+  { property: 'Latency',         rdma: '1\u201310 \u00b5s (protocol) + transfer time',              cxl: '<100 ns (memory-like access)' },
+  { property: 'CPU involvement', rdma: 'Zero (GPUDirect RDMA)',                                     cxl: 'Zero (direct memory mapping)' },
+  { property: 'Reach',           rdma: 'Multi-rack (Ethernet/IB fabric)',                            cxl: 'Intra-rack (PCIe distance, ~1\u20132 m)' },
+  { property: 'Bandwidth',       rdma: '50\u2013100 GB/s per port',                                 cxl: '64 GB/s (x16 PCIe 5.0), up to 128 GB/s (CXL 3.0)' },
+  { property: 'Shared access',   rdma: 'Requires explicit coordination',                            cxl: 'Memory-coherent (hardware-managed)' },
+  { property: 'Maturity',        rdma: 'Production since 2015+',                                    cxl: 'First cloud instances Nov 2025 (Microsoft Azure)' },
 ];
 
-export const LLMD_STRATEGIES = [
-  { strategy: 'Round-robin',          howItWorks: 'Cycle through pods',                                                 bestFor: 'Baseline (worst performance)' },
-  { strategy: 'Load-aware',           howItWorks: 'Route to least-loaded pod',                                          bestFor: 'Workloads without prefix sharing' },
-  { strategy: 'Load + prefix',        howItWorks: 'Combine load and prefix cache affinity scores',                      bestFor: 'Most production workloads' },
-  { strategy: 'Precise prefix-cache', howItWorks: 'Real-time introspection of distributed vLLM caches via KV Indexer',  bestFor: 'Maximum cache hit rate' },
-  { strategy: 'Predicted latency',    howItWorks: 'ML model trained on live traffic predicts TTFT/TPOT per pod',        bestFor: 'Adaptive to dynamic workloads' },
+// Page 4: CXL production results
+export const CXL_PRODUCTION_RESULTS = [
+  { source: 'TraCT (UC research, 2025)',        result: 'CXL-based KV cache sharing for disaggregated inference on Dynamo achieved up to 9.8\u00d7 TTFT reduction over RDMA/NIXL baseline.' },
+  { source: 'XConn + MemVerge (SC 2025)',        result: 'CXL memory pool for KV cache achieved 3.8\u00d7 speedup over 200G RDMA and 6.5\u00d7 over 100G RDMA.' },
+  { source: 'Astera Labs (OCP 2025)',            result: 'Leo CXL Smart Memory Controllers demonstrated 3\u00d7 concurrent LLM instances at higher throughput and 3\u00d7 lower latency.' },
+  { source: 'Enfabrica EMFASYS',                result: 'Combines CXL and Ethernet RDMA in a single switch \u2014 144 CXL 2.0 lanes with up to 18 TB pooled DDR5 memory, plus 800 GbE RDMA connectivity.' },
 ];
 
-export const LLMD_BENCHMARKS = [
-  { metric: 'TTFT (median)',  roundRobin: '1,200 ms', loadPrefix: '450 ms',     precisePrefix: '21 ms' },
-  { metric: 'Throughput',     roundRobin: 'Baseline', loadPrefix: '1.4×',       precisePrefix: '2.0×' },
-  { metric: 'Cache hit rate', roundRobin: '~15%',     loadPrefix: '~60%',       precisePrefix: '~87%' },
-  { metric: 'Improvement',    roundRobin: '—',        loadPrefix: '2.7× faster', precisePrefix: '57× faster', highlight: true },
+// Page 5: NVMe transport options (Patch 5 applied)
+export const NVME_TRANSPORTS = [
+  { transport: 'NVMe/RoCE', protocol: 'RDMA verbs over RoCEv2',  latency: '10\u201320 \u00b5s', bandwidth: '50+ GB/s',  relevance: 'Primary transport for ICMS and high-performance G3.5/G4 access' },
+  { transport: 'NVMe/FC',   protocol: 'Fibre Channel NVMe',      latency: '20\u201350 \u00b5s', bandwidth: '32\u201364 Gbps', relevance: 'Not currently used for KV cache infrastructure' },
+  { transport: 'NVMe/TCP',  protocol: 'Standard TCP/IP',          latency: '50\u2013200 \u00b5s', bandwidth: '10\u201325 GB/s', relevance: 'Cost-sensitive G4 storage access, brownfield deployments' },
 ];
 
-// --- Page 5: llm-d vs Dynamo ---
-
-export const LLMD_VS_DYNAMO = [
-  { property: 'Architecture',     llmd: 'Kubernetes-native (Gateway API + EPP)',         dynamo: 'Dynamo-native (Rust framework)' },
-  { property: 'Cache tracking',   llmd: 'KVEvents + global Indexer',                     dynamo: 'Radix Tree + hash matching' },
-  { property: 'Scheduling',       llmd: 'Pluggable scorers (load, prefix, latency ML)',  dynamo: 'Integrated with Planner' },
-  { property: 'Hardware support', llmd: 'Multi-vendor (NVIDIA, Intel XPU, Google TPU)',  dynamo: 'NVIDIA-focused' },
-  { property: 'KV transfer',      llmd: 'NIXL, Mooncake, LMCache connectors',            dynamo: 'NIXL native' },
-  { property: 'P/D coordination', llmd: 'Sidecar orchestration',                         dynamo: 'Integrated disaggregated serving' },
-  { property: 'Open source',      llmd: 'Yes (Red Hat, Google, IBM, NVIDIA, CoreWeave)', dynamo: 'Yes (NVIDIA)' },
-  { property: 'Maturity',         llmd: 'v0.5 (Feb 2026), production-validated',         dynamo: 'GA with Dynamo' },
+// Page 5: ICMS data path steps (Patch 5 Step 3 corrected)
+export const ICMS_DATA_PATH = [
+  { step: 1, description: 'KVBM issues a get() request.' },
+  { step: 2, description: 'NIXL translates this to an NVMe/RoCE read command.' },
+  { step: 3, description: 'The local BlueField-4 DPU sends the NVMe/RoCE read command over the Spectrum-X Ethernet (RDMA transport) to the BlueField-4 DPU fronting the ICMS enclosure.' },
+  { step: 4, description: 'BlueField-4 terminates the NVMe/RoCE protocol, reads the KV block from local NVMe flash.' },
+  { step: 5, description: 'The data returns over the same RDMA path to GPU HBM via GPUDirect.' },
 ];
 
-// --- Page 6: Decision tree scenarios ---
-// Each scenario drives a multi-stage animation with these stages:
-//   cache_lookup → scoring → selection → data_movement → done
-//
-// selectedGpu = the GPU we route to (for highlight animation)
-// cacheTier = which tier the cache currently lives in
-// ttft / roundRobinTtft used in dual bar chart (ms values)
-
-export const ROUTING_SCENARIOS = [
+// Page 6: Complete data path steps
+export const DATA_PATH_STEPS = [
   {
-    id: 'A',
-    title: 'Returning user, cache hot in GPU 3',
-    subtitle: 'Cache: 8K tokens, GPU 3 HBM (G1)',
-    description: 'User 17 sends a follow-up. Cache is fresh in HBM on GPU 3.',
-    selectedGpu: 3,
-    cacheTier: 'HBM (G1)',
-    cacheTierColor: 'var(--color-teal)',
-    stages: [
-      { key: 'lookup',   title: 'Cache lookup',   text: 'Indexer returns: GPU 3 holds 100% of User 17’s 8K cache in HBM.' },
-      { key: 'scoring',  title: 'Scoring',         text: 'GPU 3: cache 100%, load 65% → 87 pts. No other GPU holds any of it — GPU 3 wins easily.' },
-      { key: 'selection', title: 'Selection',      text: 'Route to GPU 3.' },
-      { key: 'movement', title: 'Data movement',  text: 'No cache movement needed. Incremental prefill only: ~200 tokens (~12 ms).' },
-    ],
-    ttftMs: 12,
-    roundRobinTtftMs: 500,
-    ttft: '~12 ms',
-    roundRobinTtft: '~500 ms',
-    verdict: 'Cache-aware routing is 42× faster — the happy path.',
+    step: 1,
+    title: 'Prefill (intra-node)',
+    dataPath: 'Embedding \u2192 GPU compute \u2192 KV cache in Prefill GPU HBM',
+    protocol: 'Internal to GPU (no network)',
+    dataVolume: '\u2014',
+    latency: '0 (computation, not transfer)',
   },
   {
-    id: 'B',
-    title: 'Returning user, cache cold (in DRAM)',
-    subtitle: 'Cache demoted to G2 (DRAM) on GPU 3’s server',
-    description: 'User 17 returns after a 5-minute break. Their cache was evicted from HBM and sits in host DRAM on GPU 3’s server.',
-    selectedGpu: 3,
-    cacheTier: 'DRAM (G2)',
-    cacheTierColor: 'var(--color-blue)',
-    stages: [
-      { key: 'lookup',   title: 'Cache lookup',   text: 'Indexer: GPU 3 still owns User 17’s cache — tier tag says G2 (DRAM on the host).' },
-      { key: 'scoring',  title: 'Scoring',         text: 'GPU 3 still scores highest: the DRAM tier is local to the host, promotion back to HBM is cheap.' },
-      { key: 'selection', title: 'Selection',      text: 'Route to GPU 3.' },
-      { key: 'movement', title: 'Data movement',  text: 'KVBM promotes cache G2 → G1 over PCIe (~70 ms), then incremental prefill (~12 ms). Total: ~82 ms.' },
-    ],
-    ttftMs: 82,
-    roundRobinTtftMs: 500,
-    ttft: '~82 ms',
-    roundRobinTtft: '~500 ms',
-    verdict: 'Even a cold cache in DRAM beats full prefill by 6×.',
+    step: 2,
+    title: 'P/D transfer (cross-domain, disaggregated)',
+    dataPath: 'Prefill GPU HBM \u2192 ConnectX NIC \u2192 Spectrum-X switch \u2192 ConnectX NIC \u2192 Decode GPU HBM',
+    protocol: 'RDMA (RoCEv2) via GPUDirect',
+    dataVolume: '4.48 GB (FP8)',
+    latency: '~90 ms',
   },
   {
-    id: 'C',
-    title: 'Returning user, cache in ICMS',
-    subtitle: 'Cache in shared G3.5 tier; GPU 3 overloaded at 90%',
-    description: 'User 17 returns. Their cache was demoted to ICMS (G3.5), a shared tier accessible from any GPU. GPU 3 is at 90% load; GPU 5 is at 20%.',
-    selectedGpu: 5,
-    cacheTier: 'ICMS (G3.5)',
-    cacheTierColor: 'var(--color-amber)',
-    stages: [
-      { key: 'lookup',   title: 'Cache lookup',   text: 'Indexer: User 17’s cache is in ICMS — accessible from any GPU. No GPU has it in HBM.' },
-      { key: 'scoring',  title: 'Scoring',         text: 'GPU 3 is at 90% load (queue delay risk). GPU 5 at 20% load — and ICMS is reachable from anywhere.' },
-      { key: 'selection', title: 'Selection',      text: 'Route to GPU 5 (lower load wins over sticky affinity).' },
-      { key: 'movement', title: 'Data movement',  text: 'GPU 5 pulls cache from ICMS via NVMe/RoCE (~100 ms), then incremental prefill (~12 ms). Total: ~112 ms.' },
-    ],
-    ttftMs: 112,
-    roundRobinTtftMs: 500,
-    ttft: '~112 ms',
-    roundRobinTtft: '~500 ms',
-    verdict: 'ICMS makes cache location fungible — the router picks on load.',
+    step: 3,
+    title: 'Active decode',
+    dataPath: 'Decode GPU HBM (read at every layer, every decode step)',
+    protocol: 'Internal to GPU',
+    dataVolume: '4.48 GB read + small append per step',
+    latency: '\u2014',
   },
   {
-    id: 'D',
-    title: 'New user, shared system prompt prefix',
-    subtitle: 'System prompt (2K) cached on all 8 GPUs',
-    description: 'User 501 starts a new conversation. The 2K-token system prompt is already cached on every GPU because earlier users warmed it up.',
-    selectedGpu: 5,
-    cacheTier: 'Shared prefix in HBM on all GPUs',
-    cacheTierColor: 'var(--color-teal)',
-    stages: [
-      { key: 'lookup',   title: 'Cache lookup',   text: 'Indexer: the system prompt prefix is cached on GPUs 0–7 — 100% match on all of them.' },
-      { key: 'scoring',  title: 'Scoring',         text: 'Cache affinity ties across all GPUs — load score breaks the tie. GPU 5 has the most headroom at 80% capacity.' },
-      { key: 'selection', title: 'Selection',      text: 'Route to GPU 5 (least loaded of the prefix-holding pods).' },
-      { key: 'movement', title: 'Data movement',  text: 'GPU 5 reuses cached system prompt (0 ms), then prefills only the user’s ~500-token message (~30 ms). Total: ~30 ms.' },
-    ],
-    ttftMs: 30,
-    roundRobinTtftMs: 60,
-    ttft: '~30 ms',
-    roundRobinTtft: '~60 ms',
-    verdict: 'Shared prefix cuts new-user TTFT in half.',
+    step: 4,
+    title: 'Demotion to DRAM (idle conversation)',
+    dataPath: 'Decode GPU HBM \u2192 PCIe Gen5 \u2192 CPU DRAM',
+    protocol: 'PCIe DMA',
+    dataVolume: '4.48 GB',
+    latency: '~70 ms (4.48 GB / 64 GB/s)',
   },
   {
-    id: 'E',
-    title: 'New user, unique document (no cache anywhere)',
-    subtitle: '28K-token upload, nothing cached',
-    description: 'User 501 uploads a 28K-token document. No cache exists anywhere. This is a pure prefill request.',
-    selectedGpu: null, // routed to Prefill Pool, no single GPU highlight
-    cacheTier: 'None',
-    cacheTierColor: 'var(--color-red)',
-    stages: [
-      { key: 'lookup',   title: 'Cache lookup',   text: 'Indexer: no prefix match on any GPU. Nothing to reuse.' },
-      { key: 'scoring',  title: 'Scoring',         text: 'Cache scores are all zero. Route to the prefill pool (disaggregated serving, Stop 12).' },
-      { key: 'selection', title: 'Selection',      text: 'Route to Prefill Pool → least-loaded prefill instance.' },
-      { key: 'movement', title: 'Data movement',  text: 'Full prefill: 28K tokens, ~500 ms. KV cache transfers to a Decode pool GPU via NIXL (~1.2 ms intra scale-up domain, ~90 ms cross-domain).' },
-    ],
-    ttftMs: 500,
-    roundRobinTtftMs: 500,
-    ttft: '~500 ms',
-    roundRobinTtft: '~500 ms',
-    verdict: 'Pure prefill — no cache can help here. Routing still steers to the right pool.',
+    step: 5,
+    title: 'Promotion back to HBM (user returns)',
+    dataPath: 'CPU DRAM \u2192 PCIe Gen5 \u2192 Decode GPU HBM',
+    protocol: 'PCIe DMA',
+    dataVolume: '4.48 GB',
+    latency: '~70 ms',
+  },
+  {
+    step: 6,
+    title: 'Demotion to ICMS (extended idle)',
+    dataPath: 'CPU DRAM \u2192 ConnectX NIC \u2192 Spectrum-X switch \u2192 BlueField-4 DPU \u2192 NVMe flash',
+    protocol: 'NVMe/RoCE',
+    dataVolume: '4.48 GB',
+    latency: '~90 ms',
+  },
+  {
+    step: 7,
+    title: 'Promotion from ICMS (user returns next day)',
+    dataPath: 'NVMe flash \u2192 BlueField-4 DPU \u2192 Spectrum-X switch \u2192 ConnectX NIC \u2192 GPU HBM',
+    protocol: 'NVMe/RoCE \u2192 GPUDirect',
+    dataVolume: '4.48 GB',
+    latency: '~90\u2013100 ms (vs. recomputation: ~2,000 ms)',
+  },
+  {
+    step: 8,
+    title: 'Archive to network storage (conversation ends)',
+    dataPath: 'ICMS \u2192 Spectrum-X \u2192 Storage system (Dell/VAST/WEKA/DDN)',
+    protocol: 'RDMA or NVMe/RoCE or S3',
+    dataVolume: '4.48 GB',
+    latency: 'Async (not on critical path)',
   },
 ];
 
-// --- Page 7: Feedback loop steps ---
-
-export const FEEDBACK_LOOP_STEPS = [
-  { num: 1, label: 'Request arrives', text: 'A user request enters the cluster through the Gateway API.' },
-  { num: 2, label: 'Router checks cache index', text: 'The scheduler queries the KV Cache Indexer for pods holding this request’s prefix.' },
-  { num: 3, label: 'GPU processes request', text: 'The winning GPU runs prefill (or reuses the cache), then decode. KV cache grows on that GPU.' },
-  { num: 4, label: 'Cache index updates', text: 'The vLLM pod emits KVEvents. The Indexer now knows this GPU holds even more of this user’s cache.' },
-  { num: 5, label: 'Next request from same user', text: 'When the user follows up, the router sees an even stronger cache match on the same GPU.' },
-  { num: 6, label: 'Routes to same GPU again', text: 'Cache affinity is reinforced. The user is now “sticky” to this GPU — conversations accumulate there.' },
+// Page 6: Protocol summary by tier transition (Patch 7 applied)
+export const TIER_PROTOCOL_SUMMARY = [
+  { transition: 'G1 \u2194 G1 (within scale-up domain)', protocol: 'NVLink 6',             bandwidth: '3.6 TB/s per GPU', transferTime: '~1.2 ms' },
+  { transition: 'G1 \u2194 G1 (across scale-up domains)', protocol: 'RDMA (RoCEv2/IB)',     bandwidth: '50\u2013100 GB/s',  transferTime: '~45\u201390 ms' },
+  { transition: 'G1 \u2194 G2',                          protocol: 'PCIe Gen5 DMA',        bandwidth: '64 GB/s',           transferTime: '~70 ms' },
+  { transition: 'G1/G2 \u2194 G3',                       protocol: 'NVMe/PCIe (local)',    bandwidth: '14\u201360 GB/s',   transferTime: '~75\u2013320 ms' },
+  { transition: 'G1/G2 \u2194 G3.5',                     protocol: 'NVMe/RoCE',            bandwidth: '50+ GB/s',          transferTime: '~90\u2013100 ms' },
+  { transition: 'Any \u2194 G4',                          protocol: 'NVMe/RoCE or NVMe/TCP', bandwidth: '1\u2013100 GB/s', transferTime: 'Varies' },
+  { transition: 'Future: G1/G2 \u2194 CXL pool',         protocol: 'CXL.mem',              bandwidth: '64\u2013128 GB/s',  transferTime: '~35\u201370 ms', future: true },
 ];
 
-// --- Page 8: Summary ---
+// Page 7: Traffic types on inference fabric (Patch 8 applied)
+export const FABRIC_TRAFFIC = [
+  { type: 'TP all-reduce (TP>1 only)',     protocol: 'RDMA (NVLink intra, IB/RoCE inter)', pattern: '2 per layer per pass (64/160/252 for 8B/70B/405B). Zero at TP=1.', latencySensitivity: 'Very high (blocks decode)', bandwidth: 'Moderate' },
+  { type: 'P/D KV transfer',               protocol: 'NVLink (within scale-up domain) or RDMA (across scale-up domains)', pattern: 'Occasional, large (GB)', latencySensitivity: 'High (adds to TTFT)', bandwidth: 'High burst' },
+  { type: 'Cache promotion (G3.5\u2192G1)', protocol: 'NVMe/RoCE',                         pattern: 'Occasional, large (GB)',          latencySensitivity: 'High (adds to TTFT)',        bandwidth: 'High burst' },
+  { type: 'Cache demotion (G1\u2192G3.5)',  protocol: 'NVMe/RoCE',                         pattern: 'Occasional, large (GB)',          latencySensitivity: 'Low (background)',            bandwidth: 'Moderate' },
+  { type: 'Model weight loading',           protocol: 'RDMA or GDS',                        pattern: 'Rare, very large (35\u2013140 GB)', latencySensitivity: 'Low (startup only)',        bandwidth: 'Very high burst' },
+  { type: 'Gradient sync (if training)',     protocol: 'RDMA',                               pattern: 'Continuous, large',               latencySensitivity: 'Very high',                  bandwidth: 'Very high' },
+  { type: 'Health checks / control plane',   protocol: 'TCP/IP',                             pattern: 'Continuous, tiny',                latencySensitivity: 'Low',                        bandwidth: 'Negligible' },
+];
 
+// Page 1: Interactive protocol rings (concentric distance rings)
+export const PROTOCOL_RINGS = [
+  {
+    id: 'nvlink',
+    label: 'NVLink 6',
+    bandwidth: '3.6 TB/s per GPU',
+    latency: 'ns',
+    distance: 'Within scale-up domain',
+    color: 'var(--color-primary)',
+    bgColor: 'var(--color-primary-bg)',
+    ringSize: 110, // center
+    description: 'Intra-domain GPU-to-GPU. Memory-semantic speed. NVSwitch all-to-all fabric.',
+  },
+  {
+    id: 'cxl',
+    label: 'CXL 2.0',
+    bandwidth: '64 GB/s',
+    latency: '<100 ns',
+    distance: 'Intra-rack',
+    color: 'var(--color-teal)',
+    bgColor: 'var(--color-teal-bg)',
+    ringSize: 170,
+    description: 'Load/store semantics to pooled DRAM. CPU or GPU via PCIe. Rack-level reach.',
+  },
+  {
+    id: 'rdma',
+    label: 'RDMA (IB/RoCEv2)',
+    bandwidth: '50 GB/s',
+    latency: '1\u201310 \u00b5s',
+    distance: 'Inter-domain, inter-pod',
+    color: 'var(--color-blue)',
+    bgColor: 'var(--color-blue-bg)',
+    ringSize: 240,
+    description: 'Node-to-node GPU HBM transfers via GPUDirect. Spectrum-X or Quantum-X800.',
+  },
+  {
+    id: 'nvme',
+    label: 'NVMe/RoCE',
+    bandwidth: '14\u2013100+ GB/s',
+    latency: '10\u2013100 \u00b5s',
+    distance: 'Multi-rack',
+    color: 'var(--color-text-muted)',
+    bgColor: 'var(--color-surface-muted)',
+    ringSize: 320,
+    description: 'Reach to remote flash tiers. ICMS, G3.5, G4 storage access over RDMA.',
+  },
+];
+
+// Page 3: RDMA animation frames (Prefill GPU -> Decode GPU via GPUDirect)
+export const RDMA_ANIMATION_STEPS = [
+  { id: 'prefill-hbm',  label: 'Prefill GPU HBM',  sub: 'KV blocks committed', color: 'var(--color-primary)' },
+  { id: 'gpudirect-tx', label: 'GPUDirect RDMA',    sub: 'NIC reads HBM, no CPU', color: 'var(--color-text)' },
+  { id: 'nic-tx',       label: 'ConnectX NIC',       sub: 'RDMA WRITE posted', color: 'var(--color-blue)' },
+  { id: 'fabric',       label: 'Fabric',             sub: 'IB or Ethernet (Spectrum-X)', color: 'var(--color-text-muted)' },
+  { id: 'nic-rx',       label: 'ConnectX NIC',       sub: 'RDMA WRITE received', color: 'var(--color-blue)' },
+  { id: 'gpudirect-rx', label: 'GPUDirect RDMA',    sub: 'NIC writes HBM, no CPU', color: 'var(--color-text)' },
+  { id: 'decode-hbm',   label: 'Decode GPU HBM',     sub: 'Cache ready for decode', color: 'var(--color-teal)' },
+];
+
+// Page 6: Complete data path animation (8 steps, lifecycle)
+export const COMPLETE_PATH_FRAMES = [
+  {
+    step: 1,
+    title: 'Prefill (intra-node)',
+    from: 'Embedding',
+    to: 'Prefill GPU HBM',
+    protocol: 'Internal to GPU',
+    latency: '0 (compute)',
+    color: 'var(--color-primary)',
+    narrative: 'User 17\u2019s 28K-token prompt is tokenized, embedded, and processed by the prefill GPU. The KV cache materializes directly in HBM. No network involved.',
+  },
+  {
+    step: 2,
+    title: 'P/D transfer',
+    from: 'Prefill GPU HBM',
+    to: 'Decode GPU HBM',
+    protocol: 'RDMA (RoCEv2) via GPUDirect',
+    latency: '~90 ms',
+    color: 'var(--color-blue)',
+    narrative: '4.48 GB of FP8 KV cache flows from prefill node to decode node across Spectrum-X. NIC-to-NIC with GPUDirect RDMA \u2014 zero CPU involvement.',
+  },
+  {
+    step: 3,
+    title: 'Active decode',
+    from: 'Decode GPU HBM',
+    to: 'Decode GPU HBM',
+    protocol: 'Internal to GPU',
+    latency: 'ongoing',
+    color: 'var(--color-teal)',
+    narrative: 'The decode GPU reads the full 4.48 GB on every decode step and appends a few KB per new token. All local to HBM.',
+  },
+  {
+    step: 4,
+    title: 'Demotion to DRAM',
+    from: 'Decode GPU HBM',
+    to: 'CPU DRAM (G2)',
+    protocol: 'PCIe Gen5 DMA',
+    latency: '~70 ms',
+    color: 'var(--color-amber)',
+    narrative: 'User 17 pauses. KVBM demotes the cache to host DRAM across PCIe Gen5. Still in the same node \u2014 no network.',
+  },
+  {
+    step: 5,
+    title: 'Promotion to HBM',
+    from: 'CPU DRAM (G2)',
+    to: 'Decode GPU HBM',
+    protocol: 'PCIe Gen5 DMA',
+    latency: '~70 ms',
+    color: 'var(--color-amber)',
+    narrative: 'User 17 returns within minutes. KVBM promotes the cache back to HBM. Decode resumes instantly \u2014 no recomputation.',
+  },
+  {
+    step: 6,
+    title: 'Demotion to ICMS',
+    from: 'CPU DRAM',
+    to: 'ICMS flash (G3.5)',
+    protocol: 'NVMe/RoCE',
+    latency: '~90 ms',
+    color: 'var(--color-blue)',
+    narrative: 'Extended idle. KVBM evicts to ICMS across Spectrum-X. BlueField-4 DPU writes the aggregated chunks to remote NVMe.',
+  },
+  {
+    step: 7,
+    title: 'Promotion from ICMS',
+    from: 'ICMS flash (G3.5)',
+    to: 'Decode GPU HBM',
+    protocol: 'NVMe/RoCE \u2192 GPUDirect',
+    latency: '~90\u2013100 ms',
+    color: 'var(--color-blue)',
+    narrative: 'Next day, User 17 resumes. ICMS streams the cache chunks back via NVMe/RoCE, GPUDirect writes directly to HBM. ~90 ms vs. ~2,000 ms for recomputation.',
+  },
+  {
+    step: 8,
+    title: 'Archive to G4',
+    from: 'ICMS',
+    to: 'Network storage (Dell/VAST/WEKA/DDN)',
+    protocol: 'RDMA or NVMe/RoCE or S3',
+    latency: 'Async',
+    color: 'var(--color-text-muted)',
+    narrative: 'Conversation closes. The cache tiers out to deep network storage asynchronously. No user latency \u2014 this is background.',
+  },
+];
+
+// Page 7: Traffic contention visual data
+export const TRAFFIC_VISUAL = [
+  { id: 'tp',        label: 'TP all-reduce',       color: 'var(--color-red)',       priority: 'critical',  size: 'small', freq: 'very high', note: 'TP>1 only' },
+  { id: 'pd',        label: 'P/D KV transfer',     color: 'var(--color-blue)',      priority: 'high',      size: 'huge',  freq: 'bursty',    note: 'Dominates bandwidth' },
+  { id: 'promo',     label: 'Cache promotion',     color: 'var(--color-teal)',       priority: 'high',      size: 'huge',  freq: 'bursty',    note: 'NVMe/RoCE' },
+  { id: 'demote',    label: 'Cache demotion',      color: 'var(--color-amber)',     priority: 'low',       size: 'huge',  freq: 'occasional', note: 'Background' },
+  { id: 'weights',   label: 'Model weights',       color: 'var(--color-amber)',     priority: 'low',       size: 'massive', freq: 'rare',    note: 'Startup only' },
+  { id: 'control',   label: 'Control / health',     color: 'var(--color-text-muted)', priority: 'low',     size: 'tiny',  freq: 'continuous', note: 'Negligible BW' },
+];
+
+// Page 8: Summary table
 export const SUMMARY_TABLE = [
-  { strategy: 'Round-robin',                   ttftImpact: 'Baseline (worst)', cacheHitRate: '~15%',     complexity: 'None' },
-  { strategy: 'Load-aware',                    ttftImpact: '2–3× better',     cacheHitRate: '~15% (no cache awareness)', complexity: 'Low' },
-  { strategy: 'Load + prefix (approximate)',   ttftImpact: '3–5× better',     cacheHitRate: '~60%',     complexity: 'Moderate' },
-  { strategy: 'Precise prefix-cache (llm-d)',  ttftImpact: '57× better',      cacheHitRate: '~87%',     complexity: 'Higher (requires KV Indexer)', highlight: true },
-  { strategy: 'Predicted latency (ML-based)',  ttftImpact: 'Adaptive',        cacheHitRate: 'Adaptive', complexity: 'Highest (requires training)' },
+  { protocol: 'NVLink',            distance: 'Intra-domain',  bandwidth: '3.6 TB/s per GPU (NVLink 6)', latency: 'ns',         role: 'TP all-reduce, intra-domain P/D',  maturity: 'Production' },
+  { protocol: 'RDMA (IB/RoCEv2)',  distance: 'Inter-domain',  bandwidth: '50\u2013100 GB/s',             latency: '1\u201310 \u00b5s', role: 'P/D transfer, ICMS, cache sharing', maturity: 'Production' },
+  { protocol: 'CXL',               distance: 'Intra-rack',    bandwidth: '64\u2013128 GB/s',             latency: '<100 ns',    role: 'Pooled memory, shared KV cache',   maturity: 'Early production (2025\u20132026)' },
+  { protocol: 'NVMe-oF',           distance: 'Multi-rack',    bandwidth: '14\u2013100+ GB/s',            latency: '10\u2013100 \u00b5s', role: 'G3/G3.5/G4 storage access',  maturity: 'Production' },
 ];

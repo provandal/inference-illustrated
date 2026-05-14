@@ -476,7 +476,7 @@ function BridgePage() {
       <p>
         That&rsquo;s{' '}
         <strong className="text-[var(--color-text)]">multi-head attention</strong>
-        {' '}&mdash; and it&rsquo;s the subject of Stop 8.
+        {' '}&mdash; and it&rsquo;s the subject of Stop 9.
       </p>
     </div>
   );

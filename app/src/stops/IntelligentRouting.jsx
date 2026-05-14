@@ -17,7 +17,7 @@ import {
   ROUTING_SCENARIOS,
   FEEDBACK_LOOP_STEPS,
   SUMMARY_TABLE,
-} from '../data/stop16Data';
+} from '../data/stop17Data';
 import { Panel, PanelHeader, InfoBox, Callout } from '../components/ui';
 import PageNav from '../components/PageNav';
 import { useStore } from '../store';
@@ -158,7 +158,7 @@ function RoundRobinCostPage() {
 
       <Callout
         type="warn"
-        message="From Stop 13: a cache miss costs ~10× more than a hit when you factor in compute, stalling, and opportunity cost. In this example it’s even worse because the cache is <strong>right there on GPU 3</strong> — the system just didn’t know to look."
+        message="From Stop 14: a cache miss costs ~10× more than a hit when you factor in compute, stalling, and opportunity cost. In this example it’s even worse because the cache is <strong>right there on GPU 3</strong> — the system just didn’t know to look."
       />
 
       <Panel className="mt-4">
@@ -758,7 +758,7 @@ function DynamoRouterPage() {
             against the tree to find pods with relevant cached prefixes.
           </p>
           <p>
-            The router integrates with the Dynamo Planner for dynamic prefill/decode pool sizing (Stop 12),
+            The router integrates with the Dynamo Planner for dynamic prefill/decode pool sizing (Stop 13),
             and supports specialized algorithms for KV cache insertion and eviction, ensuring the most
             relevant blocks are retained.
           </p>
@@ -939,7 +939,7 @@ function DecisionTreePage() {
               className="rounded-lg border-2 border-dashed p-2 text-center text-[11px]"
               style={{ borderColor: 'var(--color-amber)', color: 'var(--color-amber)', background: 'var(--color-surface-muted)' }}
             >
-              Routed to Prefill Pool (disaggregated serving, Stop 12)
+              Routed to Prefill Pool (disaggregated serving, Stop 13)
             </div>
           )}
 
@@ -1173,8 +1173,8 @@ function FeedbackLoopPage() {
 }
 
 /* =====================================================================
-   PAGE 8 — "Stop 16 at a glance"
-   Summary table + evolving diagram + bridge to Stop 17
+   PAGE 8 — "Stop 17 at a glance"
+   Summary table + evolving diagram + bridge to Stop 18
    ===================================================================== */
 
 function SummaryPage() {
@@ -1217,7 +1217,7 @@ function SummaryPage() {
 
       {/* Evolving diagram — Smart Router + Indexer + Pools + ICMS */}
       <Panel className="mt-4">
-        <PanelHeader>Evolving diagram — Stop 16 adds the routing layer</PanelHeader>
+        <PanelHeader>Evolving diagram — Stop 17 adds the routing layer</PanelHeader>
         <div className="p-4 space-y-3">
           {/* Users row */}
           <div className="flex justify-center gap-2 text-[10px]">
@@ -1298,17 +1298,17 @@ function SummaryPage() {
         </div>
       </Panel>
 
-      {/* Bridge to Stop 17 */}
+      {/* Bridge to Stop 18 */}
       <Panel className="mt-4">
-        <PanelHeader>Bridge to Stop 17</PanelHeader>
+        <PanelHeader>Bridge to Stop 18</PanelHeader>
         <div className="p-4 space-y-3 text-[13px] text-[var(--color-text-secondary)] leading-relaxed">
           <p>
             We’ve now built the complete inference infrastructure — from transformer mechanism (Act 1)
-            through memory management (Stop 11), parallelism and disaggregation (Stop 12), tiered storage
-            (Stop 13), compression (Stop 14), network fabric (Stop 15), and intelligent routing (this stop).
+            through memory management (Stop 12), parallelism and disaggregation (Stop 13), tiered storage
+            (Stop 14), compression (Stop 15), network fabric (Stop 16), and intelligent routing (this stop).
           </p>
           <p>
-            Stop 17 assembles the full picture and looks forward: where is this going in the next 1, 2, and
+            Stop 18 assembles the full picture and looks forward: where is this going in the next 1, 2, and
             5 years? What happens when <strong className="text-[var(--color-text)]">scale-up domains</strong> span
             576+ GPUs? When CXL pools reach petabytes? When KV cache becomes a first-class network service? And
             what does all of this mean for the infrastructure professionals building these systems?

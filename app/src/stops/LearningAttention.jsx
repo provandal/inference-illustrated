@@ -38,7 +38,7 @@ function IntroPage() {
           the larger component. Llama uses a variant called <strong>SwiGLU</strong>,
           which has three large matrices &mdash; each roughly{' '}
           <strong>235 million numbers</strong>. We&rsquo;ll explore the FFN in
-          detail in Stop 9. For now, what matters is the total scale.
+          detail in Stop 10. For now, what matters is the total scale.
         </InfoBox>
       </Panel>
 
@@ -100,7 +100,7 @@ function IntroPage() {
 
       <Callout
         type="note"
-        message='<strong>The FFN dominates.</strong> The three FFN matrices account for ~705 million of the ~856 million parameters per layer — roughly <strong>82%</strong> of each layer. The attention matrices (W<sub>Q</sub>, W<sub>K</sub>, W<sub>V</sub>, W<sub>O</sub>) account for only ~18%. This will matter when we discuss where the model&rsquo;s knowledge is stored (Stop 9) and the memory budget for model weights vs. KV cache.'
+        message='<strong>The FFN dominates.</strong> The three FFN matrices account for ~705 million of the ~856 million parameters per layer — roughly <strong>82%</strong> of each layer. The attention matrices (W<sub>Q</sub>, W<sub>K</sub>, W<sub>V</sub>, W<sub>O</sub>) account for only ~18%. This will matter when we discuss where the model&rsquo;s knowledge is stored (Stop 10) and the memory budget for model weights vs. KV cache.'
       />
 
       <Callout

@@ -123,7 +123,7 @@ function WhatYoullBuildPage() {
         <InfoBox>
           In Act 2, every concept is grounded in a concrete deployment scenario:
           your company deploying Llama-3 70B for 500 engineers on 8x H100 GPUs.
-          By Stop 17, you'll have designed the complete inference infrastructure.
+          By Stop 18, you'll have designed the complete inference infrastructure.
         </InfoBox>
       </Panel>
     </div>
@@ -158,7 +158,7 @@ function HowItWorksPage() {
           Throughout this course, we use simplified examples and interpretive
           approximations. When we do, we tell you. The decay pattern in Stop 1
           is real; the hidden state labels are our interpretation. The head
-          specializations in Stop 8 are illustrative; real heads are messier. We
+          specializations in Stop 9 are illustrative; real heads are messier. We
           believe in teaching with honest simplifications rather than false
           precision.
         </InfoBox>

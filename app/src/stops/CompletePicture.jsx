@@ -17,7 +17,7 @@ import {
   availableHBMPerGPU_GB,
   maxUsersPerGPU,
   evaluateDeployment,
-} from '../data/stop17Data';
+} from '../data/stop18Data';
 import { Panel, PanelHeader, InfoBox, Callout } from '../components/ui';
 import PageNav from '../components/PageNav';
 import { useStore } from '../store';

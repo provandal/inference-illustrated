@@ -23,7 +23,7 @@ import {
   MEMORY_OPTIONS,
   SUMMARY_TABLE,
   BRIDGE_CALC,
-} from '../data/stop11Data';
+} from '../data/stop12Data';
 import { Panel, PanelHeader, InfoBox, Callout } from '../components/ui';
 import PageNav from '../components/PageNav';
 import { useStore } from '../store';
@@ -57,7 +57,7 @@ function Act2IntroPage() {
           </div>
         </div>
         <InfoBox>
-          Each stop adds a new dimension to this scenario. By Stop 17, you will
+          Each stop adds a new dimension to this scenario. By Stop 18, you will
           have designed a complete inference infrastructure.
         </InfoBox>
       </Panel>
@@ -118,8 +118,8 @@ function MathWorksPage() {
 
   const rows = [
     { label: 'Model',              value: SCENARIO_DEFAULTS.model,          source: 'Scenario' },
-    { label: 'Weights (FP4)',      value: `${SCENARIO_DEFAULTS.weightsFP4_GB} GB`, source: 'Stop 8' },
-    { label: 'KV cache per token', value: `${SCENARIO_DEFAULTS.kvPerToken_KB} KB`, source: 'Stop 8/9' },
+    { label: 'Weights (FP4)',      value: `${SCENARIO_DEFAULTS.weightsFP4_GB} GB`, source: 'Stop 9' },
+    { label: 'KV cache per token', value: `${SCENARIO_DEFAULTS.kvPerToken_KB} KB`, source: 'Stop 9/9' },
     { label: 'Users',              value: String(users),                    source: 'Scenario', isInput: true },
     { label: 'Context per user',   value: `${contextK}K tokens`,           source: 'Scenario', isInput: true },
     { label: 'Cache per user',     value: `${cachePerUser.toFixed(1)} GB`, source: `${SCENARIO_DEFAULTS.kvPerToken_KB} KB \u00d7 ${contextK}K` },
@@ -954,7 +954,7 @@ function ContinuousBatchingPage() {
 
       <Callout
         type="note"
-        message="<strong>Coming up in Stop 12:</strong> When requests finish, their freed KV cache memory can also be used by <em>chunked prefill</em> &mdash; processing new arrivals&rsquo; prompts in pieces, interleaved with ongoing decode. This avoids a latency spike from a large prefill blocking the decode batch."
+        message="<strong>Coming up in Stop 13:</strong> When requests finish, their freed KV cache memory can also be used by <em>chunked prefill</em> &mdash; processing new arrivals&rsquo; prompts in pieces, interleaved with ongoing decode. This avoids a latency spike from a large prefill blocking the decode batch."
       />
     </div>
   );
@@ -1401,7 +1401,7 @@ function MemoryRunsOutPage() {
 
       <Callout
         type="note"
-        message="<strong>Coming up in Stop 13:</strong> The offload option extends to multiple tiers: HBM &rarr; CPU DRAM &rarr; NVMe SSD &rarr; networked storage. Each tier offers more capacity at higher latency. NVIDIA Dynamo&rsquo;s KV Block Manager orchestrates this hierarchy, and companies like Dell, WEKA, and VAST are building RDMA-based storage that can serve KV cache back to GPUs at up to 270 GB/s aggregate throughput."
+        message="<strong>Coming up in Stop 14:</strong> The offload option extends to multiple tiers: HBM &rarr; CPU DRAM &rarr; NVMe SSD &rarr; networked storage. Each tier offers more capacity at higher latency. NVIDIA Dynamo&rsquo;s KV Block Manager orchestrates this hierarchy, and companies like Dell, WEKA, and VAST are building RDMA-based storage that can serve KV cache back to GPUs at up to 270 GB/s aggregate throughput."
       />
 
       <Callout
@@ -1413,8 +1413,8 @@ function MemoryRunsOutPage() {
 }
 
 /* ================================================================
-   PAGE 8 — "Stop 11 at a glance"
-   Summary table + evolving diagram + bridge to Stop 12
+   PAGE 8 — "Stop 12 at a glance"
+   Summary table + evolving diagram + bridge to Stop 13
    ================================================================ */
 
 function SummaryPage() {
@@ -1453,7 +1453,7 @@ function SummaryPage() {
 
       {/* Evolving diagram */}
       <Panel className="mt-4">
-        <PanelHeader>The picture so far &mdash; Stop 11</PanelHeader>
+        <PanelHeader>The picture so far &mdash; Stop 12</PanelHeader>
         <div className="p-4">
           <div className="flex flex-col md:flex-row gap-4 items-start">
             {/* Users */}
@@ -1546,9 +1546,9 @@ function SummaryPage() {
         </div>
       </Panel>
 
-      {/* Bridge to Stop 12 */}
+      {/* Bridge to Stop 13 */}
       <Panel className="mt-4">
-        <PanelHeader>Bridge to Stop 12</PanelHeader>
+        <PanelHeader>Bridge to Stop 13</PanelHeader>
         <div className="p-4 space-y-3 text-[13px] text-[var(--color-text-secondary)] leading-relaxed">
           <p>
             In our current setup, all 8 GPUs run both prefill and decode. But prefill
@@ -1587,7 +1587,7 @@ function SummaryPage() {
           <p>
             <strong className="text-[var(--color-text)]">
               That {BRIDGE_CALC.transferTime_ms} ms transfer &mdash; and how to shrink it &mdash; is the subject
-              of Stop 12.
+              of Stop 13.
             </strong>
           </p>
         </div>

@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import { PAGES, LAYER_COUNTS, FAULTY_EVOLUTION } from '../data/stop9Data';
+import { PAGES, LAYER_COUNTS, FAULTY_EVOLUTION } from '../data/stop10Data';
 import { Panel, PanelHeader, InfoBox, Callout } from '../components/ui';
 import PageNav from '../components/PageNav';
 import { useStore } from '../store';
@@ -8,7 +8,7 @@ import { useStore } from '../store';
 
 const NARRATIONS = {
   intro:
-    '<strong>Stop 9: The Stack &mdash; Layers on Layers.</strong> In Stop 8, we saw multi-head attention: many parallel perspectives combining into a rich representation. But every head in that single layer worked from the original embeddings. Real language understanding &mdash; integrating coreference, causality, and temporal reasoning &mdash; requires building meaning progressively across many layers.',
+    '<strong>Stop 10: The Stack &mdash; Layers on Layers.</strong> In Stop 9, we saw multi-head attention: many parallel perspectives combining into a rich representation. But every head in that single layer worked from the original embeddings. Real language understanding &mdash; integrating coreference, causality, and temporal reasoning &mdash; requires building meaning progressively across many layers.',
 
   'layer-anatomy':
     'Each transformer layer contains exactly two components, always in the same order. Together they form the repeating unit that stacks to create the full model. Below is the anatomy of a single layer, with every arrow annotated.',
@@ -26,7 +26,7 @@ const NARRATIONS = {
     'The complete transformer architecture from raw text to predicted token, and the two phases of inference that have very different computational profiles.',
 
   bridge:
-    'The KV cache makes inference possible. But the structure that makes inference fast is also the structure that makes inference expensive at scale. Stop 10 puts the full cost picture together.',
+    'The KV cache makes inference possible. But the structure that makes inference fast is also the structure that makes inference expensive at scale. Stop 11 puts the full cost picture together.',
 };
 
 // --- Page Content Components ---
@@ -604,20 +604,20 @@ function FullStackPage() {
           This is how each layer specializes: early layers develop matrices tuned
           for surface patterns, deep layers develop matrices tuned for abstract
           reasoning. The specialization isn&rsquo;t programmed &mdash; it emerges
-          during training, just like head specialization in Stop 8.
+          during training, just like head specialization in Stop 9.
         </InfoBox>
       </Panel>
 
       <Panel className="mt-4">
         <PanelHeader>Where the 320 KB comes from</PanelHeader>
         <InfoBox>
-          In Stop 8, we calculated the KV cache for one layer of Llama-3 70B
+          In Stop 9, we calculated the KV cache for one layer of Llama-3 70B
           with GQA: 8 KV groups &times; 128 d_head &times; 2 (K + V) &times; 2
           bytes = 4,096 bytes &asymp; <strong>4 KB per layer</strong>.
         </InfoBox>
         <InfoBox>
           Across 80 layers: 4 KB &times; 80 = <strong>320 KB per token</strong>.
-          This matches the number from Stop 8&rsquo;s table &mdash; now you can
+          This matches the number from Stop 9&rsquo;s table &mdash; now you can
           see exactly where it comes from. For a 4,000-token context,
           that&rsquo;s already <strong>1.2 GB</strong> of cache memory &mdash;
           just for one request.
@@ -644,7 +644,7 @@ function FullStackPage() {
               Heads / KV groups
             </span>
             <span className="text-[12px] text-[var(--color-text-secondary)]">
-              Set by the architecture. Reduced by GQA (Stop 8) &mdash; Llama-3
+              Set by the architecture. Reduced by GQA (Stop 9) &mdash; Llama-3
               uses 8 KV groups instead of 64 independent K, V per head.
             </span>
           </div>
@@ -831,7 +831,7 @@ function ArchitecturePage() {
 
       <Callout
         type="note"
-        message="<strong>These two phases have very different computational profiles.</strong> Prefill is compute-bound &mdash; lots of matrix multiplications processing thousands of tokens in parallel. Decode is memory-bound &mdash; each step processes only one new token, but must read the entire KV cache at every layer. This distinction has major infrastructure implications that we&rsquo;ll explore in Stop 10 and Act 2."
+        message="<strong>These two phases have very different computational profiles.</strong> Prefill is compute-bound &mdash; lots of matrix multiplications processing thousands of tokens in parallel. Decode is memory-bound &mdash; each step processes only one new token, but must read the entire KV cache at every layer. This distinction has major infrastructure implications that we&rsquo;ll explore in Stop 11 and Act 2."
       />
     </div>
   );
@@ -847,7 +847,7 @@ function BridgePage() {
           <strong> Embeddings</strong> turn tokens into vectors (Stops 1, 3).{' '}
           <strong>Q, K, V</strong> enable matching and information retrieval
           (Stops 3, 5, 6, 7). <strong>Multi-head attention</strong> provides
-          parallel perspectives (Stop 8). <strong>FFN</strong> adds non-linear
+          parallel perspectives (Stop 9). <strong>FFN</strong> adds non-linear
           processing and factual knowledge (this stop).{' '}
           <strong>Layers</strong> stack for progressive refinement (this stop).{' '}
           <strong>Residual connections</strong> preserve information across depth
@@ -857,8 +857,8 @@ function BridgePage() {
           Throughout this journey, one structure has been growing quietly in the
           background: the <strong>KV cache</strong>. It was introduced in
           Stop 3 as a way to avoid recomputing K and V. It expanded in Stop 5
-          with the dot-product mechanism. It multiplied in Stop 8 across
-          heads and KV groups. And here in Stop 9, it multiplied again across
+          with the dot-product mechanism. It multiplied in Stop 9 across
+          heads and KV groups. And here in Stop 10, it multiplied again across
           80 layers. Every layer, every head group, every token adds to it.
           We&rsquo;ve calculated its size piece by piece. Now it&rsquo;s time to
           put it all together and see the full picture.
@@ -884,7 +884,7 @@ function BridgePage() {
         <p>
           We&rsquo;ve just seen that inference has two phases &mdash; prefill and
           decode &mdash; with different computational profiles.{' '}
-          <strong className="text-[var(--color-text)]">Stop 10</strong> asks the
+          <strong className="text-[var(--color-text)]">Stop 11</strong> asks the
           questions that bridge Act 1 to Act 2: How expensive? What are the two
           phases of inference, and why do some systems separate them onto
           different hardware? What happens when the cache outgrows the

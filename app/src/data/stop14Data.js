@@ -1,413 +1,446 @@
-// Stop 14: Compressing the Cache — Making It Smaller
+// Stop 14: The Memory Hierarchy — Where the Cache Lives
 
 export const PAGES = [
-  { id: 'cascading',         label: 'Every Byte Saved Compounds',     type: 'static' },
-  { id: 'architectural',     label: 'Architectural Compression',      type: 'interactive' },
-  { id: 'quantization',      label: 'Quantization',                   type: 'interactive' },
-  { id: 'eviction',          label: 'Token Eviction',                 type: 'interactive' },
-  { id: 'combined',          label: 'Combining Techniques',           type: 'interactive' },
-  { id: 'accuracy',          label: 'Accuracy vs. Compression',       type: 'static' },
-  { id: 'infrastructure',    label: 'The Infrastructure Impact',      type: 'static' },
-  { id: 'summary',           label: 'Stop 14 at a Glance',            type: 'static' },
+  { id: 'framing',         label: 'You Already Know This',        type: 'static' },
+  { id: 'five-tiers',      label: 'The Five Tiers',               type: 'interactive' },
+  { id: 'data-movement',   label: 'Data Movement',                type: 'interactive' },
+  { id: 'kvbm',            label: 'The KV Block Manager',         type: 'interactive' },
+  { id: 'storage-io',      label: 'What Storage Sees',            type: 'interactive' },
+  { id: 'cache-sharing',   label: 'Cache Sharing',                type: 'static' },
+  { id: 'blocking',        label: 'What Waits on What',           type: 'static' },
+  { id: 'competition',     label: 'The Competitive Landscape',    type: 'static' },
+  { id: 'economics',       label: 'The Cache Hit Rate',           type: 'static' },
+  { id: 'calculator',      label: 'Putting Numbers on It',        type: 'static' },
+  { id: 'summary',         label: 'Stop 14 at a Glance',          type: 'static' },
 ];
 
-// Narration text for each page. Uses Unicode directly (no HTML entity escaping).
-// HTML tags are allowed and rendered via dangerouslySetInnerHTML.
+// -- Narration text for each page (rendered with dangerouslySetInnerHTML) --
+
 export const NARRATIONS = {
-  cascading:
-    'In our scenario, Llama-3 70B\u2019s KV cache takes 320 KB per token at FP16. For a 28,000-token conversation, that\u2019s 8.96 GB. If we could cut that in half \u2014 to 160 KB per token, 4.48 GB total \u2014 the effect cascades through every tier we saw in Stop 13: <strong>G1 (HBM)</strong> fits 288 active users instead of 144. <strong>G2 (DRAM)</strong> fits 1,600 warm conversations instead of 800. <strong>Transfer time:</strong> the P/D transfer from Stop 12 drops from 180 ms to 90 ms. <strong>Cache hit rate:</strong> more conversations maintained = fewer misses = fewer costly recomputes. <strong>Network bandwidth:</strong> every promotion/demotion moves half the data.\n\nCompression doesn\u2019t just save memory. It improves latency, throughput, network utilization, and cost at every level of the stack. That\u2019s why it\u2019s one of the most actively researched areas in LLM inference. There are three families of techniques, each attacking a different dimension of the cache.',
+  framing:
+    '<strong>Stop 14: The Memory Hierarchy &mdash; Where the Cache Lives.</strong> In our scenario, 32 users on 8x H100 GPUs with Llama-3 70B at FP4. At steady state (8K tokens average), the KV cache fits comfortably in HBM. But when 5 users simultaneously upload large documents (32K tokens each), cache demand spikes to 50 GB on a single GPU &mdash; more than the 45 GB available after weights. In Stop 12, we saw three options: preempt (expensive recomputation), queue (user waits), or offload (move cache to slower memory). This stop is about that third option &mdash; and it is the option that turns the KV cache into a tiered storage problem. If you have worked with storage systems, you have built tiered architectures before: SSD for hot data, HDD for warm, tape or object storage for cold. The same pattern applies here &mdash; but the tiers are different, the data is ephemeral, and the latency requirements are measured in microseconds, not milliseconds.',
 
-  architectural:
-    'We introduced GQA in Stop 8 \u2014 grouping attention heads to share K and V. Now let\u2019s see all three architectural approaches in depth, with concrete cache sizes for our scenario.\n\nThese techniques are <strong>built into the model architecture</strong>. They\u2019re chosen during model design and training, not applied afterward. If a model was trained with GQA, you can\u2019t switch it to MHA or MLA later \u2014 the weight matrices were shaped for one specific approach.',
+  'five-tiers':
+    'NVIDIA formalized the KV cache memory hierarchy into five tiers, labeled G1 through G4 (with G3.5 added at CES 2026). Each tier offers more capacity at higher latency. Here are the concrete numbers for our 8x H100 cluster. <strong>Drag the idle-time slider</strong> to see which tier a conversation would naturally migrate to, and <strong>toggle ICMS on/off</strong> to watch the G3.5 tier appear or disappear.',
 
-  quantization:
-    'Architectural compression reduces the <em>number</em> of vectors stored per token. Quantization reduces the <em>precision</em> of each number within those vectors.\n\nEvery number in the KV cache is stored as a floating-point value. At FP16 (16-bit), each number uses 2 bytes. At FP8 (8-bit), just 1 byte. At INT4 (4-bit), half a byte. Each step halves the memory \u2014 and each step loses some numerical precision.',
+  'data-movement':
+    'The tiers don&rsquo;t just exist &mdash; data moves between them. Let&rsquo;s trace User 17&rsquo;s KV cache through a 30-minute session with full mechanical detail: what triggers each move, what moves, how it moves, and what else is happening while the move is in progress. <strong>Press play</strong> or drag the scrubber to step through the animation frame by frame.',
 
-  eviction:
-    'The third family takes a radical approach: instead of making each entry smaller, remove entire token entries from the cache. If a token contributed almost nothing to attention in the past, it probably won\u2019t matter in the future. Why store it?\n\nThis sounds dangerous \u2014 and it can be. But research shows that attention is highly skewed: a small fraction of tokens receive the vast majority of attention weight. Most tokens contribute almost nothing. The challenge is identifying which tokens are important and which can be safely evicted.',
+  kvbm:
+    'The orchestrator behind all this data movement is the <strong>Dynamo KV Block Manager (KVBM)</strong>. If you&rsquo;ve worked with storage controllers, volume managers, or caching layers, the KVBM will feel familiar &mdash; it is a block-level memory manager with tiering policies, lifecycle tracking, and a storage-agnostic backend API. <strong>Click any state</strong> in the lifecycle diagram below to walk through a block&rsquo;s journey.',
 
-  combined:
-    'The three compression families are independent \u2014 you can stack them. Let\u2019s see the combined effect on our scenario\u2019s 28,000-token conversation with Llama-3 70B. Dial the three axes and watch every metric update in real time.',
+  'storage-io':
+    'If you are building or evaluating a storage system for KV cache (the G3, G3.5, or G4 tier), here is what the I/O workload looks like. This section translates inference behavior into storage engineering requirements.',
 
-  accuracy:
-    'Every compression technique promises \u201cminimal accuracy loss.\u201d But \u201cminimal\u201d means different things for different tasks. A chatbot answering general questions is more forgiving than a reasoning model solving math problems. Here\u2019s what the benchmarks actually show.',
+  'cache-sharing':
+    'Here is the detail that matters most for networking professionals: when KV cache lives in a shared tier (G3.5/ICMS or G4), <strong>any GPU in the pod can read any conversation&rsquo;s cache</strong>. This breaks the one-GPU-one-cache binding from Stop 12 and creates entirely new possibilities &mdash; and entirely new network demands.',
 
-  infrastructure:
-    'Let\u2019s trace the impact of compression through every component we\u2019ve built in Stops 11\u201313. For our scenario, comparing GQA + FP16 (the baseline from Stops 11\u201313) with GQA + FP8 (the recommended production setting).',
+  blocking:
+    'One of the most important questions for infrastructure engineers: when a user&rsquo;s KV cache is not in HBM, what happens to their request? Does the system block? Does it process other work while waiting? Is there a job manager coordinating all of this?',
+
+  competition:
+    'NVIDIA&rsquo;s Dynamo/KVBM/NIXL/CMX stack is the most mature KV cache tiering solution as of early 2026. But it is not the only approach. Here is where the competition stands &mdash; because your infrastructure decisions may involve AMD, open-source alternatives, or vendor-specific storage integrations.',
+
+  economics:
+    'The economic case for KV cache tiering comes down to a single metric: <strong>cache hit rate</strong> &mdash; how often a request can reuse existing cached KV data instead of recomputing from scratch. According to Manus AI (an agentic AI company acquired by Meta in 2025), &ldquo;KV cache hit rate is the most important metric for agentic AI systems because a KV cache miss costs ten times more than a cache hit.&rdquo;',
+
+  calculator:
+    'Let&rsquo;s calculate the total cache capacity and cost across all tiers for our scenario &mdash; and see how tiering changes the number of concurrent users we can serve.',
 
   summary:
-    'Three families of compression, each attacking a different dimension of the cache. Architectural changes are chosen at model design time. Quantization and eviction are applied at inference time. All three can be combined.',
+    'The KV cache memory hierarchy transforms inference from a single-tier problem into a multi-tier optimization problem &mdash; the same kind of problem storage engineers solve every day, applied to a new data type.',
 };
 
-// --- Page 1: Cache grid visualization (rows=layers, cols=KV head groups) ---
-export const CACHE_GRID = {
-  layers: 80,
-  kvHeads: 8,
-  dHead: 128,
-  bytesPerValue: 2, // FP16
-  // For the rendered visual we draw a down-sampled grid
-  visualRows: 10,    // represents 80 layers (each = 8 layers)
-  visualCols: 8,
-  cellNumbers: 4,    // label "128 numbers" but show 4 dots per cell
-};
+// Side-by-side comparison: traditional storage tiering vs. KV cache tiering
+export const TIERING_COMPARISON = [
+  { aspect: 'Hot tier',            traditional: 'NVMe SSD',                            kvCache: 'GPU HBM' },
+  { aspect: 'Warm tier',           traditional: 'SAS SSD / HDD',                      kvCache: 'CPU DRAM' },
+  { aspect: 'Cold tier',           traditional: 'HDD / tape',                          kvCache: 'NVMe SSD' },
+  { aspect: 'Archive',             traditional: 'Object storage / cloud',              kvCache: 'Network storage (Dell, WEKA, VAST)' },
+  { aspect: 'Data lifecycle',      traditional: 'Months to years',                     kvCache: 'Seconds to minutes' },
+  { aspect: 'Placement policy',    traditional: 'Access frequency over days/weeks',    kvCache: 'Access recency within a conversation' },
+  { aspect: 'Eviction cost',       traditional: 'Read from slower tier',               kvCache: 'Recompute (prefill) OR read from slower tier' },
+  { aspect: 'Data durability',     traditional: 'Critical (data must not be lost)',     kvCache: 'Ephemeral (can always be recomputed)' },
+];
 
-// Three compression dimensions for the visual on page 1
-export const COMPRESSION_DIMENSIONS = [
+// The five-tier memory hierarchy with concrete numbers for 8x H100 cluster.
+// capacityGB is an approximate numeric aggregate used by the Five Tiers capacity counter.
+export const MEMORY_TIERS = [
   {
-    id: 'architectural',
-    arrow: 'Columns',
-    label: 'Architectural: reduce the number of KV head groups',
-    techniques: 'GQA, MQA, MLA',
-    detail: 'Fewer columns in the grid',
+    id: 'G1',
+    label: 'G1 \u2014 GPU HBM',
+    shortLabel: 'G1 HBM',
+    capacity: '80 GB per GPU x 8 = 640 GB total (45 GB usable after weights x 8 = 360 GB)',
+    capacityGB: 360,
+    latency: '~1 ns',
+    bandwidth: '3.35 TB/s per H100',
+    costPerGB: '~$25/GB',
+    interconnect: 'Internal to GPU (no network involved)',
+    role: 'Active decode. Every token being generated reads from here.',
+    scenario: 'Holds the KV cache for all actively-generating conversations. 32 users x 2.5 GB = 80 GB. Fits across 8 GPUs.',
     color: 'var(--color-teal)',
-    axis: 'horizontal',
+    colorBg: 'var(--color-teal-bg)',
+    colorText: 'var(--color-teal-text)',
+    // Idle-time (seconds) at which the tier is preferred placement
+    idleThresholdSec: 0,
   },
   {
-    id: 'quantization',
-    arrow: 'Cell contents',
-    label: 'Quantization: reduce the precision of each number',
-    techniques: 'FP16 \u2192 FP8 \u2192 INT4 \u2192 2-bit',
-    detail: 'Smaller cells',
+    id: 'G2',
+    label: 'G2 \u2014 CPU DRAM',
+    shortLabel: 'G2 DRAM',
+    capacity: '~2 TB per server',
+    capacityGB: 2048,
+    latency: '~100 ns (100x slower than HBM)',
+    bandwidth: '~200 GB/s (DDR5); GPU path via PCIe Gen5 at ~64 GB/s',
+    costPerGB: '~$5/GB',
+    interconnect: 'PCIe Gen5 between GPU and CPU memory (~64 GB/s per direction)',
+    role: 'Warm cache. Recently active conversations not currently generating. Conversations between user turns.',
+    scenario: 'During a 30-second pause between turns, a user\u2019s 2.5 GB cache can be offloaded from HBM to DRAM via PCIe. Transfer: 2.5 / 64 = ~39 ms. When the user sends their next message, swap back: ~39 ms.',
     color: 'var(--color-blue)',
-    axis: 'cell',
+    colorBg: 'var(--color-blue-bg)',
+    colorText: 'var(--color-blue-text)',
+    idleThresholdSec: 15,
   },
   {
-    id: 'eviction',
-    arrow: 'Rows',
-    label: 'Eviction: remove entire token entries',
-    techniques: 'H2O, SnapKV',
-    detail: 'Fewer rows in the grid (fewer tokens cached)',
+    id: 'G3',
+    label: 'G3 \u2014 Local NVMe SSD',
+    shortLabel: 'G3 NVMe',
+    capacity: '4\u201316 TB per server',
+    capacityGB: 16384,
+    latency: '~10 \u00B5s (10,000 ns \u2014 100x slower than DRAM)',
+    bandwidth: '7\u201314 GB/s per drive, ~30\u201360 GB/s aggregate',
+    costPerGB: '~$0.10/GB',
+    interconnect: 'NVMe over PCIe (local to server)',
+    role: 'Cold cache. Conversations idle for minutes. Overflow from DRAM.',
+    scenario: 'A user closes their laptop for 10 minutes. Their cache (2.5 GB) is tiered from DRAM to SSD. Retrieval when they return: 2.5 GB / 14 GB/s = ~180 ms. Noticeable but far faster than full recomputation (~500\u20131000 ms for 8K-token prefill).',
+    color: 'var(--color-amber)',
+    colorBg: 'var(--color-amber-bg)',
+    colorText: 'var(--color-amber-text)',
+    idleThresholdSec: 300, // 5 minutes
+  },
+  {
+    id: 'G3.5',
+    label: 'G3.5 \u2014 ICMS / CMX',
+    shortLabel: 'G3.5 ICMS',
+    capacity: 'Petabytes per pod (~100+ TB typical)',
+    capacityGB: 102400,
+    latency: '~50\u2013100 \u00B5s (pod-level RDMA access)',
+    bandwidth: '270+ GB/s aggregate (demonstrated by WEKA on 8x H100)',
+    costPerGB: '~$0.05/GB',
+    interconnect: 'Spectrum-X Ethernet with RDMA between compute nodes and ICMS enclosures',
+    role: 'Shared context memory. KV cache accessible by ANY GPU in the pod \u2014 not tied to a single server. Enables cache reuse across requests with shared prefixes.',
+    scenario: 'All 500 engineers share the same system prompt (~2K tokens). Instead of each GPU computing and storing this prefix independently, ICMS stores it once and serves it to any GPU on demand.',
     color: 'var(--color-primary)',
-    axis: 'vertical',
+    colorBg: 'var(--color-primary-bg)',
+    colorText: 'var(--color-primary-text)',
+    idleThresholdSec: 900, // 15 minutes (ICMS preferred for long idle)
+    optional: true,
+  },
+  {
+    id: 'G4',
+    label: 'G4 \u2014 Network Storage',
+    shortLabel: 'G4 Network',
+    capacity: 'Petabytes to exabytes',
+    capacityGB: 1024 * 1024, // 1 PB
+    latency: '~1\u201310 ms',
+    bandwidth: 'Varies (1\u2013100+ GB/s depending on system and protocol)',
+    costPerGB: '~$0.01/GB',
+    interconnect: 'RDMA over Ethernet, NVMe-oF, or S3/object protocols',
+    role: 'Persistent context archive. For agentic AI workflows where context spans hours or days.',
+    scenario: 'An engineer starts a multi-day code review with extensive context. At end of day, the 32K-token cache (10 GB) is archived. Next morning, retrieved from network storage: 10 GB at 50 GB/s RDMA = 200 ms vs. recompute at ~2,000 ms.',
+    color: 'var(--color-red)',
+    colorBg: 'var(--color-red-bg)',
+    colorText: 'var(--color-red-text)',
+    idleThresholdSec: 3600, // 1 hour
   },
 ];
 
-// The multiplicative example for page 1
-export const COMPOUND_EXAMPLE = {
-  gqaFactor: 8,
-  fp8Factor: 2,
-  evictionFactor: 2,
-  totalFactor: 32, // 8 * 2 * 2
-  baselineGB: 8.96,
-  compressedMB: 280, // 8.96 GB / 32 ≈ 280 MB
-};
+// Interconnect summary table
+export const INTERCONNECT_TABLE = [
+  { transition: 'G1 \u2194 G1 (GPU to GPU, same node)',     interconnect: 'NVLink',                      bandwidth: '900 GB/s',       initiator: 'Tensor parallelism all-reduce' },
+  { transition: 'G1 \u2194 G1 (GPU to GPU, cross-node)',    interconnect: 'InfiniBand / Spectrum-X RDMA', bandwidth: '50\u2013100 GB/s', initiator: 'Disaggregated P/D transfer' },
+  { transition: 'G1 \u2194 G2 (GPU to CPU DRAM)',            interconnect: 'PCIe Gen5',                   bandwidth: '64 GB/s',        initiator: 'KVBM demotion/promotion' },
+  { transition: 'G2 \u2194 G3 (DRAM to local SSD)',          interconnect: 'NVMe over PCIe',              bandwidth: '14\u201360 GB/s',  initiator: 'KVBM demotion/promotion' },
+  { transition: 'G1/G2 \u2194 G3.5 (Node to ICMS)',          interconnect: 'Spectrum-X RDMA',             bandwidth: '50\u2013100 GB/s', initiator: 'KVBM + NIXL' },
+  { transition: 'Any \u2194 G4 (Node to network storage)',   interconnect: 'RDMA / NVMe-oF / S3',          bandwidth: '1\u2013100 GB/s',  initiator: 'KVBM + NIXL' },
+];
 
-// --- Page 2: Architectural approach comparison table ---
-export const ARCH_COMPARISON = [
+// Data-movement animation frames for User 17.
+// Each frame places User 17's block at `tierId` with a given size and optional
+// flow animation from sourceTier -> targetTier for that frame.
+export const MIGRATION_FRAMES = [
   {
-    id: 'mha',
-    name: 'MHA',
-    fullName: 'Multi-Head Attention',
-    kvHeads: 64,
-    kvHeadsLabel: '64',
-    perToken: '2.62 MB',
-    at28K: '73.3 GB',
-    reduction: '1\u00d7 (baseline)',
-    reductionNum: 1,
-    perTokenBytes: 2621440, // 2.5 MB-ish
-    // For users-per-H100 calc: H100 has 80 GB total, ~35 GB weights => 45 GB for cache
-    usersPerH100: 0.6,
-    qualityNote:
-      'Full baseline. Every Q head has its own K and V. Per token: 2 \u00d7 80 layers \u00d7 64 KV heads \u00d7 128 d_head \u00d7 2 bytes = 2.62 MB. At 28K tokens, one user nearly fills an H100.',
-    formula: '2 \u00d7 80 \u00d7 64 \u00d7 128 \u00d7 2 bytes',
+    id: 'prefill',
+    time: '0:00',
+    title: 'Prefill',
+    tierId: 'G1',
+    sourceTier: null,
+    targetTier: 'G1',
+    transferMs: 0,
+    cacheSize: '8.96 GB',
+    cacheGB: 8.96,
+    description: 'User 17 sends a 28,000-token document. Prefill computes KV cache in G1 (HBM). 28,000 tokens x 320 KB = 8.96 GB created across the prefill GPU\u2019s HBM. Nothing else is waiting \u2014 this is a new conversation, and the prefill GPU is dedicated to prefill (disaggregated from Stop 13).',
+    policy: null,
+    badge: 'New conversation',
   },
   {
-    id: 'gqa',
-    name: 'GQA-8',
-    fullName: 'Grouped-Query Attention',
-    kvHeads: 8,
-    kvHeadsLabel: '8',
-    perToken: '320 KB',
-    at28K: '8.96 GB',
-    reduction: '8.2\u00d7',
-    reductionNum: 8.2,
-    perTokenBytes: 327680,
-    usersPerH100: 5,
-    qualityNote:
-      'Minimal quality impact. Ablation studies in the Llama-2 and GQA papers show performance nearly indistinguishable from MHA on standard benchmarks. The insight: K and V are less head-specific than Q. Multiple Q heads asking different questions can effectively share the same K, V representation. This is what Llama-3 actually uses.',
-    formula: '2 \u00d7 80 \u00d7 8 \u00d7 128 \u00d7 2 bytes',
+    id: 'pd-transfer',
+    time: '0:00+',
+    title: 'P/D Transfer',
+    tierId: 'G1',
+    sourceTier: 'G1',
+    targetTier: 'G1',
+    transferMs: 180,
+    transferLabel: '8.96 GB at 50 GB/s (InfiniBand NDR 400G) \u2248 180 ms',
+    cacheSize: '8.96 GB',
+    cacheGB: 8.96,
+    description: 'Prefill complete. KVBM marks User 17\u2019s blocks as "committed." NIXL initiates an RDMA transfer from Prefill GPU HBM to Decode GPU HBM: 8.96 GB at 50 GB/s = ~180 ms. During this transfer, the Decode GPU continues generating tokens for its OTHER users (13\u201316) \u2014 the transfer is asynchronous and non-blocking. NIXL uses a separate DMA channel that does not compete with the compute path.',
+    policy: 'Decode GPU: async DMA, other users unaffected',
+    badge: 'RDMA stream',
   },
   {
-    id: 'mqa',
-    name: 'MQA',
-    fullName: 'Multi-Query Attention',
-    kvHeads: 1,
-    kvHeadsLabel: '1',
-    perToken: '40 KB',
-    at28K: '1.12 GB',
-    reduction: '65.5\u00d7',
-    reductionNum: 65.5,
-    perTokenBytes: 40960,
-    usersPerH100: 40,
-    qualityNote:
-      'Noticeable on some tasks. With only one K, V representation shared across all 64 Q heads, the model loses the ability to specialize its Key and Value representations. Works well for simpler tasks, degrades on complex reasoning. Introduced by Noam Shazeer (2019). Used by PaLM, StarCoder.',
-    formula: '2 \u00d7 80 \u00d7 1 \u00d7 128 \u00d7 2 bytes',
+    id: 'decode',
+    time: '0:00\u20130:45',
+    title: 'Active Decode',
+    tierId: 'G1',
+    sourceTier: null,
+    targetTier: 'G1',
+    transferMs: 0,
+    cacheSize: '8.96 \u2192 9.60 GB',
+    cacheGB: 9.60,
+    growing: true,
+    description: 'Response generated over ~45 seconds. Cache grows in G1 as new tokens are generated: 8.96 GB \u2192 9.60 GB (2,000 response tokens added). Each new token appends K,V to the cache at every layer \u2014 80 layers x 320 KB per token per layer of cache growth per decode step.',
+    policy: 'Mutable page at head, all others Committed',
+    badge: 'Cache growing',
   },
   {
-    id: 'mla',
-    name: 'MLA',
-    fullName: 'Multi-Head Latent Attention',
-    kvHeads: '1 (latent)',
-    kvHeadsLabel: '1 latent',
-    perToken: '~125 KB',
-    at28K: '~3.5 GB',
-    reduction: '~21\u00d7',
-    reductionNum: 21,
-    perTokenBytes: 128000,
-    usersPerH100: 12,
-    qualityNote:
-      'Minimal \u2014 the compression is trained end-to-end, so the model learns to preserve the information that matters in the latent space. Tradeoff: more compute at attention time (reconstructing K, V from the latent), but dramatically less memory. DeepSeek\u2019s approach. MLA blocks are ~2.5\u00d7 smaller than GQA blocks, meaning faster transfers, more conversations per tier, and higher cache hit rates.',
-    formula: '2 \u00d7 61 \u00d7 1 \u00d7 512 \u00d7 2 bytes (latent dim)',
+    id: 'demotion',
+    time: '0:45\u20132:00',
+    title: 'User Reading \u2014 Cache Demotion',
+    tierId: 'G2',
+    sourceTier: 'G1',
+    targetTier: 'G2',
+    transferMs: 150,
+    transferLabel: '9.60 GB via PCIe Gen5 at 64 GB/s \u2248 150 ms',
+    cacheSize: '9.60 GB',
+    cacheGB: 9.60,
+    description: 'Response complete. User is reading. The KVBM monitors idle time. After a configurable threshold (e.g., 15 s of no activity), blocks transition to "evictable." If G1 memory pressure is high (new users arriving), KVBM initiates demotion to G2 (CPU DRAM) at 64 GB/s = ~150 ms. Pages are freed in G1. The trigger is a policy: idle time + G1 utilization + incoming queue depth.',
+    policy: 'Idle: 15s | G1 util: 87% | Queue: 3 waiting',
+    badge: 'Demote G1 \u2192 G2',
+  },
+  {
+    id: 'promotion',
+    time: '2:00',
+    title: 'Follow-up \u2014 Cache Promotion',
+    tierId: 'G1',
+    sourceTier: 'G2',
+    targetTier: 'G1',
+    transferMs: 150,
+    transferLabel: '9.60 GB at 64 GB/s \u2248 150 ms (layer-parallel fill)',
+    cacheSize: '9.60 GB',
+    cacheGB: 9.60,
+    layerParallel: true,
+    description: 'User sends next message. KVBM looks up blocks \u2014 finds them in G2. Promotion begins: G2 \u2192 G1 via PCIe at 64 GB/s = ~150 ms. Prefill and promotion OVERLAP: as each layer\u2019s cache arrives, the KVBM Scheduler releases it to the inference engine layer-by-layer rather than waiting for the full transfer. Net perceived delay: ~50\u201380 ms instead of the full 150 ms.',
+    policy: 'Layer-parallel fill: early layers arrive first',
+    badge: 'Promote G2 \u2192 G1',
+  },
+  {
+    id: 'deep-demotion',
+    time: '5:00\u201315:00',
+    title: 'Extended Idle \u2014 Deeper Demotion',
+    tierId: 'G3.5',
+    sourceTier: 'G2',
+    targetTier: 'G3.5',
+    transferMs: 192,
+    transferLabel: 'G2 \u2192 G3.5: 9.60 GB at 50 GB/s RDMA \u2248 192 ms (or G3 at 14 GB/s \u2248 686 ms)',
+    cacheSize: '9.60 GB',
+    cacheGB: 9.60,
+    description: 'User takes a long break. G2 is filling up too \u2014 other conversations also idle. KVBM demotes further: G2 \u2192 G3 (NVMe) at 14 GB/s = ~686 ms. If ICMS is available: G2 \u2192 G3.5 at ~50 GB/s RDMA = ~192 ms \u2014 faster AND the cache becomes accessible to any GPU in the pod.',
+    policy: 'Idle: 5+ min | G2 util: 92% | ICMS preferred',
+    badge: 'Demote G2 \u2192 G3.5',
+  },
+  {
+    id: 'return',
+    time: '15:00',
+    title: 'User Returns from Long Break',
+    tierId: 'G1',
+    sourceTier: 'G3.5',
+    targetTier: 'G1',
+    transferMs: 192,
+    transferLabel: 'G3.5 \u2192 G1: 9.60 GB at 50 GB/s RDMA \u2248 192 ms (vs. ~2,000 ms full recompute)',
+    cacheSize: '9.60 GB',
+    cacheGB: 9.60,
+    layerParallel: true,
+    description: 'User sends another message. Cache must be promoted back to G1. From G3 (local SSD): ~500\u2013836 ms via GDS or staged through DRAM. From G3.5 (ICMS): ~192 ms directly to G1 via RDMA \u2014 the RDMA path is higher bandwidth than NVMe over PCIe. Compare: full recomputation from scratch would be ~2,000 ms for a 30,000-token prefill consuming full GPU compute.',
+    policy: 'Zero GPU compute: pure RDMA transfer',
+    badge: 'Promote G3.5 \u2192 G1',
+  },
+  {
+    id: 'end',
+    time: '30:00',
+    title: 'Conversation Ends',
+    tierId: null,
+    sourceTier: 'G1',
+    targetTier: null,
+    transferMs: 0,
+    cacheSize: 'Freed',
+    cacheGB: 0,
+    description: 'User closes the chat. Option A: Cache freed entirely \u2014 pages returned to all tier pools. Future reference requires full recomputation. Option B: Cache archived to G3.5/G4 for potential reuse. For our scenario (internal tool, same 500 engineers daily), archival to G3.5 is likely worthwhile.',
+    policy: 'Freed across all tiers OR archived to G3.5/G4',
+    badge: 'Session ends',
   },
 ];
 
-// --- Page 3: Quantization precision table ---
-export const QUANTIZATION_LEVELS = [
-  {
-    id: 'fp16',
-    format: 'FP16',
-    bits: 16,
-    bytes: 2,
-    storedValue: '0.7342529296875',
-    error: '0',
-    errorNum: 0,
-    perToken: '320 KB',
-    perTokenBytes: 327680,
-    memoryFraction: 1.0,
-    accuracyRetention: 100,
-  },
-  {
-    id: 'fp8',
-    format: 'FP8 (E4M3)',
-    bits: 8,
-    bytes: 1,
-    storedValue: '0.734375',
-    error: '0.01%',
-    errorNum: 0.01,
-    perToken: '160 KB',
-    perTokenBytes: 163840,
-    memoryFraction: 0.5,
-    accuracyRetention: 99.2,
-  },
-  {
-    id: 'int8',
-    format: 'INT8',
-    bits: 8,
-    bytes: 1,
-    storedValue: '0.7344 (scaled)',
-    error: '0.02%',
-    errorNum: 0.02,
-    perToken: '160 KB',
-    perTokenBytes: 163840,
-    memoryFraction: 0.5,
-    accuracyRetention: 99.0,
-  },
-  {
-    id: 'int4',
-    format: 'INT4',
-    bits: 4,
-    bytes: 0.5,
-    storedValue: '0.733 (scaled)',
-    error: '0.2%',
-    errorNum: 0.2,
-    perToken: '80 KB',
-    perTokenBytes: 81920,
-    memoryFraction: 0.25,
-    accuracyRetention: 95,
-  },
-  {
-    id: '2bit',
-    format: '2-bit',
-    bits: 2,
-    bytes: 0.25,
-    storedValue: '0.75 (ternary)',
-    error: '2.1%',
-    errorNum: 2.1,
-    perToken: '40 KB',
-    perTokenBytes: 40960,
-    memoryFraction: 0.125,
-    accuracyRetention: 88,
-  },
+// Retrieval path comparison table
+export const RETRIEVAL_PATHS = [
+  { path: 'G1 (already in HBM)',             latency: '0 ms',           gpuCompute: 'None' },
+  { path: 'G2 \u2192 G1 (DRAM promotion)',   latency: '~150 ms',        gpuCompute: 'None (DMA transfer)' },
+  { path: 'G3 \u2192 G1 (SSD promotion)',    latency: '~500\u2013836 ms', gpuCompute: 'None (DMA transfer)' },
+  { path: 'G3.5 \u2192 G1 (ICMS promotion)', latency: '~192 ms',        gpuCompute: 'None (RDMA transfer)' },
+  { path: 'Cache miss (full recompute)',       latency: '~2,000 ms',      gpuCompute: 'Full prefill GPU compute' },
 ];
 
-// Quantization benchmark table (Page 3)
-export const QUANTIZATION_BENCHMARKS = [
-  { method: 'FP8 KV cache',                compression: '2\u00d7',         accuracy: '>99%',   bestFor: 'Everything \u2014 use by default on H100/B200' },
-  { method: 'INT8 uniform',                compression: '2\u00d7',         accuracy: '>99%',   bestFor: 'Broad applicability' },
-  { method: 'KVTuner (mixed INT4/INT8)',    compression: '2\u20134\u00d7',  accuracy: '>97%',   bestFor: 'When memory is critical' },
-  { method: 'Google TurboQuant (3-bit)',    compression: '~5\u00d7',        accuracy: '~98%',   bestFor: 'Optimized for H100 tensor cores' },
-  { method: 'KIVI (per-channel INT2)',      compression: '4\u20138\u00d7',  accuracy: '~95%',   bestFor: 'Extreme compression' },
-  { method: 'MiniKV (2-bit + eviction)',    compression: '8\u201316\u00d7', accuracy: '~93%',   bestFor: 'Long-context research' },
-  { method: 'KVTC (transform coding)',      compression: '20\u201340\u00d7', accuracy: 'Varies', bestFor: 'Specific use cases' },
-];
-
-// --- Page 4: Attention distribution for token eviction demo ---
-export const ATTENTION_DISTRIBUTION = [
-  { token: 'storage controller', weight: '48%',  pct: 48,  classification: 'Heavy hitter',  action: 'Must keep' },
-  { token: 'crashed',            weight: '14%',  pct: 14,  classification: 'Important',      action: 'Keep' },
-  { token: 'was',                weight: '12%',  pct: 12,  classification: 'Moderate',       action: 'Keep' },
-  { token: 'server',             weight: '8%',   pct: 8,   classification: 'Moderate',       action: 'Candidate' },
-  { token: 'replaced',           weight: '6%',   pct: 6,   classification: 'Low',            action: 'Candidate' },
-  { token: 'because',            weight: '4%',   pct: 4,   classification: 'Low',            action: 'Candidate' },
-  { token: 'the (word 5)',       weight: '3%',   pct: 3,   classification: 'Very low',       action: 'Safe to evict' },
-  { token: 'that',               weight: '2%',   pct: 2,   classification: 'Very low',       action: 'Safe to evict' },
-  { token: 'technician',         weight: '1.5%', pct: 1.5, classification: 'Very low',       action: 'Safe to evict' },
-  { token: 'last',               weight: '1%',   pct: 1,   classification: 'Negligible',     action: 'Safe to evict' },
-  { token: 'week',               weight: '0.5%', pct: 0.5, classification: 'Negligible',     action: 'Safe to evict' },
-];
-
-// Eviction strategy cards
-export const EVICTION_STRATEGIES = [
+// KVBM block lifecycle states
+export const BLOCK_LIFECYCLE = [
   {
-    id: 'h2o',
-    name: 'H2O (Heavy-Hitter Oracle)',
-    summary:
-      'Tracks cumulative attention scores for each token across all queries. Keeps the \u201cheavy hitters\u201d plus a window of recent tokens. Evicts everything else.',
-    budget: 'Top 20% by attention + last 128 tokens',
-    reduction: '5\u00d7 (80% evicted)',
-    accuracy: '90\u201395% of full-cache performance',
-    risk: 'Degrades on tasks requiring precise recall of details buried deep in context.',
+    state: 'Inactive',
+    color: 'var(--color-text-muted)',
+    description: 'Block is in the free pool, available for allocation. Holds no cache data.',
+    detail: 'When a conversation ends (or all its pages are freed), blocks return here, ready to be allocated again by the next prefill or decode step.',
+  },
+  {
+    state: 'Mutable',
+    color: 'var(--color-amber)',
+    description: 'Block is being written to (during prefill or decode). Cannot be evicted or moved.',
+    detail: 'During active decode, each new token appends K,V to the cache. Only the NEWEST page per layer is Mutable \u2014 the rest are already full and Committed. This means only ONE page per conversation per layer is mutable at any time.',
+  },
+  {
+    state: 'Committed',
     color: 'var(--color-teal)',
+    description: 'Block contains valid cache data and is being actively read during decode. Cannot be evicted.',
+    detail: 'Full pages during active generation sit here. They are read on every decode step across all layers. A conversation\u2019s prefix pages spend most of their lives in Committed.',
   },
   {
-    id: 'snapkv',
-    name: 'SnapKV',
-    summary:
-      'Uses a smarter observation window: examines attention patterns from recent queries and selects tokens that are consistently important within that window. Clusters to identify representatives.',
-    budget: 'Clustered representatives from observation window',
-    reduction: 'Similar to H2O',
-    accuracy: 'Better retention on long-context tasks',
-    risk: 'Still vulnerable to surprise queries about evicted content.',
+    state: 'Evictable',
     color: 'var(--color-blue)',
+    description: 'Block\u2019s conversation is idle. Can be demoted to a lower tier or freed entirely.',
+    detail: 'After the idle threshold, ALL pages transition from Committed to Evictable. The KVBM may then demote them to G2/G3/G3.5/G4 based on memory pressure, or free them if policy dictates.',
   },
 ];
 
-// Adaptive precision research entries (Page 4)
-export const ADAPTIVE_PRECISION = [
+// Storage I/O characteristics table
+export const STORAGE_REQUIREMENTS = [
+  { requirement: 'High sequential read throughput',              why: 'Promotion latency = TTFT',                                   implication: 'Optimize for large sequential reads, not random IOPS' },
+  { requirement: 'Moderate sequential write throughput',         why: 'Demotion is background, not latency-critical',               implication: 'Write throughput matters but not as much as read' },
+  { requirement: 'Fixed block size (configurable, ~5 MB)',       why: 'KVBM page size determines I/O unit',                         implication: 'Align storage block/chunk size to KVBM page size' },
+  { requirement: 'RDMA support',                                  why: 'Bypass CPU on data path; GPU-to-storage direct transfer',    implication: 'Must support GPUDirect Storage (GDS) or RDMA verbs' },
+  { requirement: 'Append-friendly (no in-place update)',          why: 'KV blocks written once, read many times, then freed',        implication: 'Log-structured or append-only layouts are natural fits' },
+  { requirement: 'No durability guarantees needed',               why: 'Cache is ephemeral \u2014 can be recomputed',                implication: 'Skip RAID, replication, journaling. Raw performance > reliability' },
+  { requirement: 'Namespace per conversation',                    why: 'Blocks identified by conversation_id + coordinates',         implication: 'Flat namespace with coordinate-based addressing' },
+  { requirement: 'Fast space reclamation',                        why: 'When conversation ends, all blocks freed at once',           implication: 'Bulk delete by conversation_id, not page-by-page' },
+];
+
+// KV cache block sizes across models (Patch 3). FP16, page_size = 16.
+export const BLOCK_SIZE_TABLE = [
+  { model: 'Llama-3 8B',          kvHeads: 8,  dHead: 128, layers: 32,  perLayerPerPage: '64 KB',  blockSize: '2.05 MB' },
+  { model: 'Llama-3 70B',         kvHeads: 8,  dHead: 128, layers: 80,  perLayerPerPage: '64 KB',  blockSize: '5.12 MB' },
+  { model: 'Llama-3 405B',        kvHeads: 8,  dHead: 128, layers: 126, perLayerPerPage: '64 KB',  blockSize: '8.06 MB' },
+  { model: 'Mistral 7B',          kvHeads: 8,  dHead: 128, layers: 32,  perLayerPerPage: '64 KB',  blockSize: '2.05 MB' },
+  { model: 'Qwen-2.5 72B',        kvHeads: 8,  dHead: 128, layers: 80,  perLayerPerPage: '64 KB',  blockSize: '5.12 MB' },
+  { model: 'DeepSeek-V3 (MLA)',   kvHeads: 1,  dHead: 512, layers: 61,  perLayerPerPage: '32 KB',  blockSize: '1.95 MB' },
+];
+
+// Step-by-step scenario: User 17 follow-up, cache in G2
+export const BLOCKING_STEPS = [
   {
-    id: 'thinkv',
-    name: 'ThinKV (2025)',
-    tagline: 'Thought-adaptive',
-    body:
-      'Classifies tokens by their role in reasoning chains and assigns precision accordingly: FP8 for reasoning tokens (highest importance), NVFP4 for execution tokens (moderate), 2-bit ternary for transitional phrases (lowest). Classification happens dynamically during inference \u2014 the system watches which tokens participate in attention and adjusts their precision on the fly.',
-    color: 'var(--color-teal)',
-  },
-  {
-    id: 'vqkv',
-    name: 'VQKV \u2014 Vector Quantization (2026)',
-    tagline: 'Codebook-based',
-    body:
-      'Replaces groups of floating-point values with indices into a learned codebook \u2014 a table of representative vectors trained during calibration. Instead of storing 128 FP16 numbers (256 bytes) for a K or V vector, store a codebook index (a few bytes). Result: 82.8% compression ratio with 98.6% accuracy retention on LongBench \u2014 substantially better than scalar quantization at equivalent levels.',
-    color: 'var(--color-blue)',
-  },
-];
-
-// --- Page 5: Combined calculator ---
-// Architecture options (per-token bytes)
-export const CALC_ARCH_OPTIONS = [
-  { id: 'mha',   label: 'MHA',   perTokenBytes: 2621440, fp16PerTokenKB: 2621.44 }, // 2.62 MB
-  { id: 'gqa',   label: 'GQA-8', perTokenBytes: 327680,  fp16PerTokenKB: 320 },
-  { id: 'mqa',   label: 'MQA',   perTokenBytes: 40960,   fp16PerTokenKB: 40 },
-  { id: 'mla',   label: 'MLA',   perTokenBytes: 128000,  fp16PerTokenKB: 125 },
-];
-
-// Quantization options (multiplier on FP16 size)
-export const CALC_QUANT_OPTIONS = [
-  { id: 'fp16', label: 'FP16', factor: 1.0 },
-  { id: 'fp8',  label: 'FP8',  factor: 0.5 },
-  { id: 'int4', label: 'INT4', factor: 0.25 },
-];
-
-// Eviction options (fraction of tokens kept)
-export const CALC_EVICTION_OPTIONS = [
-  { id: 'e0',  label: '0%',  value: 0,    keep: 1.0 },
-  { id: 'e25', label: '25%', value: 0.25, keep: 0.75 },
-  { id: 'e50', label: '50%', value: 0.5,  keep: 0.5 },
-  { id: 'e75', label: '75%', value: 0.75, keep: 0.25 },
-];
-
-// Scenario constants for the calculator
-export const CALC_SCENARIO = {
-  totalTokens: 28000,
-  gpuCacheBudgetGB: 45, // ~80 GB - 35 GB weights
-  transferBandwidthGBs: 50, // 400 Gbps RDMA
-  baselineMhaFp16PerTokenBytes: 2621440,
-  baselineMhaFp16At28KGB: 73.3,
-};
-
-// 7 preset combinations for the table
-export const COMBINED_PRESETS = [
-  { id: 'mha-fp16-0',  arch: 'MHA',   quant: 'FP16', eviction: '0%',  perToken: '2.62 MB', at28K: '73.3 GB', usersPerH100: '0.6', usersNote: 'doesn\u2019t fit', transferTime: '1,466 ms', at28KGB: 73.3,  highlight: false },
-  { id: 'gqa-fp16-0',  arch: 'GQA-8', quant: 'FP16', eviction: '0%',  perToken: '320 KB',  at28K: '8.96 GB', usersPerH100: '5',   usersNote: '',                   transferTime: '179 ms',   at28KGB: 8.96,  highlight: false },
-  { id: 'gqa-fp8-0',   arch: 'GQA-8', quant: 'FP8',  eviction: '0%',  perToken: '160 KB',  at28K: '4.48 GB', usersPerH100: '10',  usersNote: '',                   transferTime: '90 ms',    at28KGB: 4.48,  highlight: true },
-  { id: 'gqa-fp8-50',  arch: 'GQA-8', quant: 'FP8',  eviction: '50%', perToken: '160 KB \u00d7 50%', at28K: '2.24 GB', usersPerH100: '20', usersNote: '', transferTime: '45 ms', at28KGB: 2.24, highlight: false },
-  { id: 'gqa-int4-50', arch: 'GQA-8', quant: 'INT4', eviction: '50%', perToken: '80 KB \u00d7 50%',  at28K: '1.12 GB', usersPerH100: '40', usersNote: '', transferTime: '22 ms', at28KGB: 1.12, highlight: false },
-  { id: 'mla-fp8-0',   arch: 'MLA',   quant: 'FP8',  eviction: '0%',  perToken: '~62 KB',  at28K: '~1.75 GB', usersPerH100: '25',  usersNote: '', transferTime: '35 ms', at28KGB: 1.75, highlight: false },
-  { id: 'mqa-int4-75', arch: 'MQA',   quant: 'INT4', eviction: '75%', perToken: '10 KB \u00d7 25%',  at28K: '~70 MB',  usersPerH100: '642', usersNote: 'theoretical', transferTime: '1.4 ms', at28KGB: 0.07, highlight: false },
-];
-
-// --- Page 6: Accuracy by task type ---
-export const ACCURACY_BY_TASK = [
-  { compression: 'FP8 (2\u00d7)',                  chatQA: 99.5, summarization: 99.3, codeGen: 99.2, mathReasoning: 99.0, longRetrieval: 99.1, recommendation: 'Safe for all tasks.' },
-  { compression: 'INT4 (4\u00d7)',                  chatQA: 97,   summarization: 96,   codeGen: 95,   mathReasoning: 93,   longRetrieval: 94,   recommendation: 'Acceptable for chat/docs. Risky for reasoning and code review.' },
-  { compression: '50% eviction (2\u00d7)',          chatQA: 96,   summarization: 95,   codeGen: 94,   mathReasoning: 88,   longRetrieval: 82,   recommendation: 'OK for chat. Avoid for retrieval/reasoning.' },
-  { compression: '2-bit quant (8\u00d7)',           chatQA: 93,   summarization: 91,   codeGen: 89,   mathReasoning: 85,   longRetrieval: 80,   recommendation: 'Research-grade only. Not for production.' },
-  { compression: 'INT4 + 50% eviction (8\u00d7)',   chatQA: 93,   summarization: 92,   codeGen: 90,   mathReasoning: 82,   longRetrieval: 75,   recommendation: 'Experimental. Only for simple chat workloads.' },
-];
-
-// Task-type descriptions for accuracy page
-export const TASK_TYPES = [
-  { id: 'chatQA',         label: 'Chat / QA',          note: 'Forgiving \u2014 broad context suffices' },
-  { id: 'summarization',  label: 'Summarization',      note: 'Robust to compression' },
-  { id: 'codeGen',        label: 'Code generation',    note: 'Sensitive to precision in symbol names' },
-  { id: 'mathReasoning',  label: 'Math reasoning',     note: 'Needs precise numerical values' },
-  { id: 'longRetrieval',  label: 'Long-context retrieval', note: 'Needs every token available' },
-];
-
-// --- Page 7: Infrastructure impact table ---
-export const INFRA_IMPACT = [
-  { component: 'Per token cache',                       fp16: '320 KB',                  fp8: '160 KB',                      improvement: '2\u00d7 smaller',           fp16Num: 320,  fp8Num: 160 },
-  { component: '28K conversation',                      fp16: '8.96 GB',                 fp8: '4.48 GB',                     improvement: '2\u00d7 smaller',           fp16Num: 8.96, fp8Num: 4.48 },
-  { component: 'Active users per GPU (Stop 11)',        fp16: '18',                      fp8: '36',                          improvement: '2\u00d7 more',              fp16Num: 18,   fp8Num: 36 },
-  { component: 'Batch size capacity (Stop 11)',         fp16: '18',                      fp8: '36',                          improvement: '2\u00d7 larger batches',    fp16Num: 18,   fp8Num: 36 },
-  { component: 'PagedAttention pages (Stop 11)',        fp16: '5.12 MB/block',           fp8: '2.56 MB/block',               improvement: '2\u00d7 more blocks per GB', fp16Num: 5.12, fp8Num: 2.56 },
-  { component: 'P/D transfer (Stop 12)',                fp16: '179 ms',                  fp8: '90 ms',                       improvement: '2\u00d7 faster TTFT',        fp16Num: 179,  fp8Num: 90 },
-  { component: 'G2 capacity (Stop 13)',                 fp16: '800 warm conversations',  fp8: '1,600',                       improvement: '2\u00d7 more',               fp16Num: 800,  fp8Num: 1600 },
-  { component: 'G3.5 promotion (Stop 13)',              fp16: '192 ms',                  fp8: '96 ms',                       improvement: '2\u00d7 faster retrieval',   fp16Num: 192,  fp8Num: 96 },
-  { component: 'Cache hit rate (Stop 13)',              fp16: 'Baseline',                fp8: 'Higher (more fits per tier)', improvement: 'Fewer costly recomputes',    fp16Num: null, fp8Num: null },
-  { component: 'Network bandwidth (promotion/demotion)', fp16: 'Baseline',               fp8: '50% of data moved',           improvement: '2\u00d7 headroom',           fp16Num: null, fp8Num: null },
-  { component: 'Accuracy',                              fp16: '100% baseline',           fp8: '99%+',                        improvement: 'Negligible loss',            fp16Num: 100,  fp8Num: 99 },
-];
-
-// --- Page 8: Summary table ---
-export const SUMMARY_TABLE = [
-  {
-    family: 'Architectural (GQA/MQA/MLA)',
-    compresses: 'Number of KV head groups',
-    whenApplied: 'Model design + training',
-    typicalReduction: '8\u201365\u00d7 vs MHA',
-    accuracyCost: 'Minimal (trained for it)',
+    num: '1',
+    label: 'Request arrives at Smart Router.',
+    text: 'Router checks KVBM\u2019s index: "User 17\u2019s cache is on Server 2, in G2 (DRAM), Decode GPU 3." Router sends request to Decode GPU 3. Router is immediately available for other requests.',
+    blocking: 'Non-blocking',
+    blockColor: 'teal',
   },
   {
-    family: 'Quantization (FP8/INT4/2-bit)',
-    compresses: 'Precision of each number',
-    whenApplied: 'Inference time (post-training)',
-    typicalReduction: '2\u20138\u00d7',
-    accuracyCost: 'FP8: negligible. INT4: modest. 2-bit: significant',
+    num: '2',
+    label: 'KVBM initiates promotion.',
+    text: 'G2 \u2192 G1 transfer begins via PCIe DMA. Decode GPU 3 continues generating tokens for Users 13\u201316 in the continuous batch. The DMA transfer uses a separate memory channel that does not stall compute.',
+    blocking: 'Non-blocking for other users',
+    blockColor: 'teal',
   },
   {
-    family: 'Token eviction (H2O/SnapKV)',
-    compresses: 'Number of tokens cached',
-    whenApplied: 'Inference time (dynamic)',
-    typicalReduction: '2\u20135\u00d7',
-    accuracyCost: 'Task-dependent. Reasoning degrades fastest',
+    num: '3',
+    label: 'User 17\u2019s new tokens begin incremental prefill.',
+    text: 'The Scheduler coordinates: as each layer\u2019s cache arrives in G1, that layer becomes available for the new tokens\u2019 attention computation. Prefill proceeds layer-by-layer, overlapping with the ongoing promotion. User 17 cannot get their first token until Layer 80\u2019s cache has arrived AND the new tokens have been processed through all 80 layers.',
+    blocking: 'Partially blocking for User 17',
+    blockColor: 'amber',
   },
   {
-    family: 'Combined',
-    compresses: 'All dimensions',
-    whenApplied: 'All stages',
-    typicalReduction: '16\u20131,000\u00d7',
-    accuracyCost: 'Depends on combination',
-    highlight: true,
+    num: '4',
+    label: 'Promotion completes.',
+    text: 'All of User 17\u2019s cache is now in G1. User 17 joins the continuous batch for decode. From this point, User 17 gets tokens at the same rate as everyone else.',
+    blocking: 'Fully active',
+    blockColor: 'teal',
   },
 ];
+
+// What-blocks-what summary table
+export const BLOCKING_TABLE = [
+  { event: 'Cache in G1 (hot)',       user17: 'No delay',            otherUsers: 'No impact',            prefillPool: 'Not involved' },
+  { event: 'Promotion from G2',       user17: 'TTFT += ~50\u2013150 ms',  otherUsers: 'No impact (async DMA)',  prefillPool: 'Not involved' },
+  { event: 'Promotion from G3',       user17: 'TTFT += ~500\u2013800 ms', otherUsers: 'No impact (async DMA)',  prefillPool: 'Not involved' },
+  { event: 'Promotion from G3.5',     user17: 'TTFT += ~200 ms',     otherUsers: 'No impact (async RDMA)', prefillPool: 'Not involved' },
+  { event: 'Full cache miss',         user17: 'TTFT += ~2,000 ms',   otherUsers: 'No impact (different GPU pool)', prefillPool: 'Occupied for ~100\u2013500 ms' },
+];
+
+// Cache hit vs. miss cost comparison (28,000-token conversation)
+export const CACHE_HIT_VS_MISS = [
+  { metric: 'Latency',                hit: '~200 ms (RDMA transfer)',          miss: '~2,000 ms (prefill compute)' },
+  { metric: 'GPU compute consumed',   hit: 'Zero',                             miss: 'Full prefill for 28K tokens' },
+  { metric: 'Impact on other users',  hit: 'None (async transfer)',            miss: 'Stalls prefill pool' },
+  { metric: 'Network bandwidth',      hit: '9.6 GB one-time transfer',         miss: 'None (compute-only)' },
+  { metric: 'Total cost',             hit: '1x (transfer only)',               miss: '~10x (compute + stall + opportunity)' },
+];
+
+// Capacity comparison: without tiering vs. with tiering
+export const WITHOUT_TIERING = [
+  { metric: 'HBM available for cache',             perGPU: '45 GB', eightGPUs: '360 GB' },
+  { metric: 'Users at 8K tokens (2.5 GB each)',     perGPU: '18',    eightGPUs: '144' },
+  { metric: 'Users at 32K tokens (10 GB each)',     perGPU: '4',     eightGPUs: '32' },
+];
+
+export const WITH_TIERING = [
+  { tier: 'G1 (HBM)',     capacity: '360 GB',    usersAt8K: '144 active',        latency: '~0 ms',             path: 'Already there' },
+  { tier: 'G2 (DRAM)',    capacity: '2 TB',      usersAt8K: '800 warm',          latency: '~150 ms',           path: 'PCIe DMA' },
+  { tier: 'G3 (NVMe)',    capacity: '16 TB',     usersAt8K: '6,400 cold',        latency: '~500\u2013800 ms',  path: 'GDS or staged via DRAM' },
+  { tier: 'G3.5 (ICMS)',  capacity: '100+ TB',   usersAt8K: '40,000+ shared',    latency: '~200 ms',           path: 'Spectrum-X RDMA' },
+  { tier: 'G4 (Network)', capacity: 'PB+',       usersAt8K: 'Millions archived', latency: '~1\u201310 s',      path: 'RDMA / NVMe-oF / S3' },
+];
+
+// Summary tier table
+export const TIER_SUMMARY = [
+  { tier: 'G1 (HBM)',     capacity: '80 GB',   latency: '~1 ns',                interconnect: 'Internal to GPU',  role: 'Active decode' },
+  { tier: 'G2 (DRAM)',    capacity: '2 TB',    latency: '~100 ns',              interconnect: 'PCIe Gen5',        role: 'Warm / between turns' },
+  { tier: 'G3 (NVMe)',    capacity: '16 TB',   latency: '~10 \u00B5s',          interconnect: 'NVMe/PCIe',        role: 'Cold / idle minutes' },
+  { tier: 'G3.5 (ICMS)',  capacity: '100+ TB', latency: '~50\u2013100 \u00B5s', interconnect: 'Spectrum-X RDMA',  role: 'Shared pod context' },
+  { tier: 'G4 (Network)', capacity: 'PB+',     latency: '~1\u201310 ms',        interconnect: 'RDMA / NVMe-oF',   role: 'Archive / persistent' },
+];
+
+// Key takeaways
+export const KEY_TAKEAWAYS = [
+  'The KV cache can live at five tiers: GPU HBM, CPU DRAM, local NVMe, ICMS/CMX, and network storage.',
+  'Each tier trades capacity for latency. All tiered retrieval uses zero GPU compute \u2014 only a cache miss requires full prefill.',
+  'The KVBM orchestrates data movement across tiers with block-level granularity and lifecycle tracking.',
+  'ICMS/CMX (G3.5) breaks the one-GPU-one-cache binding: any GPU can access any conversation\u2019s cache.',
+  'For storage engineers: the I/O workload is large sequential reads/writes of fixed-size blocks (~5 MB), latency-critical on reads, throughput-critical on writes.',
+  'Cache hit rate is the central economic metric \u2014 a miss costs ~10x a hit.',
+];
+
+// Helper: determine which tier a conversation at `idleSec` of idle time would naturally live in
+export function tierForIdle(idleSec, icmsEnabled) {
+  // Walk the tier thresholds, skipping G3.5 if disabled
+  const tiers = MEMORY_TIERS.filter((t) => icmsEnabled || !t.optional);
+  let chosen = tiers[0];
+  for (const t of tiers) {
+    if (idleSec >= t.idleThresholdSec) chosen = t;
+  }
+  return chosen;
+}

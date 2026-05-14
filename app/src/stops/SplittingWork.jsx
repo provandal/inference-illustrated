@@ -43,7 +43,7 @@ import {
   TPPPDP24_LIFECYCLE_STEPS,
   TPPPDP24_REPLICAS,
   TPPPDP24_STAGE_LAYERS,
-} from '../data/stop12Data';
+} from '../data/stop13Data';
 import { Panel, PanelHeader, InfoBox, Callout } from '../components/ui';
 import PageNav from '../components/PageNav';
 
@@ -129,7 +129,7 @@ const PARALLELISM_CONFIGS = [
     arrows: 'all-reduce',
     arrowLabel: 'all-reduce',
     description: 'Every GPU holds all 80 layers but only a slice (1/8) of each layer\u2019s weight matrices. When processing a token, all 8 GPUs compute their slice in parallel, then synchronize results via an all-reduce operation. This happens twice per layer (after attention and after FFN) \u2014 160 all-reduces per forward pass for Llama-3 70B. The benefit: each GPU only needs 1/8 of the weights in memory, freeing space for more KV cache.',
-    users: '1 model instance, many concurrent users. All 8 GPUs collaborate on every forward pass, but each pass still batches tokens from dozens of users together (continuous batching from Stop 11). What\u2019s being split here is the model, not the users. In fact, TP=8 typically serves MORE concurrent users than DP=8: shrinking weight memory to 1/8 per GPU frees disproportionately more space for KV cache (the super-linear scaling effect from Stop 8).',
+    users: '1 model instance, many concurrent users. All 8 GPUs collaborate on every forward pass, but each pass still batches tokens from dozens of users together (continuous batching from Stop 12). What\u2019s being split here is the model, not the users. In fact, TP=8 typically serves MORE concurrent users than DP=8: shrinking weight memory to 1/8 per GPU frees disproportionately more space for KV cache (the super-linear scaling effect from Stop 9).',
     communication: 'Heavy. Two all-reduce operations per layer, 80 layers = 160 all-reduces per token. Each all-reduce requires every GPU to send its partial result to every other GPU and receive back the combined result. At NVLink speeds within a node this takes microseconds per operation. Across nodes (InfiniBand at 50 GB/s) it\u2019s 18\u00d7 slower \u2014 which is why TP should stay within a single node.',
     kvCache: 'Sharded across GPUs \u2014 each GPU holds 1/8 of the KV cache (1/8 of the attention heads). This is the super-linear scaling effect: with TP=8, the weight memory per GPU drops to 1/8, freeing disproportionately more space for cache. Total cache capacity across the cluster is much larger than 8\u00d7 one GPU\u2019s cache.',
   },
@@ -261,7 +261,7 @@ const PARALLELISM_CONFIGS = [
     description: 'The most common production configuration. Two independent TP instances. Instance A (4 GPUs) uses tensor parallelism: each GPU holds 1/4 of the weights and they all-reduce together. Instance B (4 GPUs) does the same. Each instance batches many users via continuous batching, and the two instances operate completely independently. This gives you the memory efficiency of TP (each GPU holds only 1/4 of the weights) with the throughput multiplier of DP (two parallel inference engines instead of one).',
     users: '2 model instances, each batching many users. Instance A (4 GPUs, TP) and Instance B (4 GPUs, TP) each serve their own continuous batch of dozens of concurrent users. The instances are completely independent. With a 32-GPU cluster you\u2019d have 8 such instances, multiplying the throughput again.',
     communication: 'All-reduce within each group (4 GPUs, 160 all-reduces per forward pass). Zero communication between groups. This is why TP+DP scales well: the heavy TP communication stays within a NVLink-connected node, while the DP replication requires no communication at all.',
-    kvCache: 'Sharded within each instance. Each GPU in Instance A holds 1/4 of the heads for every user batched on Instance A. Same for Instance B with its own batch. No cache sharing between instances. This is the super-linear scaling effect from Stop 8 \u2014 TP=4 frees disproportionately more memory for cache than running at TP=1.',
+    kvCache: 'Sharded within each instance. Each GPU in Instance A holds 1/4 of the heads for every user batched on Instance A. Same for Instance B with its own batch. No cache sharing between instances. This is the super-linear scaling effect from Stop 9 \u2014 TP=4 frees disproportionately more memory for cache than running at TP=1.',
   },
   {
     id: 'pp4dp2',
@@ -3612,7 +3612,7 @@ function DataParallelPage() {
 
       <Callout
         type="note"
-        message="<strong>KV cache implication:</strong> Each GPU holds the COMPLETE cache for its users. The cache never moves between GPUs. If a user is assigned to GPU 3, all their KV data lives on GPU 3 for the duration of the conversation. This is simple but inflexible &mdash; if GPU 3 runs out of cache space while GPU 5 has plenty, there&rsquo;s no way to rebalance. <em>Stop 16 addresses this imbalance with cache-aware routing.</em>"
+        message="<strong>KV cache implication:</strong> Each GPU holds the COMPLETE cache for its users. The cache never moves between GPUs. If a user is assigned to GPU 3, all their KV data lives on GPU 3 for the duration of the conversation. This is simple but inflexible &mdash; if GPU 3 runs out of cache space while GPU 5 has plenty, there&rsquo;s no way to rebalance. <em>Stop 17 addresses this imbalance with cache-aware routing.</em>"
       />
     </div>
   );
@@ -4289,7 +4289,7 @@ function PipelineParallelPage() {
 
       <Callout
         type="note"
-        message='<strong>KV cache implication:</strong> The cache is split across the <strong>layer dimension</strong>. GPU 0&rsquo;s cache contains layers 1&ndash;20 for ALL tokens. GPU 3&rsquo;s cache contains layers 61&ndash;80 for ALL tokens. A token&rsquo;s complete cache is distributed across all pipeline stages. To move a full user&rsquo;s cache (e.g., for disaggregated inference), you must gather from all stages &mdash; but the data at each stage is contiguous by layer, which maps naturally to the tier structure we&rsquo;ll see in Stop 13.'
+        message='<strong>KV cache implication:</strong> The cache is split across the <strong>layer dimension</strong>. GPU 0&rsquo;s cache contains layers 1&ndash;20 for ALL tokens. GPU 3&rsquo;s cache contains layers 61&ndash;80 for ALL tokens. A token&rsquo;s complete cache is distributed across all pipeline stages. To move a full user&rsquo;s cache (e.g., for disaggregated inference), you must gather from all stages &mdash; but the data at each stage is contiguous by layer, which maps naturally to the tier structure we&rsquo;ll see in Stop 14.'
       />
     </div>
   );
@@ -5098,7 +5098,7 @@ function LifecyclePage() {
 }
 
 /* ================================================================
-   PAGE 9 — Summary + Bridge to Stop 13
+   PAGE 9 — Summary + Bridge to Stop 14
    ================================================================ */
 function SummaryPage() {
   return (
@@ -5130,7 +5130,7 @@ function SummaryPage() {
       </Panel>
 
       <Panel className="mt-4">
-        <PanelHeader>Evolving diagram — Stop 12 version</PanelHeader>
+        <PanelHeader>Evolving diagram — Stop 13 version</PanelHeader>
         <div className="p-4">
           <div className="text-[12px] text-[var(--color-text-muted)] mb-3">
             The 8 GPUs are now split into prefill and decode pools, connected by a NIXL/RDMA pipe.
@@ -5222,7 +5222,7 @@ function SummaryPage() {
       </Panel>
 
       <Panel className="mt-4">
-        <PanelHeader>Bridge to Stop 13 — 2.5 GB swap math</PanelHeader>
+        <PanelHeader>Bridge to Stop 14 — 2.5 GB swap math</PanelHeader>
         <div className="p-4 space-y-3 text-[13px] text-[var(--color-text-secondary)] leading-relaxed">
           <p>
             The KV cache transfer between prefill and decode takes ~180 ms in our scenario. But
@@ -5232,7 +5232,7 @@ function SummaryPage() {
             conversations grow to 32K tokens, and we&rsquo;ll hit the memory wall again.
           </p>
           <p>
-            Stop 11 showed one answer: preempt or queue. But there&rsquo;s another option: move
+            Stop 12 showed one answer: preempt or queue. But there&rsquo;s another option: move
             less-recently-used cache pages to cheaper, larger memory. An H100 server has{' '}
             <strong className="text-[var(--color-text)]">~2 TB of CPU DRAM</strong> alongside its
             80 GB of HBM.
@@ -5257,7 +5257,7 @@ function SummaryPage() {
             <strong className="text-[var(--color-text)]">Swapping is ~8&times; faster than
             recomputing.</strong> This multi-tier approach &mdash; HBM for hot caches, DRAM for
             warm, SSD for cold, networked storage for frozen &mdash; is the subject of{' '}
-            <strong className="text-[var(--color-text)]">Stop 13</strong>.
+            <strong className="text-[var(--color-text)]">Stop 14</strong>.
           </p>
         </div>
       </Panel>

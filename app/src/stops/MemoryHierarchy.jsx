@@ -18,7 +18,7 @@ import {
   TIER_SUMMARY,
   KEY_TAKEAWAYS,
   tierForIdle,
-} from '../data/stop13Data';
+} from '../data/stop14Data';
 import { Panel, PanelHeader, InfoBox, Callout } from '../components/ui';
 import PageNav from '../components/PageNav';
 
@@ -1000,14 +1000,14 @@ function StorageIOPage() {
           VAST, LMCache) aggregate multiple pages and all model layers into much larger
           sequential chunks. LMCache&rsquo;s default is 256 tokens per chunk &mdash; tens to
           low hundreds of large chunks per conversation, not thousands of small
-          per-layer-per-page reads. We&rsquo;ll see why this matters in Stop 15 (the
+          per-layer-per-page reads. We&rsquo;ll see why this matters in Stop 16 (the
           fabric).
         </InfoBox>
       </Panel>
 
       <Callout
         type="note"
-        message="<strong>Key observation:</strong> The block size difference across Llama-3 8B, 70B, and 405B comes entirely from the number of layers (32 vs 80 vs 126). The KV-per-layer contribution is identical across the three sizes because they share the same GQA configuration (8 KV heads, 128 d_head). This mirrors the KV cache per-token finding from Stop 8: bigger models have bigger caches because of depth, not wider heads. <strong>DeepSeek-V3 (MLA)</strong> is notably different: its Multi-Head Latent Attention compresses K,V into a smaller latent space, producing blocks roughly 2.5x smaller &mdash; the compression approach we will explore in Stop 14."
+        message="<strong>Key observation:</strong> The block size difference across Llama-3 8B, 70B, and 405B comes entirely from the number of layers (32 vs 80 vs 126). The KV-per-layer contribution is identical across the three sizes because they share the same GQA configuration (8 KV heads, 128 d_head). This mirrors the KV cache per-token finding from Stop 9: bigger models have bigger caches because of depth, not wider heads. <strong>DeepSeek-V3 (MLA)</strong> is notably different: its Multi-Head Latent Attention compresses K,V into a smaller latent space, producing blocks roughly 2.5x smaller &mdash; the compression approach we will explore in Stop 15."
       />
 
       {/* Block size calculator */}
@@ -1270,7 +1270,7 @@ function CacheSharingPage() {
 
       <Callout
         type="note"
-        message="<strong>What else is on the Spectrum-X fabric?</strong> Not just KV cache transfers. The same fabric carries: disaggregated P/D transfers (Stop 12), gradient synchronization (for training workloads sharing the cluster), and inter-node tensor parallelism communication. KV cache transfers must coexist with these other traffic types. Spectrum-X&rsquo;s congestion control and QoS features (Stop 15) ensure that cache transfers do not starve latency-sensitive decode traffic."
+        message="<strong>What else is on the Spectrum-X fabric?</strong> Not just KV cache transfers. The same fabric carries: disaggregated P/D transfers (Stop 13), gradient synchronization (for training workloads sharing the cluster), and inter-node tensor parallelism communication. KV cache transfers must coexist with these other traffic types. Spectrum-X&rsquo;s congestion control and QoS features (Stop 16) ensure that cache transfers do not starve latency-sensitive decode traffic."
       />
     </div>
   );
@@ -1539,7 +1539,7 @@ function EconomicsPage() {
 
       <Callout
         type="good"
-        message="<strong>Compression multiplies every tier&rsquo;s effectiveness.</strong> Stop 14 covers compression techniques (GQA, MLA, quantization) that reduce the SIZE of the cache at each tier. Smaller cache = more entries per tier = higher effective capacity = higher hit rate = lower cost."
+        message="<strong>Compression multiplies every tier&rsquo;s effectiveness.</strong> Stop 15 covers compression techniques (GQA, MLA, quantization) that reduce the SIZE of the cache at each tier. Smaller cache = more entries per tier = higher effective capacity = higher hit rate = lower cost."
       />
     </div>
   );
@@ -1693,7 +1693,7 @@ function SummaryPage() {
       </Panel>
 
       <Panel className="mt-4">
-        <PanelHeader>Bridge to Stop 14</PanelHeader>
+        <PanelHeader>Bridge to Stop 15</PanelHeader>
         <div className="p-4 space-y-3 text-[13px] text-[var(--color-text-secondary)] leading-relaxed">
           <p>
             Tiering gives us more{' '}
@@ -1708,7 +1708,7 @@ function SummaryPage() {
             promotion.
           </p>
           <p>
-            GQA already reduced the cache by 8x compared to full MHA (Stop 8).
+            GQA already reduced the cache by 8x compared to full MHA (Stop 9).
             DeepSeek&rsquo;s MLA compresses further by projecting K,V into a smaller latent
             space. Quantization shrinks each number&rsquo;s precision. Token eviction throws
             away the least important entries entirely.
@@ -1718,7 +1718,7 @@ function SummaryPage() {
             capacity at every tier &mdash; turning 144 active users into 288, and cutting
             every promotion transfer time in half.{' '}
             <strong className="text-[var(--color-text)]">
-              Stop 14 explores how to make the cache as small as possible &mdash; and what
+              Stop 15 explores how to make the cache as small as possible &mdash; and what
               accuracy you trade for each reduction.
             </strong>
           </p>

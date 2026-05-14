@@ -1,446 +1,1114 @@
-// Stop 13: The Memory Hierarchy — Where the Cache Lives
+// Stop 13: Splitting the Work — Parallelism & Disaggregated Inference
 
 export const PAGES = [
-  { id: 'framing',         label: 'You Already Know This',        type: 'static' },
-  { id: 'five-tiers',      label: 'The Five Tiers',               type: 'interactive' },
-  { id: 'data-movement',   label: 'Data Movement',                type: 'interactive' },
-  { id: 'kvbm',            label: 'The KV Block Manager',         type: 'interactive' },
-  { id: 'storage-io',      label: 'What Storage Sees',            type: 'interactive' },
-  { id: 'cache-sharing',   label: 'Cache Sharing',                type: 'static' },
-  { id: 'blocking',        label: 'What Waits on What',           type: 'static' },
-  { id: 'competition',     label: 'The Competitive Landscape',    type: 'static' },
-  { id: 'economics',       label: 'The Cache Hit Rate',           type: 'static' },
-  { id: 'calculator',      label: 'Putting Numbers on It',        type: 'static' },
-  { id: 'summary',         label: 'Stop 13 at a Glance',          type: 'static' },
+  { id: 'one-gpu',           label: "One GPU Isn't Enough",   type: 'static' },
+  { id: 'data-parallel',     label: 'Data Parallelism',        type: 'animated' },
+  { id: 'tensor-parallel',   label: 'Tensor Parallelism',      type: 'animated' },
+  { id: 'pipeline-parallel', label: 'Pipeline Parallelism',    type: 'animated' },
+  { id: 'choosing',          label: 'Choosing & Combining',    type: 'static' },
+  { id: 'disaggregated',     label: 'Disaggregated Inference', type: 'animated' },
+  { id: 'dynamo',            label: 'Dynamo Orchestration',    type: 'static' },
+  { id: 'lifecycle',         label: 'KV Cache Lifecycle',      type: 'animated' },
+  { id: 'summary',           label: 'Stop 13 at a Glance',     type: 'static' },
 ];
 
-// -- Narration text for each page (rendered with dangerouslySetInnerHTML) --
-
+// Curriculum narration text (verbatim). Passed through dangerouslySetInnerHTML.
 export const NARRATIONS = {
-  framing:
-    '<strong>Stop 13: The Memory Hierarchy &mdash; Where the Cache Lives.</strong> In our scenario, 32 users on 8x H100 GPUs with Llama-3 70B at FP4. At steady state (8K tokens average), the KV cache fits comfortably in HBM. But when 5 users simultaneously upload large documents (32K tokens each), cache demand spikes to 50 GB on a single GPU &mdash; more than the 45 GB available after weights. In Stop 11, we saw three options: preempt (expensive recomputation), queue (user waits), or offload (move cache to slower memory). This stop is about that third option &mdash; and it is the option that turns the KV cache into a tiered storage problem. If you have worked with storage systems, you have built tiered architectures before: SSD for hot data, HDD for warm, tape or object storage for cold. The same pattern applies here &mdash; but the tiers are different, the data is ephemeral, and the latency requirements are measured in microseconds, not milliseconds.',
+  'one-gpu':
+    '<p>In Stop 12, we treated each of our 8 H100 GPUs as independent — each running its own copy of Llama-3 70B, each serving its own subset of users. That works when the model fits on one GPU (35 GB at FP4).</p>' +
+    '<p style="margin-top:0.5em">But what if we want to run at FP16 for better quality? Llama-3 70B at FP16 is 140 GB — nearly two full H100s just for the weights, before any KV cache. And Llama-3 405B at FP4 is still ~100 GB — more than one H100 can hold.</p>' +
+    '<p style="margin-top:0.5em">When a model doesn\'t fit on one GPU, you must split it. But HOW you split it determines everything: where the KV cache lives, what data moves between GPUs, how much bandwidth you need, and how many users you can serve.</p>' +
+    '<p style="margin-top:0.5em">There are three fundamental ways to split a model across GPUs. Each one cuts along a different dimension — and the KV cache follows the cut differently.</p>',
 
-  'five-tiers':
-    'NVIDIA formalized the KV cache memory hierarchy into five tiers, labeled G1 through G4 (with G3.5 added at CES 2026). Each tier offers more capacity at higher latency. Here are the concrete numbers for our 8x H100 cluster. <strong>Drag the idle-time slider</strong> to see which tier a conversation would naturally migrate to, and <strong>toggle ICMS on/off</strong> to watch the G3.5 tier appear or disappear.',
+  'data-parallel':
+    '<p>The simplest approach: make complete copies of the model. Each GPU gets the full model and serves different users independently. This is what we were doing in Stop 12 — we just didn\'t name it.</p>' +
+    '<p style="margin-top:0.5em">For our scenario with Llama-3 70B at FP4 (35 GB): each of our 8 H100s holds one complete copy. Each GPU serves 4 of our 32 users (32 ÷ 8 = 4 per GPU). No GPU needs to talk to any other GPU during inference.</p>',
 
-  'data-movement':
-    'The tiers don&rsquo;t just exist &mdash; data moves between them. Let&rsquo;s trace User 17&rsquo;s KV cache through a 30-minute session with full mechanical detail: what triggers each move, what moves, how it moves, and what else is happening while the move is in progress. <strong>Press play</strong> or drag the scrubber to step through the animation frame by frame.',
+  'tensor-parallel':
+    '<p>What if the model doesn\'t fit on one GPU? Tensor parallelism splits each layer\'s weight matrices across GPUs. Every GPU holds a SLICE of every layer — and all GPUs work together to process every single token.</p>' +
+    '<p style="margin-top:0.5em">For Llama-3 70B at FP16 (140 GB): split across 4 GPUs, each holds 35 GB of weights. But now all 4 GPUs must collaborate on every computation — and they must synchronize after every layer.</p>',
 
-  kvbm:
-    'The orchestrator behind all this data movement is the <strong>Dynamo KV Block Manager (KVBM)</strong>. If you&rsquo;ve worked with storage controllers, volume managers, or caching layers, the KVBM will feel familiar &mdash; it is a block-level memory manager with tiering policies, lifecycle tracking, and a storage-agnostic backend API. <strong>Click any state</strong> in the lifecycle diagram below to walk through a block&rsquo;s journey.',
+  'pipeline-parallel':
+    '<p>Pipeline parallelism takes a different approach: instead of splitting each layer, it splits the STACK of layers. GPU 0 gets layers 1-20, GPU 1 gets layers 21-40, GPU 2 gets layers 41-60, GPU 3 gets layers 61-80. Each GPU runs its assigned layers sequentially — then passes the result to the next GPU.</p>' +
+    '<p style="margin-top:0.5em">The communication pattern is completely different from tensor parallelism: instead of all-reduce between all GPUs at every layer, you have a simple point-to-point send from one GPU to the next, once per stage boundary.</p>',
 
-  'storage-io':
-    'If you are building or evaluating a storage system for KV cache (the G3, G3.5, or G4 tier), here is what the I/O workload looks like. This section translates inference behavior into storage engineering requirements.',
+  'choosing':
+    '<p>In practice, production systems combine these strategies. The rule of thumb used by every major inference framework: tensor parallelism WITHIN a node (where NVLink provides 900 GB/s), pipeline parallelism ACROSS nodes (where network bandwidth is 50-400 GB/s). Data parallelism on top of both for multi-user throughput.</p>',
 
-  'cache-sharing':
-    'Here is the detail that matters most for networking professionals: when KV cache lives in a shared tier (G3.5/ICMS or G4), <strong>any GPU in the pod can read any conversation&rsquo;s cache</strong>. This breaks the one-GPU-one-cache binding from Stop 11 and creates entirely new possibilities &mdash; and entirely new network demands.',
+  'disaggregated':
+    '<p>All three parallelism strategies split the MODEL. Disaggregated inference splits the WORKLOAD — separating the prefill phase and the decode phase onto different GPU pools, each optimized for its computational profile.</p>' +
+    '<p style="margin-top:0.5em">In our scenario, consider what happens when User 17 submits a 28,000-token document for analysis while Users 1-16 are mid-conversation. On a shared GPU, User 17\'s prefill — processing 28,000 tokens through all 80 layers — takes several seconds of intense computation, during which all 16 decode users on that GPU see their token generation stall.</p>' +
+    '<p style="margin-top:0.5em">Disaggregated inference eliminates this interference.</p>',
 
-  blocking:
-    'One of the most important questions for infrastructure engineers: when a user&rsquo;s KV cache is not in HBM, what happens to their request? Does the system block? Does it process other work while waiting? Is there a job manager coordinating all of this?',
+  'dynamo':
+    '<p>NVIDIA Dynamo, released at GTC 2025, is the open-source framework that turns a GPU cluster into a coordinated disaggregated inference system. It doesn\'t replace the inference engine (vLLM, TensorRT-LLM, SGLang) — it orchestrates above them.</p>' +
+    '<p style="margin-top:0.5em">For our scenario, here\'s how Dynamo would organize our 8 H100 GPUs:</p>',
 
-  competition:
-    'NVIDIA&rsquo;s Dynamo/KVBM/NIXL/CMX stack is the most mature KV cache tiering solution as of early 2026. But it is not the only approach. Here is where the competition stands &mdash; because your infrastructure decisions may involve AMD, open-source alternatives, or vendor-specific storage integrations.',
+  'lifecycle':
+    '<p>Let\'s trace the complete lifecycle of one user\'s KV cache through a disaggregated system — from the moment they send a message to the moment they receive a response. This is the data path that every optimization in Act 2 will touch.</p>',
 
-  economics:
-    'The economic case for KV cache tiering comes down to a single metric: <strong>cache hit rate</strong> &mdash; how often a request can reuse existing cached KV data instead of recomputing from scratch. According to Manus AI (an agentic AI company acquired by Meta in 2025), &ldquo;KV cache hit rate is the most important metric for agentic AI systems because a KV cache miss costs ten times more than a cache hit.&rdquo;',
-
-  calculator:
-    'Let&rsquo;s calculate the total cache capacity and cost across all tiers for our scenario &mdash; and see how tiering changes the number of concurrent users we can serve.',
-
-  summary:
-    'The KV cache memory hierarchy transforms inference from a single-tier problem into a multi-tier optimization problem &mdash; the same kind of problem storage engineers solve every day, applied to a new data type.',
+  'summary':
+    '<p>We\'ve seen four ways to split inference work across GPUs. Three split the model (data, tensor, pipeline). One splits the workload (prefill vs. decode). Production systems combine all four.</p>',
 };
 
-// Side-by-side comparison: traditional storage tiering vs. KV cache tiering
-export const TIERING_COMPARISON = [
-  { aspect: 'Hot tier',            traditional: 'NVMe SSD',                            kvCache: 'GPU HBM' },
-  { aspect: 'Warm tier',           traditional: 'SAS SSD / HDD',                      kvCache: 'CPU DRAM' },
-  { aspect: 'Cold tier',           traditional: 'HDD / tape',                          kvCache: 'NVMe SSD' },
-  { aspect: 'Archive',             traditional: 'Object storage / cloud',              kvCache: 'Network storage (Dell, WEKA, VAST)' },
-  { aspect: 'Data lifecycle',      traditional: 'Months to years',                     kvCache: 'Seconds to minutes' },
-  { aspect: 'Placement policy',    traditional: 'Access frequency over days/weeks',    kvCache: 'Access recency within a conversation' },
-  { aspect: 'Eviction cost',       traditional: 'Read from slower tier',               kvCache: 'Recompute (prefill) OR read from slower tier' },
-  { aspect: 'Data durability',     traditional: 'Critical (data must not be lost)',     kvCache: 'Ephemeral (can always be recomputed)' },
-];
-
-// The five-tier memory hierarchy with concrete numbers for 8x H100 cluster.
-// capacityGB is an approximate numeric aggregate used by the Five Tiers capacity counter.
-export const MEMORY_TIERS = [
+// ================================================================
+// PAGE 1 — Three axes of splitting (3D block)
+// ================================================================
+export const SPLIT_AXES = [
   {
-    id: 'G1',
-    label: 'G1 \u2014 GPU HBM',
-    shortLabel: 'G1 HBM',
-    capacity: '80 GB per GPU x 8 = 640 GB total (45 GB usable after weights x 8 = 360 GB)',
-    capacityGB: 360,
-    latency: '~1 ns',
-    bandwidth: '3.35 TB/s per H100',
-    costPerGB: '~$25/GB',
-    interconnect: 'Internal to GPU (no network involved)',
-    role: 'Active decode. Every token being generated reads from here.',
-    scenario: 'Holds the KV cache for all actively-generating conversations. 32 users x 2.5 GB = 80 GB. Fits across 8 GPUs.',
-    color: 'var(--color-teal)',
-    colorBg: 'var(--color-teal-bg)',
-    colorText: 'var(--color-teal-text)',
-    // Idle-time (seconds) at which the tier is preferred placement
-    idleThresholdSec: 0,
-  },
-  {
-    id: 'G2',
-    label: 'G2 \u2014 CPU DRAM',
-    shortLabel: 'G2 DRAM',
-    capacity: '~2 TB per server',
-    capacityGB: 2048,
-    latency: '~100 ns (100x slower than HBM)',
-    bandwidth: '~200 GB/s (DDR5); GPU path via PCIe Gen5 at ~64 GB/s',
-    costPerGB: '~$5/GB',
-    interconnect: 'PCIe Gen5 between GPU and CPU memory (~64 GB/s per direction)',
-    role: 'Warm cache. Recently active conversations not currently generating. Conversations between user turns.',
-    scenario: 'During a 30-second pause between turns, a user\u2019s 2.5 GB cache can be offloaded from HBM to DRAM via PCIe. Transfer: 2.5 / 64 = ~39 ms. When the user sends their next message, swap back: ~39 ms.',
-    color: 'var(--color-blue)',
-    colorBg: 'var(--color-blue-bg)',
-    colorText: 'var(--color-blue-text)',
-    idleThresholdSec: 15,
-  },
-  {
-    id: 'G3',
-    label: 'G3 \u2014 Local NVMe SSD',
-    shortLabel: 'G3 NVMe',
-    capacity: '4\u201316 TB per server',
-    capacityGB: 16384,
-    latency: '~10 \u00B5s (10,000 ns \u2014 100x slower than DRAM)',
-    bandwidth: '7\u201314 GB/s per drive, ~30\u201360 GB/s aggregate',
-    costPerGB: '~$0.10/GB',
-    interconnect: 'NVMe over PCIe (local to server)',
-    role: 'Cold cache. Conversations idle for minutes. Overflow from DRAM.',
-    scenario: 'A user closes their laptop for 10 minutes. Their cache (2.5 GB) is tiered from DRAM to SSD. Retrieval when they return: 2.5 GB / 14 GB/s = ~180 ms. Noticeable but far faster than full recomputation (~500\u20131000 ms for 8K-token prefill).',
-    color: 'var(--color-amber)',
-    colorBg: 'var(--color-amber-bg)',
-    colorText: 'var(--color-amber-text)',
-    idleThresholdSec: 300, // 5 minutes
-  },
-  {
-    id: 'G3.5',
-    label: 'G3.5 \u2014 ICMS / CMX',
-    shortLabel: 'G3.5 ICMS',
-    capacity: 'Petabytes per pod (~100+ TB typical)',
-    capacityGB: 102400,
-    latency: '~50\u2013100 \u00B5s (pod-level RDMA access)',
-    bandwidth: '270+ GB/s aggregate (demonstrated by WEKA on 8x H100)',
-    costPerGB: '~$0.05/GB',
-    interconnect: 'Spectrum-X Ethernet with RDMA between compute nodes and ICMS enclosures',
-    role: 'Shared context memory. KV cache accessible by ANY GPU in the pod \u2014 not tied to a single server. Enables cache reuse across requests with shared prefixes.',
-    scenario: 'All 500 engineers share the same system prompt (~2K tokens). Instead of each GPU computing and storing this prefix independently, ICMS stores it once and serves it to any GPU on demand.',
-    color: 'var(--color-primary)',
-    colorBg: 'var(--color-primary-bg)',
-    colorText: 'var(--color-primary-text)',
-    idleThresholdSec: 900, // 15 minutes (ICMS preferred for long idle)
-    optional: true,
-  },
-  {
-    id: 'G4',
-    label: 'G4 \u2014 Network Storage',
-    shortLabel: 'G4 Network',
-    capacity: 'Petabytes to exabytes',
-    capacityGB: 1024 * 1024, // 1 PB
-    latency: '~1\u201310 ms',
-    bandwidth: 'Varies (1\u2013100+ GB/s depending on system and protocol)',
-    costPerGB: '~$0.01/GB',
-    interconnect: 'RDMA over Ethernet, NVMe-oF, or S3/object protocols',
-    role: 'Persistent context archive. For agentic AI workflows where context spans hours or days.',
-    scenario: 'An engineer starts a multi-day code review with extensive context. At end of day, the 32K-token cache (10 GB) is archived. Next morning, retrieved from network storage: 10 GB at 50 GB/s RDMA = 200 ms vs. recompute at ~2,000 ms.',
+    id: 'tp',
     color: 'var(--color-red)',
-    colorBg: 'var(--color-red-bg)',
-    colorText: 'var(--color-red-text)',
-    idleThresholdSec: 3600, // 1 hour
-  },
-];
-
-// Interconnect summary table
-export const INTERCONNECT_TABLE = [
-  { transition: 'G1 \u2194 G1 (GPU to GPU, same node)',     interconnect: 'NVLink',                      bandwidth: '900 GB/s',       initiator: 'Tensor parallelism all-reduce' },
-  { transition: 'G1 \u2194 G1 (GPU to GPU, cross-node)',    interconnect: 'InfiniBand / Spectrum-X RDMA', bandwidth: '50\u2013100 GB/s', initiator: 'Disaggregated P/D transfer' },
-  { transition: 'G1 \u2194 G2 (GPU to CPU DRAM)',            interconnect: 'PCIe Gen5',                   bandwidth: '64 GB/s',        initiator: 'KVBM demotion/promotion' },
-  { transition: 'G2 \u2194 G3 (DRAM to local SSD)',          interconnect: 'NVMe over PCIe',              bandwidth: '14\u201360 GB/s',  initiator: 'KVBM demotion/promotion' },
-  { transition: 'G1/G2 \u2194 G3.5 (Node to ICMS)',          interconnect: 'Spectrum-X RDMA',             bandwidth: '50\u2013100 GB/s', initiator: 'KVBM + NIXL' },
-  { transition: 'Any \u2194 G4 (Node to network storage)',   interconnect: 'RDMA / NVMe-oF / S3',          bandwidth: '1\u2013100 GB/s',  initiator: 'KVBM + NIXL' },
-];
-
-// Data-movement animation frames for User 17.
-// Each frame places User 17's block at `tierId` with a given size and optional
-// flow animation from sourceTier -> targetTier for that frame.
-export const MIGRATION_FRAMES = [
-  {
-    id: 'prefill',
-    time: '0:00',
-    title: 'Prefill',
-    tierId: 'G1',
-    sourceTier: null,
-    targetTier: 'G1',
-    transferMs: 0,
-    cacheSize: '8.96 GB',
-    cacheGB: 8.96,
-    description: 'User 17 sends a 28,000-token document. Prefill computes KV cache in G1 (HBM). 28,000 tokens x 320 KB = 8.96 GB created across the prefill GPU\u2019s HBM. Nothing else is waiting \u2014 this is a new conversation, and the prefill GPU is dedicated to prefill (disaggregated from Stop 12).',
-    policy: null,
-    badge: 'New conversation',
+    bgColor: 'var(--color-red-bg)',
+    textColor: 'var(--color-red-text)',
+    axis: 'Width (horizontal)',
+    direction: 'Weight matrices within each layer (d_model)',
+    cut: 'Vertical slice through weight columns',
+    name: 'Tensor Parallelism',
   },
   {
-    id: 'pd-transfer',
-    time: '0:00+',
-    title: 'P/D Transfer',
-    tierId: 'G1',
-    sourceTier: 'G1',
-    targetTier: 'G1',
-    transferMs: 180,
-    transferLabel: '8.96 GB at 50 GB/s (InfiniBand NDR 400G) \u2248 180 ms',
-    cacheSize: '8.96 GB',
-    cacheGB: 8.96,
-    description: 'Prefill complete. KVBM marks User 17\u2019s blocks as "committed." NIXL initiates an RDMA transfer from Prefill GPU HBM to Decode GPU HBM: 8.96 GB at 50 GB/s = ~180 ms. During this transfer, the Decode GPU continues generating tokens for its OTHER users (13\u201316) \u2014 the transfer is asynchronous and non-blocking. NIXL uses a separate DMA channel that does not compete with the compute path.',
-    policy: 'Decode GPU: async DMA, other users unaffected',
-    badge: 'RDMA stream',
-  },
-  {
-    id: 'decode',
-    time: '0:00\u20130:45',
-    title: 'Active Decode',
-    tierId: 'G1',
-    sourceTier: null,
-    targetTier: 'G1',
-    transferMs: 0,
-    cacheSize: '8.96 \u2192 9.60 GB',
-    cacheGB: 9.60,
-    growing: true,
-    description: 'Response generated over ~45 seconds. Cache grows in G1 as new tokens are generated: 8.96 GB \u2192 9.60 GB (2,000 response tokens added). Each new token appends K,V to the cache at every layer \u2014 80 layers x 320 KB per token per layer of cache growth per decode step.',
-    policy: 'Mutable page at head, all others Committed',
-    badge: 'Cache growing',
-  },
-  {
-    id: 'demotion',
-    time: '0:45\u20132:00',
-    title: 'User Reading \u2014 Cache Demotion',
-    tierId: 'G2',
-    sourceTier: 'G1',
-    targetTier: 'G2',
-    transferMs: 150,
-    transferLabel: '9.60 GB via PCIe Gen5 at 64 GB/s \u2248 150 ms',
-    cacheSize: '9.60 GB',
-    cacheGB: 9.60,
-    description: 'Response complete. User is reading. The KVBM monitors idle time. After a configurable threshold (e.g., 15 s of no activity), blocks transition to "evictable." If G1 memory pressure is high (new users arriving), KVBM initiates demotion to G2 (CPU DRAM) at 64 GB/s = ~150 ms. Pages are freed in G1. The trigger is a policy: idle time + G1 utilization + incoming queue depth.',
-    policy: 'Idle: 15s | G1 util: 87% | Queue: 3 waiting',
-    badge: 'Demote G1 \u2192 G2',
-  },
-  {
-    id: 'promotion',
-    time: '2:00',
-    title: 'Follow-up \u2014 Cache Promotion',
-    tierId: 'G1',
-    sourceTier: 'G2',
-    targetTier: 'G1',
-    transferMs: 150,
-    transferLabel: '9.60 GB at 64 GB/s \u2248 150 ms (layer-parallel fill)',
-    cacheSize: '9.60 GB',
-    cacheGB: 9.60,
-    layerParallel: true,
-    description: 'User sends next message. KVBM looks up blocks \u2014 finds them in G2. Promotion begins: G2 \u2192 G1 via PCIe at 64 GB/s = ~150 ms. Prefill and promotion OVERLAP: as each layer\u2019s cache arrives, the KVBM Scheduler releases it to the inference engine layer-by-layer rather than waiting for the full transfer. Net perceived delay: ~50\u201380 ms instead of the full 150 ms.',
-    policy: 'Layer-parallel fill: early layers arrive first',
-    badge: 'Promote G2 \u2192 G1',
-  },
-  {
-    id: 'deep-demotion',
-    time: '5:00\u201315:00',
-    title: 'Extended Idle \u2014 Deeper Demotion',
-    tierId: 'G3.5',
-    sourceTier: 'G2',
-    targetTier: 'G3.5',
-    transferMs: 192,
-    transferLabel: 'G2 \u2192 G3.5: 9.60 GB at 50 GB/s RDMA \u2248 192 ms (or G3 at 14 GB/s \u2248 686 ms)',
-    cacheSize: '9.60 GB',
-    cacheGB: 9.60,
-    description: 'User takes a long break. G2 is filling up too \u2014 other conversations also idle. KVBM demotes further: G2 \u2192 G3 (NVMe) at 14 GB/s = ~686 ms. If ICMS is available: G2 \u2192 G3.5 at ~50 GB/s RDMA = ~192 ms \u2014 faster AND the cache becomes accessible to any GPU in the pod.',
-    policy: 'Idle: 5+ min | G2 util: 92% | ICMS preferred',
-    badge: 'Demote G2 \u2192 G3.5',
-  },
-  {
-    id: 'return',
-    time: '15:00',
-    title: 'User Returns from Long Break',
-    tierId: 'G1',
-    sourceTier: 'G3.5',
-    targetTier: 'G1',
-    transferMs: 192,
-    transferLabel: 'G3.5 \u2192 G1: 9.60 GB at 50 GB/s RDMA \u2248 192 ms (vs. ~2,000 ms full recompute)',
-    cacheSize: '9.60 GB',
-    cacheGB: 9.60,
-    layerParallel: true,
-    description: 'User sends another message. Cache must be promoted back to G1. From G3 (local SSD): ~500\u2013836 ms via GDS or staged through DRAM. From G3.5 (ICMS): ~192 ms directly to G1 via RDMA \u2014 the RDMA path is higher bandwidth than NVMe over PCIe. Compare: full recomputation from scratch would be ~2,000 ms for a 30,000-token prefill consuming full GPU compute.',
-    policy: 'Zero GPU compute: pure RDMA transfer',
-    badge: 'Promote G3.5 \u2192 G1',
-  },
-  {
-    id: 'end',
-    time: '30:00',
-    title: 'Conversation Ends',
-    tierId: null,
-    sourceTier: 'G1',
-    targetTier: null,
-    transferMs: 0,
-    cacheSize: 'Freed',
-    cacheGB: 0,
-    description: 'User closes the chat. Option A: Cache freed entirely \u2014 pages returned to all tier pools. Future reference requires full recomputation. Option B: Cache archived to G3.5/G4 for potential reuse. For our scenario (internal tool, same 500 engineers daily), archival to G3.5 is likely worthwhile.',
-    policy: 'Freed across all tiers OR archived to G3.5/G4',
-    badge: 'Session ends',
-  },
-];
-
-// Retrieval path comparison table
-export const RETRIEVAL_PATHS = [
-  { path: 'G1 (already in HBM)',             latency: '0 ms',           gpuCompute: 'None' },
-  { path: 'G2 \u2192 G1 (DRAM promotion)',   latency: '~150 ms',        gpuCompute: 'None (DMA transfer)' },
-  { path: 'G3 \u2192 G1 (SSD promotion)',    latency: '~500\u2013836 ms', gpuCompute: 'None (DMA transfer)' },
-  { path: 'G3.5 \u2192 G1 (ICMS promotion)', latency: '~192 ms',        gpuCompute: 'None (RDMA transfer)' },
-  { path: 'Cache miss (full recompute)',       latency: '~2,000 ms',      gpuCompute: 'Full prefill GPU compute' },
-];
-
-// KVBM block lifecycle states
-export const BLOCK_LIFECYCLE = [
-  {
-    state: 'Inactive',
-    color: 'var(--color-text-muted)',
-    description: 'Block is in the free pool, available for allocation. Holds no cache data.',
-    detail: 'When a conversation ends (or all its pages are freed), blocks return here, ready to be allocated again by the next prefill or decode step.',
-  },
-  {
-    state: 'Mutable',
-    color: 'var(--color-amber)',
-    description: 'Block is being written to (during prefill or decode). Cannot be evicted or moved.',
-    detail: 'During active decode, each new token appends K,V to the cache. Only the NEWEST page per layer is Mutable \u2014 the rest are already full and Committed. This means only ONE page per conversation per layer is mutable at any time.',
-  },
-  {
-    state: 'Committed',
-    color: 'var(--color-teal)',
-    description: 'Block contains valid cache data and is being actively read during decode. Cannot be evicted.',
-    detail: 'Full pages during active generation sit here. They are read on every decode step across all layers. A conversation\u2019s prefix pages spend most of their lives in Committed.',
-  },
-  {
-    state: 'Evictable',
+    id: 'pp',
     color: 'var(--color-blue)',
-    description: 'Block\u2019s conversation is idle. Can be demoted to a lower tier or freed entirely.',
-    detail: 'After the idle threshold, ALL pages transition from Committed to Evictable. The KVBM may then demote them to G2/G3/G3.5/G4 based on memory pressure, or free them if policy dictates.',
-  },
-];
-
-// Storage I/O characteristics table
-export const STORAGE_REQUIREMENTS = [
-  { requirement: 'High sequential read throughput',              why: 'Promotion latency = TTFT',                                   implication: 'Optimize for large sequential reads, not random IOPS' },
-  { requirement: 'Moderate sequential write throughput',         why: 'Demotion is background, not latency-critical',               implication: 'Write throughput matters but not as much as read' },
-  { requirement: 'Fixed block size (configurable, ~5 MB)',       why: 'KVBM page size determines I/O unit',                         implication: 'Align storage block/chunk size to KVBM page size' },
-  { requirement: 'RDMA support',                                  why: 'Bypass CPU on data path; GPU-to-storage direct transfer',    implication: 'Must support GPUDirect Storage (GDS) or RDMA verbs' },
-  { requirement: 'Append-friendly (no in-place update)',          why: 'KV blocks written once, read many times, then freed',        implication: 'Log-structured or append-only layouts are natural fits' },
-  { requirement: 'No durability guarantees needed',               why: 'Cache is ephemeral \u2014 can be recomputed',                implication: 'Skip RAID, replication, journaling. Raw performance > reliability' },
-  { requirement: 'Namespace per conversation',                    why: 'Blocks identified by conversation_id + coordinates',         implication: 'Flat namespace with coordinate-based addressing' },
-  { requirement: 'Fast space reclamation',                        why: 'When conversation ends, all blocks freed at once',           implication: 'Bulk delete by conversation_id, not page-by-page' },
-];
-
-// KV cache block sizes across models (Patch 3). FP16, page_size = 16.
-export const BLOCK_SIZE_TABLE = [
-  { model: 'Llama-3 8B',          kvHeads: 8,  dHead: 128, layers: 32,  perLayerPerPage: '64 KB',  blockSize: '2.05 MB' },
-  { model: 'Llama-3 70B',         kvHeads: 8,  dHead: 128, layers: 80,  perLayerPerPage: '64 KB',  blockSize: '5.12 MB' },
-  { model: 'Llama-3 405B',        kvHeads: 8,  dHead: 128, layers: 126, perLayerPerPage: '64 KB',  blockSize: '8.06 MB' },
-  { model: 'Mistral 7B',          kvHeads: 8,  dHead: 128, layers: 32,  perLayerPerPage: '64 KB',  blockSize: '2.05 MB' },
-  { model: 'Qwen-2.5 72B',        kvHeads: 8,  dHead: 128, layers: 80,  perLayerPerPage: '64 KB',  blockSize: '5.12 MB' },
-  { model: 'DeepSeek-V3 (MLA)',   kvHeads: 1,  dHead: 512, layers: 61,  perLayerPerPage: '32 KB',  blockSize: '1.95 MB' },
-];
-
-// Step-by-step scenario: User 17 follow-up, cache in G2
-export const BLOCKING_STEPS = [
-  {
-    num: '1',
-    label: 'Request arrives at Smart Router.',
-    text: 'Router checks KVBM\u2019s index: "User 17\u2019s cache is on Server 2, in G2 (DRAM), Decode GPU 3." Router sends request to Decode GPU 3. Router is immediately available for other requests.',
-    blocking: 'Non-blocking',
-    blockColor: 'teal',
+    bgColor: 'var(--color-blue-bg)',
+    textColor: 'var(--color-blue-text)',
+    axis: 'Depth (vertical)',
+    direction: 'Stack of 80 transformer layers',
+    cut: 'Horizontal slice through the layer stack',
+    name: 'Pipeline Parallelism',
   },
   {
-    num: '2',
-    label: 'KVBM initiates promotion.',
-    text: 'G2 \u2192 G1 transfer begins via PCIe DMA. Decode GPU 3 continues generating tokens for Users 13\u201316 in the continuous batch. The DMA transfer uses a separate memory channel that does not stall compute.',
-    blocking: 'Non-blocking for other users',
-    blockColor: 'teal',
+    id: 'dp',
+    color: 'var(--color-teal)',
+    bgColor: 'var(--color-teal-bg)',
+    textColor: 'var(--color-teal-text)',
+    axis: 'Users (into the screen)',
+    direction: 'Different conversations being served',
+    cut: 'Replicates the entire block',
+    name: 'Data Parallelism',
+  },
+];
+
+// ================================================================
+// PAGE 1 (TP=8) — Lifecycle animation
+// Prompt → Prefill (3 layers shown explicitly + condense) → First token →
+// Decode loop (autoregressive feedback) → Response complete
+// 4 sub-steps per layer: attention compute, attention all-reduce, FFN compute, FFN all-reduce
+// ================================================================
+export const TP8_PROMPT = 'Write a haiku about tensor parallelism.';
+export const TP8_RESPONSE_LINES = [
+  'Eight cards share the load',
+  'Whispers cross the silver wires',
+  'One thought, parallel.',
+];
+// Pre-tokenised response so we can reveal one token per decode step.
+// Approximated tokenisation — fine for visual effect.
+export const TP8_RESPONSE_TOKENS = [
+  'Eight', ' cards', ' share', ' the', ' load', ',', '\n',
+  'Whispers', ' cross', ' the', ' silver', ' wires', ',', '\n',
+  'One', ' thought', ',', ' parallel', '.',
+];
+
+// Each step: { phase, label, sub, layer (1..80 or null), highlight, narration }
+// highlight values:
+//   'idle'         – no GPU activity
+//   'broadcast'    – arrows from prompt bubble to all 8 GPUs
+//   'compute'      – all 8 GPUs pulse with computation
+//   'allreduce'    – mesh of curves between all 8 GPUs (GPU 0 bright, others shadow)
+//   'condense'     – fast-forward through layers 4-80
+//   'emerge'       – token pops out the bottom-right of the column
+//   'feedback'     – curved arrow from response area back to prompt area
+//   'decode-pass'  – very fast pulse through all layers (single decode step)
+//   'complete'     – final response shown in full
+export const TP8_LIFECYCLE_STEPS = [
+  { phase: 'Setup',    label: 'Cluster idle',                   sub: '8 H100 GPUs holding 1/8 of every weight matrix.',                                                  layer: null, highlight: 'idle' },
+  { phase: 'Prompt',   label: 'Prompt arrives',                 sub: 'User submits the prompt. Tokenizer turns it into ~8 tokens.',                                       layer: null, highlight: 'idle' },
+  { phase: 'Prompt',   label: 'Every GPU starts with the same embedding', sub: 'Animation shorthand: arrows from the prompt to every GPU. Real mechanic: the tokenizer turns the text into integer IDs on the CPU, then each GPU produces the embedding either from a replicated embedding table (no transfer) or via an NCCL all-gather over NVLink. The arrows are a visual; what matters is that every rank just needs to start layer 1 with the same activation.', layer: null, highlight: 'broadcast' },
+
+  { phase: 'Prefill',  label: 'Layer 1 — attention compute',    sub: 'Each GPU multiplies the embedding by its 1/8 slice of W_Q, W_K, W_V and runs attention on its 8 heads.', layer: 1, highlight: 'compute' },
+  { phase: 'Prefill',  label: 'Layer 1 — attention all-reduce', sub: 'All 8 GPUs send their partials to all others over NVLink. After the all-reduce every GPU has the full attention output.', layer: 1, highlight: 'allreduce' },
+  { phase: 'Prefill',  label: 'Layer 1 — FFN compute',          sub: 'Each GPU multiplies through its 1/8 slice of the FFN weights.',                                     layer: 1, highlight: 'compute' },
+  { phase: 'Prefill',  label: 'Layer 1 — FFN all-reduce',       sub: 'Second all-reduce of layer 1. Now every GPU holds the full layer-1 output.',                       layer: 1, highlight: 'allreduce' },
+
+  { phase: 'Prefill',  label: 'Layer 2 — attention compute',    sub: 'Same pattern repeats for the next layer.',                                                          layer: 2, highlight: 'compute' },
+  { phase: 'Prefill',  label: 'Layer 2 — attention all-reduce', sub: 'Third all-reduce overall.',                                                                         layer: 2, highlight: 'allreduce' },
+  { phase: 'Prefill',  label: 'Layer 2 — FFN compute',          sub: 'Parallel FFN slice on every GPU.',                                                                  layer: 2, highlight: 'compute' },
+  { phase: 'Prefill',  label: 'Layer 2 — FFN all-reduce',       sub: 'Fourth all-reduce. Layer 2 output now replicated everywhere.',                                     layer: 2, highlight: 'allreduce' },
+
+  { phase: 'Prefill',  label: 'Layer 3 — attention compute',    sub: 'One more layer to give you the rhythm.',                                                            layer: 3, highlight: 'compute' },
+  { phase: 'Prefill',  label: 'Layer 3 — attention all-reduce', sub: 'Fifth all-reduce.',                                                                                 layer: 3, highlight: 'allreduce' },
+  { phase: 'Prefill',  label: 'Layer 3 — FFN compute',          sub: 'Parallel FFN slice on every GPU.',                                                                  layer: 3, highlight: 'compute' },
+  { phase: 'Prefill',  label: 'Layer 3 — FFN all-reduce',       sub: 'Sixth all-reduce — that is two per layer, every layer.',                                            layer: 3, highlight: 'allreduce' },
+
+  { phase: 'Prefill',  label: 'Layers 4–80 (fast-forward)',     sub: '154 more all-reduces follow the same pattern. At NVLink speed inside one node this whole prefill takes ~100 ms.', layer: 80, highlight: 'condense' },
+
+  { phase: 'Decode',   label: 'First token emerges (from all 8 GPUs)', sub: 'After the final all-reduce, every GPU holds the identical logits vector for the next token. Sampling (argmax / temperature / top-k) runs on every rank with the same RNG state, so all 8 produce the same token in lock-step — no extra communication needed. The token is then ready on every rank for the next decode pass.', layer: 80, highlight: 'emerge', tokenIndex: 0 },
+  { phase: 'Decode',   label: 'Token feeds back as input',      sub: 'The new token rejoins the prompt embedding and goes back into layer 1. This is autoregression.',     layer: null, highlight: 'feedback', tokenIndex: 0 },
+  { phase: 'Decode',   label: 'Decode pass — token 2',          sub: 'One token, 80 layers, 160 all-reduces. With KV cache from prefill, only the new token is processed.', layer: 80, highlight: 'decode-pass', tokenIndex: 1 },
+  { phase: 'Decode',   label: 'Decode pass — token 3',          sub: 'Same again. Decode steps are short — typically 30 ms each.',                                        layer: 80, highlight: 'decode-pass', tokenIndex: 2 },
+  { phase: 'Decode',   label: 'Decode pass — token 4',          sub: 'Pattern continues for every output token.',                                                          layer: 80, highlight: 'decode-pass', tokenIndex: 3 },
+  { phase: 'Decode',   label: '… 14 more decode passes',        sub: 'The remaining tokens stream out the same way. KV cache grows by one entry per token per layer.',     layer: 80, highlight: 'decode-pass', tokenIndex: 17 },
+
+  { phase: 'Done',     label: 'Response complete',              sub: 'The full haiku has been streamed back to the user. Total: 1 prefill + 18 decode passes = 19 forward passes × 160 all-reduces each.', layer: null, highlight: 'complete', tokenIndex: 17 },
+];
+
+// ================================================================
+// PAGE 1 (PP=8) — Lifecycle animation
+// 8 GPUs, each holds 10 contiguous layers of an 80-layer model.
+// Token walks down the column with point-to-point handoffs (16 KB each).
+// 7 handoffs per token. Micro-batching keeps the pipeline full at steady state.
+// ================================================================
+export const PP8_PROMPT = 'Write a haiku about pipeline parallelism.';
+export const PP8_RESPONSE_LINES = [
+  'Eight steps in a line',
+  'Token walks from card to card',
+  'One mind, in eight homes.',
+];
+export const PP8_RESPONSE_TOKENS = [
+  'Eight', ' steps', ' in', ' a', ' line', ',', '\n',
+  'Token', ' walks', ' from', ' card', ' to', ' card', ',', '\n',
+  'One', ' mind', ',', ' in', ' eight', ' homes', '.',
+];
+
+// Each step optionally carries:
+//   activeStage:    GPU index currently computing (0..7) or null
+//   completedStages: array of GPU indices done with this pass
+//   handoff:        { from, to } when the active animation is the inter-stage send
+//   condense:       fast-forward through stages 4-8
+//   decodePass:     a soft-glow pass through all stages for a single decode token
+//   microbatch:     all 8 GPUs busy on different tokens (steady state)
+//   emerge:         first token emerging from GPU 7 (LM head)
+//   feedback:       new token routed from GPU 7 back to GPU 0 for next pass
+//   complete:       full response on screen
+//   tokenIndex:     last revealed index of PP8_RESPONSE_TOKENS
+export const PP8_LIFECYCLE_STEPS = [
+  { phase: 'Setup',
+    label: 'Pipeline idle',
+    sub: '8 H100s arranged as an 8-stage pipeline. Each GPU holds 10 contiguous layers — GPU 0: layers 1-10, GPU 1: 11-20, … GPU 7: 71-80, plus the LM head.',
+    activeStage: null, completedStages: [] },
+  { phase: 'Prompt',
+    label: 'Prompt arrives at Stage 1',
+    sub: 'User submits the prompt. Tokenizer turns it into ~9 tokens. The activation enters GPU 0 (the head of the pipeline).',
+    activeStage: null, completedStages: [] },
+  { phase: 'Prefill',
+    label: 'Stage 1 compute (GPU 0, layers 1-10)',
+    sub: 'GPU 0 processes layers 1-10. KV cache for these layers stored locally on GPU 0. GPUs 1-7 sit idle — this is the pipeline-bubble cost of single-token flow.',
+    activeStage: 0, completedStages: [] },
+  { phase: 'Prefill',
+    label: 'Handoff GPU 0 → GPU 1',
+    sub: 'Output activation (one d_model-sized vector per token, ~16 KB at FP16) sent point-to-point to GPU 1. Tiny payload, simple send — not a collective.',
+    activeStage: null, handoff: { from: 0, to: 1 }, completedStages: [0] },
+  { phase: 'Prefill',
+    label: 'Stage 2 compute (GPU 1, layers 11-20)',
+    sub: 'GPU 1 processes layers 11-20. Its KV cache fills only with K/V for these layers. GPU 0 is idle until the next request.',
+    activeStage: 1, completedStages: [0] },
+  { phase: 'Prefill',
+    label: 'Handoff GPU 1 → GPU 2',
+    sub: '16 KB sent to GPU 2.',
+    activeStage: null, handoff: { from: 1, to: 2 }, completedStages: [0, 1] },
+  { phase: 'Prefill',
+    label: 'Stage 3 compute (GPU 2, layers 21-30)',
+    sub: 'GPU 2 processes layers 21-30. Same pattern repeats — local layers, local cache, no synchronization with anyone else.',
+    activeStage: 2, completedStages: [0, 1] },
+  { phase: 'Prefill',
+    label: 'Handoff GPU 2 → GPU 3',
+    sub: '16 KB sent to GPU 3.',
+    activeStage: null, handoff: { from: 2, to: 3 }, completedStages: [0, 1, 2] },
+  { phase: 'Prefill',
+    label: 'Stages 4-8 (fast-forward)',
+    sub: 'Stages 4 through 8 cascade through GPUs 3-7. Each does its 10 layers and hands 16 KB to the next. Total handoffs for one prefill pass: 7.',
+    activeStage: null, condense: true, completedStages: [0, 1, 2, 3, 4, 5, 6] },
+  { phase: 'Decode',
+    label: 'First token emerges from GPU 7',
+    sub: 'GPU 7 holds the final layers and the LM head shard. Output projection → softmax → sample. Only GPU 7 has the result — unlike TP=8 where every rank held the same logits.',
+    activeStage: 7, completedStages: [0, 1, 2, 3, 4, 5, 6], emerge: true, tokenIndex: 0 },
+  { phase: 'Decode',
+    label: 'Token feeds back to GPU 0',
+    sub: 'For the next decode pass, GPU 7 sends just the new token ID back to GPU 0 — a tiny network message. From GPU 0\'s view this is the next input token in the autoregressive loop.',
+    activeStage: null, feedback: true, tokenIndex: 0 },
+  { phase: 'Decode',
+    label: 'Decode pass — token 2',
+    sub: 'One token sweeps through 8 stages with 7 handoffs. The KV cache from prefill on each GPU is reused — only the new token is processed at every layer.',
+    activeStage: null, decodePass: true, tokenIndex: 1 },
+  { phase: 'Decode',
+    label: 'Decode pass — token 3',
+    sub: 'Same again. Per-token decode latency = sum of all 8 stages plus 7 handoffs ≈ 30 ms over NVLink.',
+    activeStage: null, decodePass: true, tokenIndex: 2 },
+  { phase: 'Decode',
+    label: 'Micro-batching (steady state)',
+    sub: 'In production the pipeline is filled with many users\' tokens at once — token A on GPU 7, token B on GPU 6, … token H on GPU 0, all advancing every step. Now every GPU is busy and the pipeline-bubble cost disappears.',
+    activeStage: null, microbatch: true, tokenIndex: 5 },
+  { phase: 'Decode',
+    label: '… 15 more decode passes',
+    sub: 'Tokens stream out at ~30 ms each. KV cache grows by one entry per token per layer on the GPU that owns that layer.',
+    activeStage: null, decodePass: true, tokenIndex: 20 },
+  { phase: 'Done',
+    label: 'Response complete',
+    sub: 'Full haiku streamed back. Total: 1 prefill + 20 decode passes × 7 handoffs = 147 handoffs at 16 KB each ≈ 2.3 MB total inter-GPU traffic. Compare to TP=8: ~3,360 all-reduces of much larger payloads.',
+    activeStage: null, complete: true, tokenIndex: 21 },
+];
+
+// ================================================================
+// PAGE 1 (DP=8) — Lifecycle animation
+// 8 GPUs, each holds the FULL model and serves its own users.
+// No inter-GPU communication during inference.
+// ================================================================
+export const DP8_LANES = [
+  { gpu: 0, user: 'User 1', prompt: 'Capital of France?',  tokens: ['Par',   'is',     '.']    },
+  { gpu: 1, user: 'User 2', prompt: '5 + 7?',              tokens: ['1',     '2',      '.']    },
+  { gpu: 2, user: 'User 3', prompt: 'Largest planet?',     tokens: ['Jup',   'iter',   '.']    },
+  { gpu: 3, user: 'User 4', prompt: 'Color of grass?',     tokens: ['Gr',    'een',    '.']    },
+  { gpu: 4, user: 'User 5', prompt: 'Who wrote Hamlet?',   tokens: ['Shake', 'speare', '.']    },
+  { gpu: 5, user: 'User 6', prompt: 'Water boils at?',     tokens: ['100',   '°',      'C.']   },
+  { gpu: 6, user: 'User 7', prompt: 'Capital of Japan?',   tokens: ['Tok',   'yo',     '.']    },
+  { gpu: 7, user: 'User 8', prompt: '1 km in miles?',      tokens: ['0',     '.621',   ' mi.'] },
+];
+
+// Each step:
+//   promptsArrived: 8 prompt bubbles visible
+//   routingActive:  draw routing arrows from each prompt to its GPU
+//   prefillActive:  every GPU pulses, 80-layer track lights up
+//   decodeStep:     0..3 — how many response tokens revealed in every lane
+//   complete:       all 8 responses shown muted (done)
+export const DP8_LIFECYCLE_STEPS = [
+  { phase: 'Setup',
+    label: 'Cluster idle',
+    sub: 'Each of 8 H100s holds a complete copy of Llama-3 70B (35 GB at FP4). No GPU talks to any other during inference. Zero arrows in this animation will ever cross between lanes.',
+    promptsArrived: false, routingActive: false, prefillActive: false, decodeStep: 0 },
+  { phase: 'Routing',
+    label: 'Eight user prompts arrive',
+    sub: 'Eight different users with eight unrelated questions. Each prompt enters from the left and waits for routing.',
+    promptsArrived: true, routingActive: false, prefillActive: false, decodeStep: 0 },
+  { phase: 'Routing',
+    label: 'Router distributes one user per GPU',
+    sub: 'A load balancer outside the GPU cluster picks which GPU serves which user. Once routed, that user lives entirely on that GPU. (Real workloads can batch 4-18 users per GPU; we show one each for clarity.)',
+    promptsArrived: true, routingActive: true, prefillActive: false, decodeStep: 0 },
+  { phase: 'Prefill',
+    label: 'All 8 GPUs prefill — in lockstep, in isolation',
+    sub: 'Eight independent forward passes through the full 80-layer model. Each GPU builds its own KV cache for its own user. No all-reduce, no handoff, no synchronization. Each GPU is a complete inference engine.',
+    promptsArrived: true, routingActive: false, prefillActive: true, decodeStep: 0 },
+  { phase: 'Decode',
+    label: 'First tokens emerge — eight at once',
+    sub: 'Each GPU samples its own next token from its own logits. There is no "the output GPU" — there are eight outputs, one per lane.',
+    prefillActive: false, decodeStep: 1 },
+  { phase: 'Decode',
+    label: 'Decode pass 2',
+    sub: 'Eight forward passes, eight tokens, zero inter-GPU bytes.',
+    decodeStep: 2 },
+  { phase: 'Decode',
+    label: 'Decode pass 3',
+    sub: 'A slow GPU does not stall the others — each lane finishes when its own model decides it is done. No coordination ever.',
+    decodeStep: 3 },
+  { phase: 'Done',
+    label: 'Eight responses delivered',
+    sub: 'Total inter-GPU traffic during this run: zero bytes. The cost: weights duplicated 8 times = 280 GB of HBM consumed by redundant copies, leaving less per-GPU room for KV cache. DP buys throughput scaling at the price of memory efficiency.',
+    decodeStep: 3, complete: true },
+];
+
+// ================================================================
+// PAGE 1 (TP=4 × PP=2) — Lifecycle animation
+// 8 GPUs in 2 rows of 4. Top row: TP=4 holding layers 1-40.
+// Bottom row: TP=4 holding layers 41-80.
+// Communication: all-reduce within each row, point-to-point handoff between rows.
+// ================================================================
+export const TPPP2_PROMPT = 'Write a haiku about TP × PP parallelism.';
+export const TPPP2_RESPONSE_LINES = [
+  'Four shards stack atop',
+  'Whispers across, then a leap',
+  'Eight homes, one journey.',
+];
+export const TPPP2_RESPONSE_TOKENS = [
+  'Four', ' shards', ' stack', ' atop', ',', '\n',
+  'Whispers', ' across', ',', ' then', ' a', ' leap', ',', '\n',
+  'Eight', ' homes', ',', ' one', ' journey', '.',
+];
+
+// activeRow:  'top' | 'bottom' | null
+// highlight:  'broadcast' | 'compute' | 'allreduce' | 'condense' | 'pp-handoff'
+//             | 'emerge' | 'feedback' | 'decode-pass' | 'complete' | null
+// layerInRow: 1..40, current layer within the active row
+// tokenIndex: 0..19
+export const TPPP2_LIFECYCLE_STEPS = [
+  { phase: 'Setup',
+    label: 'Cluster idle',
+    sub: '8 H100s in 2 rows of 4. Top row (GPUs 0-3): TP=4 for layers 1-40, each holds 1/4 of every layer\'s weight matrices. Bottom row (GPUs 4-7): same idea for layers 41-80.',
+    activeRow: null },
+  { phase: 'Prompt',
+    label: 'Embedding broadcast to top row',
+    sub: 'Tokenizer (CPU) produces integer IDs. The embedding is replicated to all 4 top-row GPUs — start of layer 1.',
+    activeRow: 'top', highlight: 'broadcast' },
+  { phase: 'Prefill',
+    label: 'Top L1 — attention compute',
+    sub: 'All 4 top-row GPUs compute their 1/4 slice of attention for layer 1. Bottom row idle. Pipeline bubble.',
+    activeRow: 'top', highlight: 'compute', layerInRow: 1 },
+  { phase: 'Prefill',
+    label: 'Top L1 — attention all-reduce (4 GPUs)',
+    sub: '4-way mesh of partials. 6 arcs above the top row light up. After the all-reduce every top-row GPU has the full attention output for layer 1.',
+    activeRow: 'top', highlight: 'allreduce', layerInRow: 1 },
+  { phase: 'Prefill',
+    label: 'Top L1 — FFN compute',
+    sub: 'Parallel FFN slice on every top-row GPU.',
+    activeRow: 'top', highlight: 'compute', layerInRow: 1 },
+  { phase: 'Prefill',
+    label: 'Top L1 — FFN all-reduce',
+    sub: 'Second all-reduce of layer 1. Now the layer-1 output is replicated across all 4 top-row GPUs.',
+    activeRow: 'top', highlight: 'allreduce', layerInRow: 1 },
+  { phase: 'Prefill',
+    label: 'Top L2-40 (fast-forward)',
+    sub: '39 more layers × 2 all-reduces = 78 more all-reduces in the top row. NVLink keeps each one in microseconds.',
+    activeRow: 'top', highlight: 'condense', layerInRow: 40 },
+  { phase: 'Pipeline',
+    label: 'PP handoff to bottom row',
+    sub: 'Each top-row GPU sends its 16 KB activation to the corresponding bottom-row GPU (GPU 0→4, 1→5, 2→6, 3→7). 4 parallel point-to-point sends, 64 KB total. No collective.',
+    activeRow: null, highlight: 'pp-handoff' },
+  { phase: 'Prefill',
+    label: 'Bottom L41 — attention compute',
+    sub: 'Bottom row picks up. All 4 bottom-row GPUs compute their 1/4 slice of attention for layer 41.',
+    activeRow: 'bottom', highlight: 'compute', layerInRow: 1 },
+  { phase: 'Prefill',
+    label: 'Bottom L41 — attention all-reduce',
+    sub: 'All-reduce within the bottom row. 6 arcs below the bottom row light up.',
+    activeRow: 'bottom', highlight: 'allreduce', layerInRow: 1 },
+  { phase: 'Prefill',
+    label: 'Bottom L41 — FFN compute',
+    sub: 'Parallel FFN slice in the bottom row.',
+    activeRow: 'bottom', highlight: 'compute', layerInRow: 1 },
+  { phase: 'Prefill',
+    label: 'Bottom L41 — FFN all-reduce',
+    sub: 'Second all-reduce of layer 41.',
+    activeRow: 'bottom', highlight: 'allreduce', layerInRow: 1 },
+  { phase: 'Prefill',
+    label: 'Bottom L42-80 (fast-forward)',
+    sub: '39 more layers × 2 all-reduces = 78 more all-reduces in the bottom row. Total prefill: 160 all-reduces + 1 PP handoff.',
+    activeRow: 'bottom', highlight: 'condense', layerInRow: 40 },
+  { phase: 'Decode',
+    label: 'First token emerges from bottom row',
+    sub: 'After the bottom row\'s final all-reduce, every bottom-row GPU holds the same logits. Sampling produces the same token on all 4 ranks — no extra communication needed.',
+    activeRow: 'bottom', highlight: 'emerge', tokenIndex: 0 },
+  { phase: 'Decode',
+    label: 'Token feeds back to top row',
+    sub: 'The new token rejoins the embedding on all 4 top-row GPUs. Autoregression — back into layer 1 of the top row.',
+    highlight: 'feedback', tokenIndex: 0 },
+  { phase: 'Decode',
+    label: 'Decode pass — token 2',
+    sub: 'One token, 80 layers, 160 all-reduces (4-way, much cheaper than TP=8\'s 8-way) plus 1 PP handoff.',
+    highlight: 'decode-pass', tokenIndex: 1 },
+  { phase: 'Decode',
+    label: 'Decode pass — token 3',
+    sub: 'Same pattern. The PP boundary is crossed once per decode pass with 4 parallel 16 KB sends.',
+    highlight: 'decode-pass', tokenIndex: 2 },
+  { phase: 'Decode',
+    label: '… 16 more decode passes',
+    sub: 'Tokens stream out. KV cache grows in both rows simultaneously — each row caches the layers it owns.',
+    highlight: 'decode-pass', tokenIndex: 18 },
+  { phase: 'Done',
+    label: 'Response complete',
+    sub: 'Full haiku streamed back. Per decode pass: 160 4-way all-reduces + 1 PP handoff (64 KB). Compared to TP=8: smaller all-reduce groups (4 vs 8 ranks) plus one tiny PP send.',
+    highlight: 'complete', tokenIndex: 19 },
+];
+
+// ================================================================
+// PAGE 1 (TP=4 × DP=2) — Lifecycle animation
+// 8 GPUs in 2 rows of 4. Each row is an independent TP=4 instance
+// running the FULL model. Zero traffic between rows.
+// ================================================================
+export const TPDP2_INSTANCES = [
+  { name: 'Instance A', prompt: 'Capital of France?', tokens: ['Par', 'is', '.'] },
+  { name: 'Instance B', prompt: 'Largest planet?',    tokens: ['Jup', 'iter', '.'] },
+];
+
+// activeBoth: true when both instances act in lockstep
+// highlight: 'prompts-arrive' | 'broadcast' | 'compute' | 'allreduce'
+//          | 'condense' | 'emerge' | 'feedback' | 'decode-pass' | 'complete'
+// layer: current layer 1..80 in BOTH rows (lockstep)
+// decodeStep: 0..3 — count of tokens revealed in BOTH responses
+export const TPDP2_LIFECYCLE_STEPS = [
+  { phase: 'Setup',
+    label: 'Two TP=4 instances idle',
+    sub: '8 H100s organized as 2 completely independent TP=4 instances. Each row holds a full copy of Llama-3 70B, sliced 4 ways across its 4 GPUs. No GPU in Instance A talks to any GPU in Instance B during inference.',
+    highlight: null },
+  { phase: 'Prompts',
+    label: 'Two different prompts arrive',
+    sub: 'A load balancer routes each user to one instance. Once routed, the user lives entirely within that 4-GPU instance.',
+    highlight: 'prompts-arrive' },
+  { phase: 'Prompts',
+    label: 'Each prompt broadcasts within its instance',
+    sub: 'Instance A\'s embedding is replicated to all 4 of its GPUs. Instance B does the same with its own embedding. The two embeddings are unrelated.',
+    highlight: 'broadcast' },
+  { phase: 'Prefill',
+    label: 'L1 attention compute — both instances in parallel',
+    sub: 'All 4 GPUs in each instance compute their 1/4 slice of attention. Eight GPUs working at once on two completely different queries.',
+    highlight: 'compute', layer: 1 },
+  { phase: 'Prefill',
+    label: 'L1 attention all-reduce — INSIDE each instance',
+    sub: 'All-reduce happens within each instance. Instance A\'s 4 arcs light up above the top row; Instance B\'s 4 arcs light below the bottom row. No arrow ever crosses the gap between the two rows.',
+    highlight: 'allreduce', layer: 1 },
+  { phase: 'Prefill',
+    label: 'L1 FFN compute',
+    sub: 'Parallel FFN slice on every GPU in both instances.',
+    highlight: 'compute', layer: 1 },
+  { phase: 'Prefill',
+    label: 'L1 FFN all-reduce',
+    sub: 'Second all-reduce within each instance.',
+    highlight: 'allreduce', layer: 1 },
+  { phase: 'Prefill',
+    label: 'L2-80 fast-forward — both instances',
+    sub: '79 more layers × 2 all-reduces = 158 more all-reduces per instance. Each instance holds the full 80 layers (DP duplicates the model).',
+    highlight: 'condense', layer: 80 },
+  { phase: 'Decode',
+    label: 'First tokens emerge — one per instance',
+    sub: 'Each instance independently samples its own first token from its own logits. Two different tokens for two different users.',
+    highlight: 'emerge', decodeStep: 1 },
+  { phase: 'Decode',
+    label: 'Each instance feeds its token back to its own prompt',
+    sub: 'Two separate autoregressive loops, running entirely within their respective rows. Instance A\'s next-token is computed only from Instance A\'s state; same for B.',
+    highlight: 'feedback', decodeStep: 1 },
+  { phase: 'Decode',
+    label: 'Decode pass — token 2',
+    sub: 'Both instances generate in parallel but completely uncoordinated. A slow GPU in one instance does not stall the other.',
+    highlight: 'decode-pass', decodeStep: 2 },
+  { phase: 'Decode',
+    label: 'Decode pass — token 3',
+    sub: 'Same again. Zero bytes have crossed between Instance A and Instance B.',
+    highlight: 'decode-pass', decodeStep: 3 },
+  { phase: 'Done',
+    label: 'Two responses delivered, zero inter-instance bytes',
+    sub: 'Each instance served its own user. Trade-off vs TP=8: weights duplicated 2 times (more HBM cost), but each all-reduce now spans 4 ranks instead of 8 (faster collective).',
+    highlight: 'complete', decodeStep: 3 },
+];
+
+// ================================================================
+// PAGE 1 (PP=4 × DP=2) — Lifecycle animation
+// 8 GPUs in 2 rows of 4. Each row is a 4-stage pipeline.
+// Two independent pipelines, zero traffic between rows.
+// ================================================================
+export const PPDP2_INSTANCES = [
+  { name: 'Pipeline A', prompt: 'Author of Hamlet?', tokens: ['Shake', 'speare', '.'] },
+  { name: 'Pipeline B', prompt: 'Water boils at?',   tokens: ['100',   '°',     'C.'] },
+];
+export const PPDP2_LAYER_RANGES = ['L1-20', 'L21-40', 'L41-60', 'L61-80'];
+
+// activeStage:    0..3 — within-row stage (same for both pipelines, lockstep)
+// handoff:        { from, to } — within-row stage indices, applied to both pipelines
+// condense:       cascading remaining stages
+// decodePass:     soft glow across all stages
+// microbatch:     all stages busy with different tokens (in both pipelines)
+export const PPDP2_LIFECYCLE_STEPS = [
+  { phase: 'Setup',
+    label: 'Two pipelines idle',
+    sub: '8 H100s organized as 2 independent 4-stage pipelines. Each pipeline holds the full model split by layer: L1-20, L21-40, L41-60, L61-80. The two pipelines never talk to each other.',
+    activeStage: null },
+  { phase: 'Prompts',
+    label: 'Two different prompts arrive',
+    sub: 'A load balancer routes each user to one pipeline\'s head GPU. Once routed, the user lives in that pipeline.',
+    activeStage: null, promptsArrived: true },
+  { phase: 'Prefill',
+    label: 'Stage 1 compute — both pipelines',
+    sub: 'GPU 0 (top) and GPU 4 (bottom) process layers 1-20 for their own prompt. GPUs 1-3 and 5-7 idle.',
+    activeStage: 0, promptsArrived: true },
+  { phase: 'Prefill',
+    label: 'Handoff stage 1 → stage 2',
+    sub: 'Each pipeline\'s head sends 16 KB to its next stage (GPU 0→1 in top, GPU 4→5 in bottom). The curves bulge up for the top row and down for the bottom row — never across the middle gap.',
+    handoff: { from: 0, to: 1 }, promptsArrived: true },
+  { phase: 'Prefill',
+    label: 'Stage 2 compute',
+    sub: 'GPU 1 and GPU 5 process layers 21-40. Other GPUs idle.',
+    activeStage: 1, promptsArrived: true },
+  { phase: 'Prefill',
+    label: 'Handoff stage 2 → stage 3',
+    sub: '16 KB to GPU 2 and GPU 6.',
+    handoff: { from: 1, to: 2 }, promptsArrived: true },
+  { phase: 'Prefill',
+    label: 'Stage 3 compute',
+    sub: 'GPU 2 and GPU 6 process layers 41-60.',
+    activeStage: 2, promptsArrived: true },
+  { phase: 'Prefill',
+    label: 'Handoff stage 3 → stage 4',
+    sub: '16 KB to GPU 3 and GPU 7.',
+    handoff: { from: 2, to: 3 }, promptsArrived: true },
+  { phase: 'Prefill',
+    label: 'Stage 4 compute',
+    sub: 'GPU 3 and GPU 7 process layers 61-80. Each pipeline\'s tail holds the LM head shard.',
+    activeStage: 3, promptsArrived: true },
+  { phase: 'Decode',
+    label: 'First tokens emerge — one per pipeline',
+    sub: 'GPU 3 and GPU 7 each sample their pipeline\'s first token. Two different tokens for two different users.',
+    activeStage: 3, promptsArrived: true, emerge: true, decodeStep: 1 },
+  { phase: 'Decode',
+    label: 'Each pipeline feeds its token back to its head',
+    sub: 'GPU 3 sends its token ID back to GPU 0; GPU 7 sends back to GPU 4. Two tiny inter-stage messages — never across rows.',
+    feedback: true, promptsArrived: true, decodeStep: 1 },
+  { phase: 'Decode',
+    label: 'Decode pass — token 2',
+    sub: 'Each pipeline traverses all 4 stages with 3 handoffs per token. KV cache from prefill sits on each GPU for its layers.',
+    decodePass: true, promptsArrived: true, decodeStep: 2 },
+  { phase: 'Decode',
+    label: 'Micro-batching (steady state)',
+    sub: 'In production, each pipeline is filled with different users\' tokens — token A in stage 4, token B in stage 3, etc. All 8 GPUs busy simultaneously, while the two pipelines remain independent.',
+    microbatch: true, promptsArrived: true, decodeStep: 2 },
+  { phase: 'Decode',
+    label: 'Decode pass — token 3',
+    sub: 'One more pass to complete the response in each pipeline.',
+    decodePass: true, promptsArrived: true, decodeStep: 3 },
+  { phase: 'Done',
+    label: 'Two responses delivered, zero inter-pipeline bytes',
+    sub: 'Each pipeline served its own user via 4 stages with 3 handoffs per token. Compared to TP×DP: similar throughput, but PP handoffs are tiny point-to-point sends instead of all-reduces — cheaper per byte, harder to keep busy without micro-batching.',
+    complete: true, promptsArrived: true, decodeStep: 3 },
+];
+
+// ================================================================
+// PAGE 1 (TP=2 × PP=3 × DP=4) — Lifecycle animation (24 GPUs)
+// 4 independent replicas. Each replica: TP=2 within stage × PP=3 between stages.
+// Within replica: all-reduce within each TP pair, PP handoff between stages.
+// Between replicas: zero traffic.
+// ================================================================
+export const TPPPDP24_REPLICAS = [
+  { name: 'R1', prompt: 'Hello in French?',   tokens: ['Bon',  'jour',  '.']  },
+  { name: 'R2', prompt: 'Color of sky?',      tokens: ['B',    'lue',   '.']  },
+  { name: 'R3', prompt: 'Largest ocean?',     tokens: ['Pa',   'cific', '.']  },
+  { name: 'R4', prompt: '2 × 3?',             tokens: ['S',    'ix',    '.']  },
+];
+export const TPPPDP24_STAGE_LAYERS = ['L1-27', 'L28-54', 'L55-80'];
+
+// activeStage: 0..2 — current PP stage (same across all 4 replicas)
+// highlight:   broadcast | compute | allreduce | condense | pp-handoff
+//              | emerge | feedback | decode-pass | complete
+// handoff:     { from, to } stage indices for the PP handoff step
+export const TPPPDP24_LIFECYCLE_STEPS = [
+  { phase: 'Setup',
+    label: 'Four replicas idle',
+    sub: '24 GPUs organized as 4 completely independent replicas (DP=4). Each replica is itself a TP=2 × PP=3 cluster: 3 pipeline stages, each stage is a 2-GPU tensor-parallel pair. Across replicas: zero communication.',
+    highlight: null },
+  { phase: 'Prompts',
+    label: 'Four different prompts arrive',
+    sub: 'A load balancer routes each user to one replica. From there the user lives inside that 6-GPU replica.',
+    highlight: 'prompts-arrive' },
+  { phase: 'Prompts',
+    label: 'Each prompt broadcasts to its stage-1 TP pair',
+    sub: 'Inside each replica, the embedding is replicated to both GPUs of stage 1 (TP=2).',
+    highlight: 'broadcast', activeStage: 0 },
+  { phase: 'Prefill',
+    label: 'Stage 1 — attention compute (all replicas)',
+    sub: 'Two GPUs per replica compute their 1/2 slice of attention for layer 1. Across 4 replicas, 8 GPUs are active — but only within their own replica.',
+    highlight: 'compute', activeStage: 0 },
+  { phase: 'Prefill',
+    label: 'Stage 1 — attention all-reduce (TP=2, in each replica)',
+    sub: 'In each replica, the 2 GPUs of stage 1 sum their partials over NVLink. 4 independent 2-way all-reduces happen in parallel — no replica talks to any other.',
+    highlight: 'allreduce', activeStage: 0 },
+  { phase: 'Prefill',
+    label: 'Stage 1 — FFN compute and all-reduce',
+    sub: 'FFN slice on both GPUs of stage 1, then a second all-reduce within the pair.',
+    highlight: 'compute', activeStage: 0 },
+  { phase: 'Prefill',
+    label: 'Stage 1 condense (L1-27)',
+    sub: 'Each replica\'s stage 1 finishes layers 1-27 with the same TP=2 dance every layer.',
+    highlight: 'condense', activeStage: 0 },
+  { phase: 'Pipeline',
+    label: 'PP handoff stage 1 → stage 2 (in every replica)',
+    sub: 'Inside each replica, each stage-1 GPU sends 16 KB to its corresponding stage-2 GPU. 2 parallel sends per replica × 4 replicas = 8 sends. None cross replica boundaries.',
+    highlight: 'pp-handoff', handoff: { from: 0, to: 1 } },
+  { phase: 'Prefill',
+    label: 'Stage 2 condense (L28-54)',
+    sub: 'Each replica\'s stage 2 runs the same TP=2 sequence for layers 28-54.',
+    highlight: 'condense', activeStage: 1 },
+  { phase: 'Pipeline',
+    label: 'PP handoff stage 2 → stage 3',
+    sub: '8 more 16 KB sends — 2 per replica, all staying inside their replicas.',
+    highlight: 'pp-handoff', handoff: { from: 1, to: 2 } },
+  { phase: 'Prefill',
+    label: 'Stage 3 condense (L55-80)',
+    sub: 'Each replica\'s stage 3 finishes layers 55-80 plus the LM head shard.',
+    highlight: 'condense', activeStage: 2 },
+  { phase: 'Decode',
+    label: 'First tokens emerge — one per replica',
+    sub: 'After the final all-reduce in stage 3, both GPUs of each replica\'s tail pair hold the same logits. Sampling produces the same token in lock-step within each replica. Four different tokens emerge across the four replicas.',
+    highlight: 'emerge', decodeStep: 1 },
+  { phase: 'Decode',
+    label: 'Each replica feeds back to its own stage 1',
+    sub: 'Four independent autoregressive loops, none crossing replica boundaries.',
+    highlight: 'feedback', decodeStep: 1 },
+  { phase: 'Decode',
+    label: 'Decode pass — token 2',
+    sub: 'Per decode pass: 80 × 2-way all-reduces (vs 8-way in TP=8 or 4-way in TP×PP) plus 2 PP handoffs of 2×16 KB each. The smaller TP group makes each all-reduce faster; the PP and DP axes multiply throughput.',
+    highlight: 'decode-pass', decodeStep: 2 },
+  { phase: 'Decode',
+    label: 'Decode pass — token 3',
+    sub: 'Pattern continues. KV cache grows in every replica simultaneously.',
+    highlight: 'decode-pass', decodeStep: 3 },
+  { phase: 'Done',
+    label: 'Four responses delivered',
+    sub: 'This is how the biggest production clusters look — hundreds or thousands of GPUs sliced along all three axes. TP groups stay inside NVLink domains, PP can cross nodes, DP spans the cluster. Per-axis tuning matches each communication pattern to the right network tier.',
+    highlight: 'complete', decodeStep: 3 },
+];
+
+// ================================================================
+// PAGE 2 — Data Parallelism animation
+// ================================================================
+export const DP_STEPS = [
+  {
+    id: 0,
+    label: 'Idle cluster',
+    description: '8 H100 GPUs. Each holds a complete copy of Llama-3 70B (35 GB at FP4). No users yet — no KV cache in any GPU.',
+    arrows: false,
+    cacheFill: 0,
+    usersActive: false,
+    usersAssigned: false,
   },
   {
-    num: '3',
-    label: 'User 17\u2019s new tokens begin incremental prefill.',
-    text: 'The Scheduler coordinates: as each layer\u2019s cache arrives in G1, that layer becomes available for the new tokens\u2019 attention computation. Prefill proceeds layer-by-layer, overlapping with the ongoing promotion. User 17 cannot get their first token until Layer 80\u2019s cache has arrived AND the new tokens have been processed through all 80 layers.',
-    blocking: 'Partially blocking for User 17',
-    blockColor: 'amber',
+    id: 1,
+    label: 'Requests arrive',
+    description: '32 user requests arrive at the router. The router distributes them: Users 1-4 → GPU 0, Users 5-8 → GPU 1, … Users 29-32 → GPU 7.',
+    arrows: true,
+    cacheFill: 0,
+    usersActive: false,
+    usersAssigned: true,
   },
   {
-    num: '4',
-    label: 'Promotion completes.',
-    text: 'All of User 17\u2019s cache is now in G1. User 17 joins the continuous batch for decode. From this point, User 17 gets tokens at the same rate as everyone else.',
-    blocking: 'Fully active',
-    blockColor: 'teal',
+    id: 2,
+    label: 'Prefill (parallel)',
+    description: 'Each GPU processes its 4 users\' prompts independently. All 8 GPUs prefill simultaneously. No data moves between GPUs. Each GPU builds its own KV cache for its 4 users.',
+    arrows: false,
+    cacheFill: 0.6,
+    usersActive: true,
+    usersAssigned: true,
+  },
+  {
+    id: 3,
+    label: 'Decode (parallel)',
+    description: 'Each GPU generates tokens for its 4 users independently. Still no inter-GPU communication. Each GPU reads its own weights and its own KV cache.',
+    arrows: false,
+    cacheFill: 1,
+    usersActive: true,
+    usersAssigned: true,
+  },
+  {
+    id: 4,
+    label: 'Steady state',
+    description: '8 independent inference engines. Each GPU has 45 GB for KV cache (80 − 35). At 2.5 GB per user (8K tokens): fits 18 users per GPU. We\'re only using 4 — plenty of headroom. Total duplication: 280 GB (8 × 35 GB) — same weights 8 times.',
+    arrows: false,
+    cacheFill: 1,
+    usersActive: true,
+    usersAssigned: true,
   },
 ];
 
-// What-blocks-what summary table
-export const BLOCKING_TABLE = [
-  { event: 'Cache in G1 (hot)',       user17: 'No delay',            otherUsers: 'No impact',            prefillPool: 'Not involved' },
-  { event: 'Promotion from G2',       user17: 'TTFT += ~50\u2013150 ms',  otherUsers: 'No impact (async DMA)',  prefillPool: 'Not involved' },
-  { event: 'Promotion from G3',       user17: 'TTFT += ~500\u2013800 ms', otherUsers: 'No impact (async DMA)',  prefillPool: 'Not involved' },
-  { event: 'Promotion from G3.5',     user17: 'TTFT += ~200 ms',     otherUsers: 'No impact (async RDMA)', prefillPool: 'Not involved' },
-  { event: 'Full cache miss',         user17: 'TTFT += ~2,000 ms',   otherUsers: 'No impact (different GPU pool)', prefillPool: 'Occupied for ~100\u2013500 ms' },
+// Data-parallel memory layout per GPU
+export const DATA_PARALLEL_GPUS = [
+  { gpu: 'GPU 0', weights: '35 GB', cache: '10 GB', free: '35 GB', users: 'Users 1-4',   communication: 'None' },
+  { gpu: 'GPU 1', weights: '35 GB', cache: '10 GB', free: '35 GB', users: 'Users 5-8',   communication: 'None' },
+  { gpu: 'GPU 2', weights: '35 GB', cache: '10 GB', free: '35 GB', users: 'Users 9-12',  communication: 'None' },
+  { gpu: 'GPU 3', weights: '35 GB', cache: '10 GB', free: '35 GB', users: 'Users 13-16', communication: 'None' },
+  { gpu: 'GPU 4', weights: '35 GB', cache: '10 GB', free: '35 GB', users: 'Users 17-20', communication: 'None' },
+  { gpu: 'GPU 5', weights: '35 GB', cache: '10 GB', free: '35 GB', users: 'Users 21-24', communication: 'None' },
+  { gpu: 'GPU 6', weights: '35 GB', cache: '10 GB', free: '35 GB', users: 'Users 25-28', communication: 'None' },
+  { gpu: 'GPU 7', weights: '35 GB', cache: '10 GB', free: '35 GB', users: 'Users 29-32', communication: 'None' },
 ];
 
-// Cache hit vs. miss cost comparison (28,000-token conversation)
-export const CACHE_HIT_VS_MISS = [
-  { metric: 'Latency',                hit: '~200 ms (RDMA transfer)',          miss: '~2,000 ms (prefill compute)' },
-  { metric: 'GPU compute consumed',   hit: 'Zero',                             miss: 'Full prefill for 28K tokens' },
-  { metric: 'Impact on other users',  hit: 'None (async transfer)',            miss: 'Stalls prefill pool' },
-  { metric: 'Network bandwidth',      hit: '9.6 GB one-time transfer',         miss: 'None (compute-only)' },
-  { metric: 'Total cost',             hit: '1x (transfer only)',               miss: '~10x (compute + stall + opportunity)' },
+// ================================================================
+// PAGE 3 — Tensor Parallelism animation (6 steps)
+// ================================================================
+export const TP_ANIMATION_STEPS = [
+  {
+    step: 1,
+    label: 'Setup — token broadcast',
+    description: 'The token\'s embedding (8,192 numbers for 70B) is present on ALL 4 GPUs (replicated). Each GPU holds 1/4 of the weight matrices.',
+    gpuWork: [
+      'GPU 0: columns 1-2048 of W_Q, W_K, W_V',
+      'GPU 1: columns 2049-4096',
+      'GPU 2: columns 4097-6144',
+      'GPU 3: columns 6145-8192',
+    ],
+    gpuState: ['wait', 'wait', 'wait', 'wait'],
+    tokenOn: [true, true, true, true],
+    arrows: 'broadcast',
+  },
+  {
+    step: 2,
+    label: 'Compute Q, K, V (parallel)',
+    description: 'Each GPU multiplies the full embedding by its 1/4 of W_Q, W_K, W_V. Each produces 1/4 of the Q, K, V vectors (16 of 64 attention heads). All 4 GPUs compute simultaneously.',
+    gpuWork: [
+      '4 parallel multiplications',
+      'Each produces a partial result (16 of 64 heads)',
+    ],
+    gpuState: ['compute', 'compute', 'compute', 'compute'],
+    tokenOn: [true, true, true, true],
+    arrows: 'none',
+  },
+  {
+    step: 3,
+    label: 'Sharded attention (parallel)',
+    description: 'Each GPU computes attention for its 16 heads using its slice of Q, K, and V. Each GPU also stores KV cache for only its 16 heads (not all 64). Each has its own mini-KV-cache.',
+    gpuWork: [
+      '4 parallel attention computations',
+      'Each with its own mini-KV-cache (2 KV groups)',
+    ],
+    gpuState: ['compute', 'compute', 'compute', 'compute'],
+    tokenOn: [true, true, true, true],
+    arrows: 'none',
+  },
+  {
+    step: 4,
+    label: 'All-reduce (communication!)',
+    description: 'Each GPU has a partial result. An all-reduce operation sends data between all 4 GPUs via NVLink: each GPU sends its partial to all others, then sums all partials. After all-reduce, every GPU has the identical complete result.',
+    gpuWork: [
+      'Each GPU sends ~16 KB (one token, one layer)',
+      'At 900 GB/s NVLink: microseconds',
+      'Happens TWICE per layer (attention + FFN)',
+    ],
+    gpuState: ['comm', 'comm', 'comm', 'comm'],
+    tokenOn: [true, true, true, true],
+    arrows: 'all-reduce',
+  },
+  {
+    step: 5,
+    label: 'FFN (parallel + all-reduce)',
+    description: 'The FFN weight matrices are also split across the 4 GPUs. Same pattern: parallel compute followed by another all-reduce.',
+    gpuWork: [
+      'Parallel FFN computation',
+      'Second all-reduce of this layer',
+    ],
+    gpuState: ['compute', 'compute', 'compute', 'compute'],
+    tokenOn: [true, true, true, true],
+    arrows: 'all-reduce',
+  },
+  {
+    step: 6,
+    label: 'Layer complete',
+    description: 'The token\'s representation after this layer is now identical on all 4 GPUs. It enters the next layer. The same sequence repeats for all 80 layers.',
+    gpuWork: [
+      '2 all-reduces per layer × 80 layers = 160 all-reduces (Llama-3 70B)',
+    ],
+    gpuState: ['done', 'done', 'done', 'done'],
+    tokenOn: [true, true, true, true],
+    arrows: 'none',
+  },
 ];
 
-// Capacity comparison: without tiering vs. with tiering
-export const WITHOUT_TIERING = [
-  { metric: 'HBM available for cache',             perGPU: '45 GB', eightGPUs: '360 GB' },
-  { metric: 'Users at 8K tokens (2.5 GB each)',     perGPU: '18',    eightGPUs: '144' },
-  { metric: 'Users at 32K tokens (10 GB each)',     perGPU: '4',     eightGPUs: '32' },
+// Tensor-parallel memory layout (TP=4)
+export const TENSOR_PARALLEL_GPUS = [
+  { gpu: 'GPU 0', weights: '35 GB', cacheDesc: '1/4 cache (heads 1-16)',  kvGroups: '2 KV groups', communication: '160 all-reduce / pass' },
+  { gpu: 'GPU 1', weights: '35 GB', cacheDesc: '1/4 cache (heads 17-32)', kvGroups: '2 KV groups', communication: '160 all-reduce / pass' },
+  { gpu: 'GPU 2', weights: '35 GB', cacheDesc: '1/4 cache (heads 33-48)', kvGroups: '2 KV groups', communication: '160 all-reduce / pass' },
+  { gpu: 'GPU 3', weights: '35 GB', cacheDesc: '1/4 cache (heads 49-64)', kvGroups: '2 KV groups', communication: '160 all-reduce / pass' },
 ];
 
-export const WITH_TIERING = [
-  { tier: 'G1 (HBM)',     capacity: '360 GB',    usersAt8K: '144 active',        latency: '~0 ms',             path: 'Already there' },
-  { tier: 'G2 (DRAM)',    capacity: '2 TB',      usersAt8K: '800 warm',          latency: '~150 ms',           path: 'PCIe DMA' },
-  { tier: 'G3 (NVMe)',    capacity: '16 TB',     usersAt8K: '6,400 cold',        latency: '~500\u2013800 ms',  path: 'GDS or staged via DRAM' },
-  { tier: 'G3.5 (ICMS)',  capacity: '100+ TB',   usersAt8K: '40,000+ shared',    latency: '~200 ms',           path: 'Spectrum-X RDMA' },
-  { tier: 'G4 (Network)', capacity: 'PB+',       usersAt8K: 'Millions archived', latency: '~1\u201310 s',      path: 'RDMA / NVMe-oF / S3' },
+// Correction 4 — All-reduce count by model
+// 2 all-reduces per layer per forward pass when TP > 1.
+// TP=1 inference = ZERO all-reduces (each GPU holds the full model).
+export const ALL_REDUCE_BY_MODEL = [
+  { model: 'TP=1 (any model, inference)', layers: '—',   perPass: '0',   note: 'Zero all-reduces — each GPU runs the full forward pass independently' },
+  { model: 'Llama-3 8B (TP>1)',            layers: 32,    perPass: '64',  note: '2 × 32 layers' },
+  { model: 'Llama-3 70B (TP>1)',           layers: 80,    perPass: '160', note: '2 × 80 layers' },
+  { model: 'Llama-3 405B (TP>1)',          layers: 126,   perPass: '252', note: '2 × 126 layers' },
 ];
 
-// Summary tier table
-export const TIER_SUMMARY = [
-  { tier: 'G1 (HBM)',     capacity: '80 GB',   latency: '~1 ns',                interconnect: 'Internal to GPU',  role: 'Active decode' },
-  { tier: 'G2 (DRAM)',    capacity: '2 TB',    latency: '~100 ns',              interconnect: 'PCIe Gen5',        role: 'Warm / between turns' },
-  { tier: 'G3 (NVMe)',    capacity: '16 TB',   latency: '~10 \u00B5s',          interconnect: 'NVMe/PCIe',        role: 'Cold / idle minutes' },
-  { tier: 'G3.5 (ICMS)',  capacity: '100+ TB', latency: '~50\u2013100 \u00B5s', interconnect: 'Spectrum-X RDMA',  role: 'Shared pod context' },
-  { tier: 'G4 (Network)', capacity: 'PB+',     latency: '~1\u201310 ms',        interconnect: 'RDMA / NVMe-oF',   role: 'Archive / persistent' },
+// Super-linear KV cache scaling (TP=1 -> TP=2)
+export const SUPER_LINEAR_SCALING = {
+  tp1: {
+    label: 'TP=1 (single GPU, FP16)',
+    gpus: 1,
+    weightsMem: '70 GB',
+    freeMem: '10 GB',
+    cacheGB: 10,
+  },
+  tp2: {
+    label: 'TP=2 (two GPUs, FP16)',
+    gpus: 2,
+    weightsMem: '35 GB each',
+    freeMem: '45 GB each (90 GB total)',
+    cacheGB: 90,
+  },
+  increase: '9×',
+  vllmBlocks: '13.9× more KV cache blocks',
+  vllmThroughput: '3.9× higher throughput',
+  naiveExpected: '2× (naive linear assumption)',
+};
+
+// ================================================================
+// PAGE 4 — Pipeline Parallelism animation
+// ================================================================
+export const PP_STAGES = [
+  { id: 0, gpu: 'GPU 0', layers: 'Layers 1-20',  weights: '35 GB' },
+  { id: 1, gpu: 'GPU 1', layers: 'Layers 21-40', weights: '35 GB' },
+  { id: 2, gpu: 'GPU 2', layers: 'Layers 41-60', weights: '35 GB' },
+  { id: 3, gpu: 'GPU 3', layers: 'Layers 61-80', weights: '35 GB' },
 ];
 
-// Key takeaways
-export const KEY_TAKEAWAYS = [
-  'The KV cache can live at five tiers: GPU HBM, CPU DRAM, local NVMe, ICMS/CMX, and network storage.',
-  'Each tier trades capacity for latency. All tiered retrieval uses zero GPU compute \u2014 only a cache miss requires full prefill.',
-  'The KVBM orchestrates data movement across tiers with block-level granularity and lifecycle tracking.',
-  'ICMS/CMX (G3.5) breaks the one-GPU-one-cache binding: any GPU can access any conversation\u2019s cache.',
-  'For storage engineers: the I/O workload is large sequential reads/writes of fixed-size blocks (~5 MB), latency-critical on reads, throughput-critical on writes.',
-  'Cache hit rate is the central economic metric \u2014 a miss costs ~10x a hit.',
+// Single token through 4 stages (compute + handoff alternating)
+// 8 frames: compute0, handoff01, compute1, handoff12, compute2, handoff23, compute3, complete
+export const PP_SINGLE_TOKEN_FRAMES = [
+  { frame: 0, tokenAt: 0,   action: 'compute',  label: 'Stage 1 compute (Layers 1-20)',   description: 'Token enters GPU 0. Processes through layers 1-20. KV cache for L1-20 stored locally. GPUs 1, 2, 3 are idle.' },
+  { frame: 1, tokenAt: 0.5, action: 'handoff',  label: 'Handoff 1→2 (16 KB)',             description: 'GPU 0 sends the token representation (d_model × 2 bytes = 16 KB) to GPU 1. Tiny compared to tensor parallelism\'s all-reduce.' },
+  { frame: 2, tokenAt: 1,   action: 'compute',  label: 'Stage 2 compute (Layers 21-40)',  description: 'GPU 1 processes layers 21-40. KV cache for these layers stored on GPU 1. GPU 0 is now idle.' },
+  { frame: 3, tokenAt: 1.5, action: 'handoff',  label: 'Handoff 2→3 (16 KB)',             description: '16 KB sent to GPU 2.' },
+  { frame: 4, tokenAt: 2,   action: 'compute',  label: 'Stage 3 compute (Layers 41-60)',  description: 'GPU 2 processes layers 41-60. KV cache for these layers stored locally.' },
+  { frame: 5, tokenAt: 2.5, action: 'handoff',  label: 'Handoff 3→4 (16 KB)',             description: '16 KB sent to GPU 3.' },
+  { frame: 6, tokenAt: 3,   action: 'compute',  label: 'Stage 4 compute (Layers 61-80)',  description: 'GPU 3 processes the final layers. After layer 80: output projection → softmax → sampling → next token selected.' },
+  { frame: 7, tokenAt: 3,   action: 'complete', label: 'Token complete',                  description: 'Total: 3 handoffs × 16 KB = 48 KB of communication per token, vs. 160 all-reduces for tensor parallelism. This token returns to GPU 0 for the next decode step.' },
 ];
 
-// Helper: determine which tier a conversation at `idleSec` of idle time would naturally live in
-export function tierForIdle(idleSec, icmsEnabled) {
-  // Walk the tier thresholds, skipping G3.5 if disabled
-  const tiers = MEMORY_TIERS.filter((t) => icmsEnabled || !t.optional);
-  let chosen = tiers[0];
-  for (const t of tiers) {
-    if (idleSec >= t.idleThresholdSec) chosen = t;
-  }
-  return chosen;
-}
+// Micro-batching: tokens flowing through the pipeline over time (5 time steps)
+// Each cell: which token is at which stage
+export const PP_MICROBATCH_TIMELINE = [
+  { time: 'T1', stages: ['A', null, null, null], note: 'Token A enters Stage 1. Stages 2-4 idle (pipeline bubble).' },
+  { time: 'T2', stages: ['B', 'A',  null, null], note: 'Token A moves to Stage 2. Token B enters Stage 1.' },
+  { time: 'T3', stages: ['C', 'B',  'A',  null], note: 'Pipeline filling. Stage 4 still idle.' },
+  { time: 'T4', stages: ['D', 'C',  'B',  'A'],  note: 'Pipeline full. All 4 GPUs busy simultaneously.' },
+  { time: 'T5', stages: ['E', 'D',  'C',  'B'],  note: 'Token A exits. Throughput approaches tensor parallelism.' },
+];
+
+// Pipeline-parallel memory layout (PP=4)
+export const PIPELINE_PARALLEL_GPUS = [
+  { gpu: 'GPU 0', layers: 'Layers 1-20',  weights: '35 GB', cacheDesc: 'Cache for L1-20 only',  communication: '1 send per token' },
+  { gpu: 'GPU 1', layers: 'Layers 21-40', weights: '35 GB', cacheDesc: 'Cache for L21-40 only', communication: '1 recv + 1 send' },
+  { gpu: 'GPU 2', layers: 'Layers 41-60', weights: '35 GB', cacheDesc: 'Cache for L41-60 only', communication: '1 recv + 1 send' },
+  { gpu: 'GPU 3', layers: 'Layers 61-80', weights: '35 GB', cacheDesc: 'Cache for L61-80 only', communication: '1 recv per token' },
+];
+
+// ================================================================
+// PAGE 5 — Choosing and combining
+// ================================================================
+export const PARALLELISM_COMPARISON = [
+  { dimension: "What's split",    data: 'Nothing — model is copied',             tensor: "Each layer's weight matrices",         pipeline: 'The stack of layers' },
+  { dimension: 'KV cache split',   data: 'Complete cache per GPU',                tensor: 'By heads (across all layers)',          pipeline: 'By layers (all heads per layer)' },
+  { dimension: 'Communication',    data: 'None during inference',                 tensor: 'All-reduce, 2× per layer (heavy)',      pipeline: 'Point-to-point, 1× per stage (light)' },
+  { dimension: 'Bandwidth need',   data: 'None',                                  tensor: 'NVLink (900 GB/s)',                     pipeline: 'Network (50+ GB/s sufficient)' },
+  { dimension: 'Latency',          data: 'Same as single GPU',                    tensor: 'Lower (parallel computation)',          pipeline: 'Higher (sequential stages)' },
+  { dimension: 'Throughput',       data: 'Linear with GPU count',                 tensor: 'Sub-linear (communication overhead)',   pipeline: 'Good with micro-batching' },
+  { dimension: 'When to use',      data: 'Model fits on 1 GPU, need more users',  tensor: 'Model too big for 1 GPU, within a node', pipeline: 'Model too big for 1 node' },
+];
+
+export const SCENARIO_CONFIGS = [
+  {
+    label: 'Config A — Pure Data Parallel',
+    description: '8 copies of Llama-3 70B (FP4). Each GPU: 35 GB weights + 45 GB cache.',
+    totalCache: '360 GB',
+    maxUsersAt8K: '144',
+    communication: 'Zero',
+    tradeoff: 'Simple but 280 GB of weight duplication.',
+  },
+  {
+    label: 'Config B — TP=4 × DP=2',
+    description: '4 GPUs run one model instance (tensor parallel). The other 4 run a second instance. Two copies serving 16 users each.',
+    totalCache: '360 GB',
+    maxUsersAt8K: '144',
+    communication: '160 all-reduce / pass per instance',
+    tradeoff: 'Lower latency — each token processed by 4 GPUs in parallel.',
+  },
+  {
+    label: 'Config C — TP=4 × PP=2',
+    description: '4 GPUs form a tensor-parallel group for one set of layers. 2 such groups form a 2-stage pipeline. Allows FP16 inference (140 GB model fits across 4 TP GPUs per stage).',
+    totalCache: 'Varies',
+    maxUsersAt8K: 'Fewer (FP16 weights consume more memory)',
+    communication: 'All-reduce within TP group + point-to-point between stages',
+    tradeoff: 'More complex. Better quality (FP16).',
+  },
+];
+
+// ================================================================
+// PAGE 6 — Disaggregated inference animation
+// ================================================================
+// Aggregated timeline: prefill burst blocks decode
+export const AGGREGATED_TIMELINE = [
+  { t: 0,  phase: 'decode',  label: 'Decode steady',      description: 'GPU serving Users 1-4 with steady token generation.', stalled: false },
+  { t: 1,  phase: 'decode',  label: 'Decode steady',      description: 'Tokens generated every step. Users see smooth output.', stalled: false },
+  { t: 2,  phase: 'prefill', label: 'User 17 arrives',    description: 'User 17 submits a 28,000-token document. Prefill burst begins.', stalled: true },
+  { t: 3,  phase: 'prefill', label: 'Prefill burst',      description: 'All compute cores consumed processing 28,000 tokens through 80 layers.', stalled: true },
+  { t: 4,  phase: 'prefill', label: 'Prefill burst',      description: 'Users 1-4 see STALL — no new tokens during the burst.', stalled: true },
+  { t: 5,  phase: 'decode',  label: 'Decode resumes',     description: 'Prefill complete. Users 1-4 resume getting tokens, now alongside User 17.', stalled: false },
+];
+
+// Disaggregated timeline: prefill pool and decode pool run independently
+export const DISAGGREGATED_TIMELINE = [
+  { t: 0, prefillActive: false, decodeSmooth: true,  transferActive: false, label: 'Idle prefill, steady decode',   description: 'Decode pool serving Users 1-16 smoothly. Prefill pool idle.' },
+  { t: 1, prefillActive: true,  decodeSmooth: true,  transferActive: false, label: 'User 17 arrives at prefill',    description: 'Router sends User 17\'s 28,000-token prompt to the prefill pool. Decode pool keeps serving Users 1-16.' },
+  { t: 2, prefillActive: true,  decodeSmooth: true,  transferActive: false, label: 'Prefill in progress',           description: 'Prefill pool processes User 17. Decode pool unaffected — smooth token generation for Users 1-16.' },
+  { t: 3, prefillActive: false, decodeSmooth: true,  transferActive: true,  label: 'KV cache transfer (NIXL/RDMA)', description: 'Prefill complete. 8.96 GB of KV cache streams from the prefill pool to the decode pool over RDMA. Transfer does not block decode.' },
+  { t: 4, prefillActive: false, decodeSmooth: true,  transferActive: true,  label: 'Transfer in flight',            description: 'At 400G RDMA (50 GB/s): ~180 ms. Decode pool still serving other users.' },
+  { t: 5, prefillActive: false, decodeSmooth: true,  transferActive: false, label: 'User 17 joins decode batch',    description: 'Transfer complete. User 17\'s cache landed in decode GPU. They join the continuous batch. No stall for other users.' },
+];
+
+// Transfer time for 8.96 GB KV cache across network types
+export const TRANSFER_TIMES = [
+  { network: 'PCIe Gen5',              bandwidth: '64 GB/s',  time: '140 ms',            timeNum: 140, highlight: false },
+  { network: 'NVLink (intra-node)',    bandwidth: '900 GB/s', time: '10 ms',             timeNum: 10,  highlight: true  },
+  { network: 'InfiniBand HDR',         bandwidth: '25 GB/s',  time: '358 ms',            timeNum: 358, highlight: false },
+  { network: 'InfiniBand NDR (400G)',  bandwidth: '50 GB/s',  time: '179 ms',            timeNum: 179, highlight: false },
+  { network: 'RoCE 400G',              bandwidth: '50 GB/s',  time: '179 ms',            timeNum: 179, highlight: false },
+  { network: 'NVIDIA NIXL (optimized)', bandwidth: '50+ GB/s', time: '<150 ms (overlap)', timeNum: 150, highlight: true  },
+];
+
+// ================================================================
+// PAGE 7 — Dynamo architecture
+// ================================================================
+export const DYNAMO_COMPONENTS = [
+  {
+    name: 'Prefill Pool',
+    gpus: '2 GPUs',
+    config: 'TP=2',
+    short: 'Handles all incoming prompts',
+    role: 'Handles all incoming prompts. Computes KV cache for entire prompt in parallel. After prefill: hands KV cache to NIXL for transfer.',
+    color: 'var(--color-primary)',
+    bgColor: 'var(--color-primary-bg)',
+    textColor: 'var(--color-primary-text)',
+  },
+  {
+    name: 'Decode Pool',
+    gpus: '6 GPUs',
+    config: 'TP=1, DP=6',
+    short: 'Ongoing token generation',
+    role: 'Handles ongoing token generation for all active conversations. Receives KV cache from prefill pool via NIXL. Uses PagedAttention for cache management.',
+    color: 'var(--color-teal)',
+    bgColor: 'var(--color-teal-bg)',
+    textColor: 'var(--color-teal-text)',
+  },
+  {
+    name: 'NIXL',
+    gpus: '—',
+    config: 'Transfer layer',
+    short: 'RDMA cache transport',
+    role: 'Moves KV cache between pools via RDMA. Supports NVLink, InfiniBand, PCIe — abstracts the transport. Asynchronous, non-blocking transfers. Can overlap transfer with computation.',
+    color: 'var(--color-blue)',
+    bgColor: 'var(--color-blue-bg)',
+    textColor: 'var(--color-blue-text)',
+  },
+  {
+    name: 'Smart Router',
+    gpus: '—',
+    config: 'Control plane',
+    short: 'KV-cache-aware routing',
+    role: 'Routes new conversations to prefill pool. Routes ongoing conversations to the decode GPU that already has the user\'s cache. KV-cache-aware routing.',
+    color: 'var(--color-amber)',
+    bgColor: 'var(--color-amber-bg)',
+    textColor: 'var(--color-amber-text)',
+  },
+  {
+    name: 'Dynamo Planner',
+    gpus: '—',
+    config: 'Orchestrator',
+    short: 'Dynamic pool sizing',
+    role: 'Monitors GPU utilization, queue depths, request patterns. Dynamically adjusts the prefill/decode GPU ratio. Reassigns GPUs between pools based on demand.',
+    color: 'var(--color-red)',
+    bgColor: 'var(--color-red-bg)',
+    textColor: 'var(--color-red-text)',
+  },
+];
+
+export const DYNAMO_STEADY_STATE = {
+  users: 32,
+  newConvsPerMin: 2,
+  prefillGpus: 2,
+  decodeGpus: 6,
+  prefillTimeMs: 100,
+  usersPerDecodeGpu: 5,
+};
+
+// ================================================================
+// PAGE 8 — KV cache lifecycle animation (6 frames)
+// ================================================================
+export const LIFECYCLE_FRAMES = [
+  {
+    frame: 1,
+    phase: 'Born',
+    verb: 'born',
+    label: 'Prefill on prefill pool',
+    where: 'Prefill GPU HBM',
+    size: '8.96 GB (growing)',
+    duration: '~100 ms',
+    color: 'var(--color-primary)',
+    description: 'User 17 submits 28,000 tokens. Prefill GPUs 0 and 1 (TP=2) process the entire prompt in parallel. At each of 80 layers: K and V vectors are computed and stored in PagedAttention pages. Total cache grows to 8.96 GB (4.48 GB per GPU in TP=2).',
+    activePool: 'prefill',
+  },
+  {
+    frame: 2,
+    phase: 'Moved',
+    verb: 'moved',
+    label: 'RDMA transfer via NIXL',
+    where: 'Network (RDMA in flight)',
+    size: '8.96 GB (in flight)',
+    duration: '~180 ms',
+    color: 'var(--color-blue)',
+    description: 'Prefill complete. Output projection → softmax → first token. NIXL begins streaming the 8.96 GB KV cache from the prefill pool to the assigned decode GPU over 400G RDMA. During transfer, the decode pool\'s other users (Users 13-16) continue generating tokens normally.',
+    activePool: 'transfer',
+  },
+  {
+    frame: 3,
+    phase: 'Grows',
+    verb: 'grows',
+    label: 'Decode on decode pool',
+    where: 'Decode GPU HBM',
+    size: '8.96 → 10.56 GB (growing)',
+    duration: 'Seconds to minutes',
+    color: 'var(--color-teal)',
+    description: 'Transfer complete. User 17\'s KV cache is now in Decode GPU 3\'s PagedAttention page table. User 17 joins the continuous batch with Users 13-16. Each decode step appends one new K, V entry per user. The cache grows as the response is generated.',
+    activePool: 'decode',
+  },
+  {
+    frame: 4,
+    phase: 'Persists',
+    verb: 'persists',
+    label: 'Across conversation turns',
+    where: 'Decode GPU HBM',
+    size: 'Persists + grows',
+    duration: 'Duration of conversation',
+    color: 'var(--color-amber)',
+    description: 'User 17 sends follow-up messages. The existing KV cache is preserved. Only the new tokens go through incremental prefill (Stop 11). The cache continues to grow with each turn.',
+    activePool: 'decode',
+  },
+  {
+    frame: 5,
+    phase: 'Dies',
+    verb: 'dies',
+    label: 'Conversation ends',
+    where: 'Freed',
+    size: '0 GB',
+    duration: 'Instant',
+    color: 'var(--color-red)',
+    description: 'Conversation ends. All 30,000 tokens of KV cache pages are freed back to the PagedAttention allocator. Pages become immediately available for the next conversation.',
+    activePool: 'none',
+  },
+  {
+    frame: 6,
+    phase: 'Summary',
+    verb: 'lifecycle',
+    label: 'Cache lifecycle summary',
+    where: '—',
+    size: '—',
+    duration: '—',
+    color: 'var(--color-text-muted)',
+    description: 'The cache is born in prefill, moved to decode, grows during generation, persists across turns, and dies when the conversation ends.',
+    activePool: 'none',
+  },
+];
+
+// Lifecycle table + Stop mapping
+export const CACHE_LIFECYCLE = [
+  { phase: 'Prefill',          where: 'Prefill GPU HBM',  size: '8.96 GB (growing)',        duration: '~100 ms' },
+  { phase: 'Transfer',         where: 'Network (RDMA)',    size: '8.96 GB (in flight)',      duration: '~180 ms' },
+  { phase: 'Decode',           where: 'Decode GPU HBM',    size: '8.96-10.56 GB (growing)',  duration: 'Seconds to minutes' },
+  { phase: 'Follow-up',        where: 'Decode GPU HBM',    size: 'Persists + grows',         duration: 'Duration of conversation' },
+  { phase: 'Conversation end', where: 'Freed',             size: '0 GB',                     duration: 'Instant' },
+];
+
+export const LIFECYCLE_STOP_MAP = [
+  { stop: 13, verb: 'LIVES',   title: 'Where the cache LIVES',   subtitle: 'Memory hierarchy / tiering' },
+  { stop: 14, verb: 'SMALLER', title: 'How to make it SMALLER',  subtitle: 'Compression (GQA, MLA, quantization)' },
+  { stop: 15, verb: 'MOVES',   title: 'How the cache MOVES',     subtitle: 'Network fabrics (RDMA, CXL, NVMe-oF)' },
+  { stop: 16, verb: 'WHERE',   title: 'How to decide WHERE',     subtitle: 'Cache-aware routing' },
+];
+
+// ================================================================
+// PAGE 9 — Summary
+// ================================================================
+export const SUMMARY_TABLE = [
+  { splitType: 'Data parallel',      whatsSplit: 'Nothing (model copied)',   cacheEffect: 'Complete cache per GPU',       networkReq: 'None' },
+  { splitType: 'Tensor parallel',    whatsSplit: "Each layer's weights",      cacheEffect: 'Cache sharded by heads',        networkReq: 'NVLink (900 GB/s)' },
+  { splitType: 'Pipeline parallel',  whatsSplit: 'Stack of layers',           cacheEffect: 'Cache sharded by layers',       networkReq: 'Moderate (50+ GB/s)' },
+  { splitType: 'Disaggregated P/D',  whatsSplit: 'Prefill vs. decode phases', cacheEffect: 'Cache transfers between pools', networkReq: 'RDMA (50+ GB/s, latency-critical)' },
+];
+
+export const BRIDGE_CALC = {
+  cacheGB: 2.5,
+  pcieBandwidth: '200 GB/s',
+  swapTimeMs: 12.5,
+  hbmAccessMs: 0.1,
+  recomputeMs: 100,
+};

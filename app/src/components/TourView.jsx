@@ -9,6 +9,7 @@ import LearningAttention from '../stops/LearningAttention';
 import DotProduct from '../stops/DotProduct';
 import SoftmaxScaling from '../stops/SoftmaxScaling';
 import BlendingValues from '../stops/BlendingValues';
+import PositionAndRoPE from '../stops/PositionAndRoPE';
 import MultipleHeads from '../stops/MultipleHeads';
 import LayersOnLayers from '../stops/LayersOnLayers';
 import TheBridge from '../stops/TheBridge';
@@ -29,6 +30,7 @@ const STOP_COMPONENTS = {
   DotProduct,
   SoftmaxScaling,
   BlendingValues,
+  PositionAndRoPE,
   MultipleHeads,
   LayersOnLayers,
   TheBridge,

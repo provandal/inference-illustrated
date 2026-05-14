@@ -1,80 +1,62 @@
-// Stop 10: And Now, The Cache — The Bridge
+// Stop 10: The Stack — Layers on Layers
 
 export const PAGES = [
-  { id: 'intro',          label: 'Everything We Built',     type: 'static' },
-  { id: 'two-phases',     label: 'Two Phases',              type: 'static' },
-  { id: 'multi-turn',     label: 'Multi-Turn',              type: 'static' },
-  { id: 'tradeoff',       label: 'The Tradeoff',            type: 'static' },
-  { id: 'calculation',    label: 'The Full Calculation',    type: 'static' },
-  { id: 'memory-wall',    label: 'The Memory Wall',         type: 'static' },
-  { id: 'infrastructure', label: 'Two Different Problems',  type: 'static' },
-  { id: 'bridge',         label: 'Welcome to Act 2',        type: 'static' },
+  { id: 'intro',         label: 'Introduction',          type: 'static' },
+  { id: 'layer-anatomy', label: 'Inside Each Layer',     type: 'static' },
+  { id: 'evolution',     label: 'Watching a Token Evolve', type: 'static' },
+  { id: 'ffn',           label: 'The FFN',               type: 'static' },
+  { id: 'full-stack',    label: 'The Full Stack',        type: 'static' },
+  { id: 'architecture',  label: 'Complete Architecture', type: 'static' },
+  { id: 'bridge',        label: 'Bridge',                type: 'static' },
 ];
 
-// Llama-3 70B cache formula components
-export const CACHE_FORMULA = {
-  layers: 80,
-  kvHeads: 8,
-  dHead: 128,
-  precision: 2,       // FP16 = 2 bytes
-  coefficient: 327680, // 2 × 80 × 8 × 128 × 2 = 327,680 bytes per token
-};
-
-// KV cache sizes at various context lengths (FP16)
-export const CACHE_SIZES = [
-  { context: '1K',   size8b: '128 MB',   size70b: '320 MB',   description: 'Short prompt + brief answer' },
-  { context: '8K',   size8b: '1.0 GB',   size70b: '2.5 GB',   description: 'Typical multi-turn conversation' },
-  { context: '32K',  size8b: '4.0 GB',   size70b: '10.0 GB',  description: 'Long conversation or document analysis' },
-  { context: '128K', size8b: '16.0 GB',  size70b: '40.0 GB',  description: 'Full context window utilized' },
+export const LAYER_COUNTS = [
+  { model: 'Llama-3 8B',   layers: 32 },
+  { model: 'Llama-3 70B',  layers: 80 },
+  { model: 'Llama-3 405B', layers: 126 },
 ];
 
-// Memory-wall scenarios: Llama-3 70B on H100 (80 GB), FP4 weights = ~35 GB, leaving ~45 GB
-export const MEMORY_WALL_SCENARIOS = [
-  { users: 1,  context: '128K', cache: '40 GB',  fits: true,  note: 'Barely' },
-  { users: 1,  context: '140K', cache: '44.8 GB', fits: true, note: 'Barely' },
-  { users: 2,  context: '64K',  cache: '40 GB',  fits: true },
-  { users: 2,  context: '128K', cache: '80 GB',  fits: false, note: '35 GB over' },
-  { users: 8,  context: '8K',   cache: '20 GB',  fits: true },
-  { users: 8,  context: '32K',  cache: '80 GB',  fits: false, note: '35 GB over' },
-  { users: 32, context: '8K',   cache: '80 GB',  fits: false, note: '35 GB over' },
-];
-
-// Prefill vs. decode comparison
-export const PREFILL_VS_DECODE = [
+export const FAULTY_EVOLUTION = [
   {
-    property: 'Tokens processed',
-    prefill: 'All input tokens at once',
-    decode: 'One new token per step',
+    layer: 1,
+    title: 'Basic syntax and local connections',
+    summary: '"faulty" is recognized as an adjective meaning defective or broken. Attention connects it weakly to nearby words — "was" (the linking verb immediately before) and "week" (positionally close). The model knows the word\'s basic grammatical role but has no understanding of what it describes.',
+    attention: '"was" (linking verb), nearby words',
+    ffn: 'Classifies as adjective, activates basic "defective" semantics',
   },
   {
-    property: 'Bottleneck',
-    prefill: 'Compute-bound (matrix math)',
-    decode: 'Memory-bound (reading cache)',
+    layer: 2,
+    title: 'Coreference begins',
+    summary: '"faulty" begins to connect to "controller." The coreference head (from Stop 9) recognizes that "faulty" is a predicate adjective that needs a subject — and "controller" is the most recent noun that fits. Meanwhile, "controller" already carries traces of "storage" from its own layer-1 attention. So "faulty" starts to absorb not just "controller" but the compound concept "storage controller."',
+    attention: '"controller" (coreference), "storage" (through controller)',
+    ffn: 'Strengthens the "describing a hardware component" pattern',
   },
   {
-    property: 'GPU utilization',
-    prefill: 'High — large batch of parallel work',
-    decode: 'Low — mostly waiting on memory reads',
+    layer: 3,
+    title: 'Causal chain forms',
+    summary: 'The causal structure clicks into place. "faulty" now connects through the chain: "faulty" → "controller" → "crashed" → "server." The model understands that a faulty storage controller caused a server crash. This required multiple hops — "faulty" didn\'t attend directly to "crashed" in layer 1, but by layer 3 the information has propagated through intermediate tokens.',
+    attention: '"crashed" (through enriched "controller"), "server" (indirect)',
+    ffn: 'Integrates cause-and-effect pattern: defective component → system failure',
   },
   {
-    property: 'Cache role',
-    prefill: 'Write: fill K and V for all input tokens',
-    decode: 'Read: look up all K and V at every layer',
+    layer: 4,
+    title: 'Temporal context integrates',
+    summary: '"faulty" now incorporates the temporal clause: the technician replaced this component last week, and it is still faulty. This suggests either the replacement failed or the problem is recurring. The "last week" information reached "faulty" through the relative clause "that the technician replaced last week" — a long-range dependency that required several layers of progressive enrichment.',
+    attention: '"replaced," "last," "week" (through relative clause chain)',
+    ffn: 'Combines temporal context with failure pattern: recent maintenance didn\'t fix it',
   },
   {
-    property: 'Scaling challenge',
-    prefill: 'More compute (scales with input length)',
-    decode: 'More memory bandwidth (scales with context)',
+    layer: 5,
+    title: 'Inferential reasoning emerges',
+    summary: 'The representation now supports inference. A component was replaced last week but is still faulty — this suggests a recurring problem, an incomplete repair, or a misdiagnosis. The model hasn\'t been told this explicitly; the inference emerges from patterns learned during pre-training across millions of similar maintenance-failure narratives.',
+    attention: 'Refines connections established in earlier layers',
+    ffn: 'Activates patterns from training data: "replaced but still broken" → recurring issue',
   },
-];
-
-// Act 2 preview: stops 11–17
-export const ACT2_PREVIEW = [
-  { stop: 11, title: 'The Memory Wall',               description: 'An interactive calculator: when and why GPU memory runs out, with real model and hardware configurations.' },
-  { stop: 12, title: 'Splitting the Work',              description: 'Parallelism strategies (TP, PP, DP) and disaggregated inference. Separating prefill and decode onto different hardware.' },
-  { stop: 13, title: 'The Memory Hierarchy',           description: 'Tiering the cache across HBM, DRAM, NVMe, CXL-attached memory, and persistent storage.' },
-  { stop: 14, title: 'Compressing the Cache',          description: 'MQA, GQA, MLA in depth. Quantization from FP16 to INT4. Token eviction strategies.' },
-  { stop: 15, title: 'The Fabric',                     description: 'RDMA/RoCE, CXL memory pooling, NVMe-oF. The protocols that move cache data between tiers and machines.' },
-  { stop: 16, title: 'Intelligent Routing',            description: 'KV-cache-aware load balancing. Prefix-aware scheduling. The network participates in cache placement.' },
-  { stop: 17, title: 'The Complete Picture',            description: 'Everything assembled into one interactive system. Design, simulate, and trace requests through a complete inference cluster.' },
+  {
+    layer: 6,
+    title: 'Full contextual integration',
+    summary: '"faulty" now carries the integrated understanding of the entire sentence: it describes a storage controller, that controller caused a server crash, a technician replaced it last week, and it remains defective — suggesting an unresolved hardware problem. This representation is rich enough for the model to answer questions, generate continuations, or make predictions about what comes next.',
+    attention: 'Final refinement of all connections',
+    ffn: 'Produces representation sufficient for downstream tasks',
+  },
 ];

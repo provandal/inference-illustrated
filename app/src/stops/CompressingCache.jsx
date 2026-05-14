@@ -20,7 +20,7 @@ import {
   TASK_TYPES,
   INFRA_IMPACT,
   SUMMARY_TABLE,
-} from '../data/stop14Data';
+} from '../data/stop15Data';
 import { Panel, PanelHeader, InfoBox, Callout } from '../components/ui';
 import PageNav from '../components/PageNav';
 
@@ -554,7 +554,7 @@ function QuantizationPage() {
 
       <Callout
         type="note"
-        message="<strong>For our scenario:</strong> Switching from FP16 to FP8 halves our cache. 28,000 tokens goes from 8.96 GB to 4.48 GB. The P/D transfer from Stop 12 drops from 180 ms to 90 ms. The number of active users per GPU doubles from 18 to 36. This single change has the highest impact-to-effort ratio of any optimization in this course."
+        message="<strong>For our scenario:</strong> Switching from FP16 to FP8 halves our cache. 28,000 tokens goes from 8.96 GB to 4.48 GB. The P/D transfer from Stop 13 drops from 180 ms to 90 ms. The number of active users per GPU doubles from 18 to 36. This single change has the highest impact-to-effort ratio of any optimization in this course."
       />
     </div>
   );
@@ -1300,15 +1300,15 @@ function InfrastructurePage() {
 
       <Callout
         type="note"
-        message="<strong>[Forward ref: Stop 15]</strong> When we examine the network fabric in detail, the bandwidth requirements for KV cache transfers will be calculated at FP8 precision &mdash; halving the data that flows over the wire compared to FP16. This affects fabric sizing, switch selection, and congestion management."
+        message="<strong>[Forward ref: Stop 16]</strong> When we examine the network fabric in detail, the bandwidth requirements for KV cache transfers will be calculated at FP8 precision &mdash; halving the data that flows over the wire compared to FP16. This affects fabric sizing, switch selection, and congestion management."
       />
     </div>
   );
 }
 
 /* ================================================================
-   PAGE 8 — "Stop 14 at a glance"
-   Summary table + bridge to Stop 15 with protocol preview
+   PAGE 8 — "Stop 15 at a glance"
+   Summary table + bridge to Stop 16 with protocol preview
    ================================================================ */
 
 function SummaryPage() {
@@ -1351,15 +1351,15 @@ function SummaryPage() {
         </div>
       </Panel>
 
-      {/* Bridge to Stop 15 with protocol preview */}
+      {/* Bridge to Stop 16 with protocol preview */}
       <Panel className="mt-4">
-        <PanelHeader>Bridge to Stop 15 &mdash; network protocols preview</PanelHeader>
+        <PanelHeader>Bridge to Stop 16 &mdash; network protocols preview</PanelHeader>
         <div className="p-4 space-y-3 text-[13px] text-[var(--color-text-secondary)] leading-relaxed">
           <p>
             We now understand what the KV cache <strong className="text-[var(--color-text)]">IS</strong> (Stops 8&ndash;10),
-            how it&rsquo;s <strong className="text-[var(--color-text)]">MANAGED</strong> in memory (Stop 11),
-            how it <strong className="text-[var(--color-text)]">TRANSFERS</strong> between GPU pools (Stop 12),
-            where it <strong className="text-[var(--color-text)]">LIVES</strong> in the memory hierarchy (Stop 13),
+            how it&rsquo;s <strong className="text-[var(--color-text)]">MANAGED</strong> in memory (Stop 12),
+            how it <strong className="text-[var(--color-text)]">TRANSFERS</strong> between GPU pools (Stop 13),
+            where it <strong className="text-[var(--color-text)]">LIVES</strong> in the memory hierarchy (Stop 14),
             and how to make it <strong className="text-[var(--color-text)]">SMALLER</strong> (this stop).
           </p>
           <p>
@@ -1394,7 +1394,7 @@ function SummaryPage() {
         <div className="px-4 pb-4">
           <p className="text-[13px] text-[var(--color-text-secondary)] leading-relaxed">
             <strong className="text-[var(--color-text)]">
-              Stop 15 maps the network fabric that connects every tier and every GPU pool &mdash;
+              Stop 16 maps the network fabric that connects every tier and every GPU pool &mdash;
               the data paths that make everything we&rsquo;ve discussed physically possible.
             </strong>
           </p>
@@ -1403,7 +1403,7 @@ function SummaryPage() {
 
       <Callout
         type="good"
-        message="<strong>The story so far:</strong> We&rsquo;ve traced the KV cache from a single attention dot product (Stop 2) through multi-head and multi-layer growth (Stops 8&ndash;9), memory management (Stop 11), disaggregated transfer (Stop 12), the storage hierarchy (Stop 13), and now compression (Stop 14). With GQA + FP8, User 17&rsquo;s 28,000-token conversation occupies 4.48 GB instead of the 73.3 GB it would need with MHA + FP16. Next: the physical fabric that carries it."
+        message="<strong>The story so far:</strong> We&rsquo;ve traced the KV cache from a single attention dot product (Stop 2) through multi-head and multi-layer growth (Stops 8&ndash;9), memory management (Stop 12), disaggregated transfer (Stop 13), the storage hierarchy (Stop 14), and now compression (Stop 15). With GQA + FP8, User 17&rsquo;s 28,000-token conversation occupies 4.48 GB instead of the 73.3 GB it would need with MHA + FP16. Next: the physical fabric that carries it."
       />
     </div>
   );
@@ -1448,7 +1448,7 @@ export default function CompressingCache() {
     return () => window.removeEventListener('keydown', handleKey);
   }, [nextPage, prevPage]);
 
-  // Format narration: replace \n\n with paragraph breaks (same pattern as Stop 11)
+  // Format narration: replace \n\n with paragraph breaks (same pattern as Stop 12)
   const narrationHtml = narration
     .replace(/\n\n/g, '</p><p style="margin-top:0.5em">')
     .replace(/^/, '<p>')
