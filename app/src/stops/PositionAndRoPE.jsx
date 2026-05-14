@@ -696,6 +696,243 @@ function RelativeDotPlot({ points, theta }) {
 }
 
 /* ================================================================
+   PAGE 6 — Many Frequencies, Many Roles
+   d/2 bands, geometrically spaced. Show 8 of them simultaneously
+   with a position slider. The fast bands sweep many revolutions
+   while the slow bands have barely moved.
+   ================================================================ */
+function FrequenciesPage() {
+  const [pos, setPos] = useState(FREQUENCY_DEMO.defaultPos);
+  const { d, base } = FREQUENCY_DEMO;
+  const numBands = d / 2; // 8 bands
+
+  const bands = useMemo(() => {
+    const arr = [];
+    for (let i = 0; i < numBands; i++) {
+      const theta = ropeBandTheta(i, d, base);
+      const fullRotPositions = (2 * Math.PI) / theta; // positions for one full revolution
+      arr.push({ i, theta, angle: pos * theta, fullRotPositions });
+    }
+    return arr;
+  }, [pos, d, base, numBands]);
+
+  return (
+    <div>
+      <Panel>
+        <PanelHeader>One rotation rate per dimension-pair</PanelHeader>
+        <InfoBox>
+          For dimension-pair <em>i</em> out of d/2, RoPE uses frequency
+          <span className="font-mono mx-1">\u03b8<sub>i</sub> = base<sup>\u22122i/d</sup></span>
+          (with base typically 10,000). Pair 0 rotates the fastest and encodes
+          <em> local </em>position. The last pair rotates the slowest and
+          encodes <em>long-range</em> position. Move the slider \u2014 watch the
+          fast bands sweep many revolutions while the slow bands have barely
+          twitched.
+        </InfoBox>
+
+        <div className="px-4 pb-4">
+          <div className="flex items-center gap-3 mb-3">
+            <span className="text-[11px] font-mono text-[var(--color-text-muted)] min-w-[60px]">Position</span>
+            <input
+              type="range"
+              min={0}
+              max={FREQUENCY_DEMO.maxPos}
+              value={pos}
+              onChange={(e) => setPos(Number(e.target.value))}
+              className="anim-scrubber flex-1"
+            />
+            <span className="text-[12px] font-mono text-[var(--color-primary-text)] font-bold min-w-[60px] text-right">
+              pos = {pos}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-4 gap-3">
+            {bands.map((b) => (
+              <BandArrow key={b.i} band={b} numBands={numBands} />
+            ))}
+          </div>
+        </div>
+      </Panel>
+
+      <Callout
+        type="info"
+        message="<strong>Why a single dot product captures both close and far relationships.</strong> When you compute Q\u00b7K, the contribution from each dimension-pair has its own offset-dependent wave (Page 5). Fast bands give sharp local signal, slow bands give smooth long-range signal. Attention heads then learn to weight whichever bands match the relationship that head specialises in (Stop 9)."
+      />
+    </div>
+  );
+}
+
+function BandArrow({ band, numBands }) {
+  const W = 80, H = 80, CX = W / 2, CY = H / 2, R = 28;
+  const x = CX + R * Math.cos(band.angle);
+  const y = CY - R * Math.sin(band.angle);
+  // Color goes from red (fast) to teal (slow) across bands.
+  const t = band.i / (numBands - 1);
+  const color = `color-mix(in srgb, var(--color-red) ${Math.round((1 - t) * 100)}%, var(--color-teal))`;
+  const fullRot = band.fullRotPositions < 1e4
+    ? `${Math.round(band.fullRotPositions).toLocaleString()} pos / turn`
+    : `${(band.fullRotPositions / 1000).toFixed(0)}K pos / turn`;
+  return (
+    <div className="rounded border border-[var(--color-border-light)] bg-[var(--color-surface-muted)] p-2 flex flex-col items-center">
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full max-w-[80px]">
+        <circle cx={CX} cy={CY} r={R} fill="none" stroke="var(--color-border)" strokeDasharray="2 2" opacity={0.6} />
+        <line x1={CX} y1={CY} x2={x} y2={y} stroke={color} strokeWidth={2.2} />
+        <circle cx={x} cy={y} r={3.5} fill={color} />
+      </svg>
+      <div className="text-[10px] font-mono font-bold text-[var(--color-text-secondary)] mt-1">
+        pair {band.i}
+      </div>
+      <div className="text-[9px] font-mono text-[var(--color-text-muted)]">
+        {fullRot}
+      </div>
+    </div>
+  );
+}
+
+/* ================================================================
+   PAGE 7 — RoPE Meets the KV Cache
+   Demonstrate that naive cache reuse at a different position is wrong.
+   Toggle: "naive reuse" vs "position-rewrite". The naive case computes
+   Q\u00b7K_cached with K_cached still rotated to the OLD position; the
+   rewrite case un-rotates and re-rotates K to the new position before
+   the dot product.
+   ================================================================ */
+function RopeAndCachePage() {
+  const [mode, setMode] = useState('naive'); // 'naive' | 'rewrite'
+  const { cachedAtPos, reuseAtPos, qVector, kVectorPreRotation, theta } = CACHE_REUSE_DEMO;
+
+  // Q is at the NEW position (reuseAtPos). So Q' = R(reuseAtPos * theta) Q.
+  const qPrime = useMemo(() => rotate2D(qVector, reuseAtPos * theta), [qVector, reuseAtPos, theta]);
+
+  // K cached form: K originally rotated by cachedAtPos * theta.
+  const kCached = useMemo(() => rotate2D(kVectorPreRotation, cachedAtPos * theta), [kVectorPreRotation, cachedAtPos, theta]);
+
+  // Naive reuse: just use kCached as-is at the new position.
+  // The correct relative offset SHOULD be (reuseAtPos - reuseAtPos) = 0 (they\u2019re at the same effective position),
+  // but the dot product Q'\u00b7kCached behaves as if K were at position cachedAtPos.
+  const naiveDot = useMemo(() => dot2D(qPrime, kCached), [qPrime, kCached]);
+
+  // Rewrite: un-rotate by cachedAtPos, re-rotate by reuseAtPos.
+  const kRewritten = useMemo(() => {
+    const unrotated = rotate2D(kCached, -cachedAtPos * theta);
+    return rotate2D(unrotated, reuseAtPos * theta);
+  }, [kCached, cachedAtPos, reuseAtPos, theta]);
+  const rewriteDot = useMemo(() => dot2D(qPrime, kRewritten), [qPrime, kRewritten]);
+
+  // The "correct" reference: what you'd get if K had been freshly computed at the new position.
+  const kFreshAtNew = useMemo(() => rotate2D(kVectorPreRotation, reuseAtPos * theta), [kVectorPreRotation, reuseAtPos, theta]);
+  const referenceDot = useMemo(() => dot2D(qPrime, kFreshAtNew), [qPrime, kFreshAtNew]);
+
+  const currentDot = mode === 'naive' ? naiveDot : rewriteDot;
+  const errorVsRef = currentDot - referenceDot;
+
+  return (
+    <div>
+      <Panel>
+        <PanelHeader>The cost no one talks about: prefix-cache reuse</PanelHeader>
+        <InfoBox>
+          A KV cache stores the <strong>post-rotation</strong> K vector \u2014 the
+          rotation is baked in at the position the token was originally seen.
+          That\u2019s fine for normal reads. It becomes a problem when you try to
+          reuse a cached K at a <em>different</em> position (prompt-prefix
+          caching, document caching, cross-session reuse).
+        </InfoBox>
+
+        <div className="px-4 pb-4">
+          <div className="mb-3 grid grid-cols-1 sm:grid-cols-3 gap-2 text-[12px] font-mono">
+            <div className="rounded border border-[var(--color-border-light)] bg-[var(--color-surface-muted)] p-2">
+              <div className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] font-medium">K cached at</div>
+              <div className="text-[14px] font-bold text-[var(--color-text)]">pos {cachedAtPos}</div>
+            </div>
+            <div className="rounded border border-[var(--color-border-light)] bg-[var(--color-surface-muted)] p-2">
+              <div className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] font-medium">Trying to reuse at</div>
+              <div className="text-[14px] font-bold text-[var(--color-text)]">pos {reuseAtPos}</div>
+            </div>
+            <div className="rounded border border-[var(--color-border-light)] bg-[var(--color-surface-muted)] p-2">
+              <div className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] font-medium">Effective offset baked in</div>
+              <div className="text-[14px] font-bold text-[var(--color-red-text)]">{cachedAtPos - reuseAtPos}</div>
+            </div>
+          </div>
+
+          <div className="flex gap-2 mb-4">
+            <button
+              onClick={() => setMode('naive')}
+              className={`flex-1 px-3 py-2 text-[12px] font-medium rounded border transition-all cursor-pointer ${
+                mode === 'naive'
+                  ? 'bg-[var(--color-red-bg)] border-[var(--color-red)] text-[var(--color-red-text)] shadow-sm'
+                  : 'border-[var(--color-border)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-alt)]'
+              }`}
+            >
+              Naive reuse (use cached K as-is)
+            </button>
+            <button
+              onClick={() => setMode('rewrite')}
+              className={`flex-1 px-3 py-2 text-[12px] font-medium rounded border transition-all cursor-pointer ${
+                mode === 'rewrite'
+                  ? 'bg-[var(--color-teal-bg)] border-[var(--color-teal)] text-[var(--color-teal-text)] shadow-sm'
+                  : 'border-[var(--color-border)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-alt)]'
+              }`}
+            >
+              Position-rewrite (un-rotate then re-rotate)
+            </button>
+          </div>
+
+          <div className="rounded-lg border border-[var(--color-border-light)] bg-[var(--color-surface-muted)] p-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-[12px] font-mono">
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] font-medium">Computed Q\u00b7K</div>
+                <div className="text-[18px] font-bold mt-1" style={{ color: mode === 'naive' ? 'var(--color-red-text)' : 'var(--color-teal-text)' }}>
+                  {currentDot.toFixed(3)}
+                </div>
+              </div>
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] font-medium">Reference (K fresh at new pos)</div>
+                <div className="text-[18px] font-bold text-[var(--color-text-secondary)] mt-1">
+                  {referenceDot.toFixed(3)}
+                </div>
+              </div>
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] font-medium">Error vs reference</div>
+                <div
+                  className="text-[18px] font-bold mt-1"
+                  style={{ color: Math.abs(errorVsRef) < 1e-4 ? 'var(--color-teal-text)' : 'var(--color-red-text)' }}
+                >
+                  {Math.abs(errorVsRef) < 1e-4 ? '\u2248 0' : errorVsRef.toFixed(3)}
+                </div>
+              </div>
+            </div>
+            <div className="text-[11px] text-[var(--color-text-secondary)] mt-3 italic leading-relaxed">
+              {mode === 'naive' ? (
+                <>
+                  <strong>Naive reuse silently scores the wrong relative offset.</strong> The cached K
+                  carries a rotation matched to its <em>original</em> position. When you compare it
+                  against a Q that\u2019s rotated for a new position, the dot product behaves as if K were
+                  back at pos {cachedAtPos}, not at pos {reuseAtPos}. Quality drops without obvious
+                  error signals.
+                </>
+              ) : (
+                <>
+                  <strong>Position-rewrite recovers the right score.</strong> Un-rotate K by the old
+                  position, re-rotate by the new one. Same value as if K had been freshly computed
+                  there. The extra rotations are cheap (a few multiplies per pair), but the bookkeeping
+                  \u2014 knowing each cache entry\u2019s original position \u2014 is what makes prefix-cache
+                  systems harder than they look.
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      </Panel>
+
+      <Callout
+        type="info"
+        message="<strong>Forward pointer.</strong> Stop 17 covers cache-aware routing: when a prefix is shared across many requests, the cache layer needs to either keep prefixes at fixed absolute positions (limiting reuse) or apply position-rewrite per reuse (extra ops). Several production systems land somewhere in between."
+      />
+    </div>
+  );
+}
+
+/* ================================================================
    Placeholder pages (filled in progressively).
    ================================================================ */
 function PlaceholderPage({ title }) {
@@ -753,8 +990,8 @@ export default function PositionAndRoPE() {
         {page.id === 'add-at-input'    && <AddAtInputFailsPage />}
         {page.id === 'rotate-idea'     && <RotateIdeaPage />}
         {page.id === 'rope-math'       && <RopeMathPage />}
-        {page.id === 'frequencies'     && <PlaceholderPage title="Many Frequencies, Many Roles" />}
-        {page.id === 'rope-and-cache'  && <PlaceholderPage title="RoPE Meets the KV Cache" />}
+        {page.id === 'frequencies'     && <FrequenciesPage />}
+        {page.id === 'rope-and-cache'  && <RopeAndCachePage />}
         {page.id === 'long-context'    && <PlaceholderPage title="Stretching the Window" />}
         {page.id === 'summary'         && <PlaceholderPage title="Stop 8 at a Glance" />}
       </div>
