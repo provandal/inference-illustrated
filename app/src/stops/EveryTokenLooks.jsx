@@ -235,29 +235,18 @@ function SelfAttentionPage() {
         <InfoBox>
           If every word attends to every other word simultaneously, how does the
           model distinguish &ldquo;The server crashed&rdquo; from &ldquo;crashed
-          The server&rdquo;? The answer is{' '}
-          <strong>positional encoding</strong> &mdash; before entering the first
-          layer, each token&rsquo;s embedding is modified to include information
-          about its position in the sequence.
+          The server&rdquo;? It can&rsquo;t &mdash; not yet. Self-attention as
+          described here is <em>permutation-invariant</em>: shuffle the input
+          words and you get the same attention pattern.
         </InfoBox>
         <InfoBox>
-          The original &ldquo;Attention Is All You Need&rdquo; paper used fixed
-          sinusoidal functions &mdash; mathematical waves at different frequencies
-          that give each position a unique signature. Modern models like Llama use
-          a learned technique called{' '}
-          <strong>RoPE (Rotary Position Embeddings)</strong>, which encodes relative
-          positions by rotating the Q and K vectors. This means the dot product
-          between Q and K naturally captures how far apart two tokens are, not just
-          what they contain.
-        </InfoBox>
-        <InfoBox>
-          Positional encoding is applied once (at the embedding stage) and carried
-          through all layers via residual connections. It&rsquo;s why the model can
-          distinguish &ldquo;the storage controller that the technician
-          replaced&rdquo; from a random shuffle of the same words. We don&rsquo;t
-          explore the mathematics of positional encoding in this course because it
-          doesn&rsquo;t affect the KV cache &mdash; but it&rsquo;s the mechanism
-          that makes word order visible to attention.
+          The fix is <strong>positional encoding</strong>, and in modern decoder
+          models that means <strong>RoPE (Rotary Position Embeddings)</strong>.
+          The way RoPE works has direct consequences for the KV cache (it shapes
+          what K vectors look like in memory), for long-context support, and
+          for cache reuse. We give it the full treatment in <strong>Stop 8</strong>{' '}
+          &mdash; the math, the rotation visual, the cache implications, and
+          how 128K-context models stretch RoPE to extreme positions.
         </InfoBox>
       </Panel>
     </div>
