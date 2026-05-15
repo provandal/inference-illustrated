@@ -20,6 +20,7 @@ import CompressingCache from '../stops/CompressingCache';
 import TheFabric from '../stops/TheFabric';
 import IntelligentRouting from '../stops/IntelligentRouting';
 import CompletePicture from '../stops/CompletePicture';
+import MixtureOfExperts from '../stops/MixtureOfExperts';
 
 const STOP_COMPONENTS = {
   Welcome,
@@ -41,6 +42,7 @@ const STOP_COMPONENTS = {
   TheFabric,
   IntelligentRouting,
   CompletePicture,
+  MixtureOfExperts,
 };
 
 export default function TourView() {

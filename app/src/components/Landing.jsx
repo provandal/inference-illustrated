@@ -8,6 +8,7 @@ export default function Landing() {
   const setMode = useStore((s) => s.setMode);
   const [act1Open, setAct1Open] = useState(true);
   const [act2Open, setAct2Open] = useState(true);
+  const [act3Open, setAct3Open] = useState(true);
 
   function jumpToStop(index) {
     goToStep(index);
@@ -18,6 +19,11 @@ export default function Landing() {
   const intro = tourSteps.filter((s) => s.act === 0);
   const act1 = tourSteps.filter((s) => s.act === 1);
   const act2 = tourSteps.filter((s) => s.act === 2);
+  const act3 = tourSteps.filter((s) => s.act === 3);
+  const actRange = (arr) => arr.length === 0 ? '' : arr.length === 1
+    ? `Stop ${arr[0].stopNumber}`
+    : `Stops ${arr[0].stopNumber}\u2013${arr[arr.length - 1].stopNumber}`;
+  const totalStops = tourSteps.length - intro.length;
 
   return (
     <div className="min-h-dvh flex flex-col items-center px-6 py-12">
@@ -47,7 +53,7 @@ export default function Landing() {
             Start from the Beginning
           </button>
           <p className="text-xs text-[var(--color-text-muted)] mt-3">
-            17 interactive stops &middot; ~60-90 minutes &middot; keyboard navigation supported
+            {totalStops} interactive stops &middot; ~90-120 minutes &middot; keyboard navigation supported
           </p>
         </div>
 
@@ -99,7 +105,7 @@ export default function Landing() {
           >
             <div>
               <span className="text-[11px] font-medium uppercase tracking-wider text-[var(--color-primary-text)]">
-                Act 1 &mdash; Stops 1&ndash;10
+                Act 1 &mdash; {actRange(act1)}
               </span>
               <span className="text-[11px] text-[var(--color-primary-text)] ml-2 opacity-70">
                 Attention Is All You Need
@@ -146,7 +152,7 @@ export default function Landing() {
           >
             <div>
               <span className="text-[11px] font-medium uppercase tracking-wider text-[var(--color-teal-text)]">
-                Act 2 &mdash; Stops 11&ndash;17
+                Act 2 &mdash; {actRange(act2)}
               </span>
               <span className="text-[11px] text-[var(--color-teal-text)] ml-2 opacity-70">
                 KV Cache & The Network
@@ -165,7 +171,7 @@ export default function Landing() {
                 onClick={() => jumpToStop(idx)}
                 className="w-full text-left px-4 py-2 border-b border-[var(--color-border-light)]
                            hover:bg-[var(--color-surface-alt)] transition-colors cursor-pointer
-                           flex items-start gap-3 last:border-b-0"
+                           flex items-start gap-3"
               >
                 <span className="flex-shrink-0 w-7 h-7 rounded-full bg-[var(--color-teal-bg)]
                                border border-[var(--color-teal)] text-[var(--color-teal-text)]
@@ -183,6 +189,57 @@ export default function Landing() {
               </button>
             );
           })}
+
+          {/* Act 3 */}
+          {act3.length > 0 && (
+            <>
+              <button
+                onClick={() => setAct3Open(!act3Open)}
+                className="w-full text-left px-4 py-2.5 border-b border-[var(--color-border-light)]
+                           bg-[var(--color-amber-bg)] hover:opacity-90 transition-opacity cursor-pointer
+                           flex items-center justify-between"
+              >
+                <div>
+                  <span className="text-[11px] font-medium uppercase tracking-wider text-[var(--color-amber-text)]">
+                    Act 3 &mdash; {actRange(act3)}
+                  </span>
+                  <span className="text-[11px] text-[var(--color-amber-text)] ml-2 opacity-70">
+                    Beyond the Standard Transformer
+                  </span>
+                </div>
+                <span className="text-[var(--color-amber-text)] text-xs">
+                  {act3Open ? '▼' : '▶'}
+                </span>
+              </button>
+
+              {act3Open && act3.map((stop) => {
+                const idx = tourSteps.indexOf(stop);
+                return (
+                  <button
+                    key={stop.id}
+                    onClick={() => jumpToStop(idx)}
+                    className="w-full text-left px-4 py-2 border-b border-[var(--color-border-light)]
+                               hover:bg-[var(--color-surface-alt)] transition-colors cursor-pointer
+                               flex items-start gap-3 last:border-b-0"
+                  >
+                    <span className="flex-shrink-0 w-7 h-7 rounded-full bg-[var(--color-amber-bg)]
+                                   border border-[var(--color-amber)] text-[var(--color-amber-text)]
+                                   text-[11px] font-medium flex items-center justify-center mt-0.5">
+                      {stop.stopNumber}
+                    </span>
+                    <div className="min-w-0">
+                      <div className="text-[13px] font-medium text-[var(--color-text)]">
+                        {stop.title}
+                      </div>
+                      <div className="text-[11px] text-[var(--color-text-muted)] mt-0.5 line-clamp-1">
+                        {stop.narration.replace(/<[^>]*>/g, '')}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </>
+          )}
         </div>
       </div>
     </div>

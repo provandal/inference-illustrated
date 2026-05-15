@@ -189,4 +189,14 @@ export const tourSteps = [
     act: 2,
     stopNumber: 18,
   },
+  {
+    id: 'mixture-of-experts',
+    shortTitle: 'Mixture of Experts',
+    title: 'Stop 19: Mixture of Experts \u2014 Sparse FFN at Scale',
+    narration:
+      'Act 3 begins. The transformer FFN block can be replaced with a sparse mixture: many smaller experts, only a few used per token. This reshapes compute, memory bandwidth, and inter-GPU traffic \u2014 but leaves the KV cache untouched.',
+    component: 'MixtureOfExperts',
+    act: 3,
+    stopNumber: 19,
+  },
 ];
