@@ -1133,6 +1133,216 @@ function KvCacheImpactPage() {
 }
 
 /* ================================================================
+   PAGE 8 — In Production Today
+   Production MoE comparison table. Click a row to expand notes.
+   ================================================================ */
+function ProductionPage() {
+  const [expandedIdx, setExpandedIdx] = useState(0);  // expand the first by default
+
+  return (
+    <div>
+      <Panel>
+        <PanelHeader>The MoE configurations shipping in 2024\u20132025</PanelHeader>
+        <InfoBox>
+          Production MoE varies in three big knobs: <strong>N</strong> (how
+          many experts), <strong>k</strong> (how many per token), and whether
+          there are <strong>shared experts</strong> that every token always
+          touches. The trend over time has been more, smaller experts with
+          higher k, plus shared experts for stability. Click a row to expand.
+        </InfoBox>
+
+        <div className="px-4 pb-4">
+          <div className="rounded-lg border border-[var(--color-border-light)] overflow-hidden">
+            <div className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr_1fr] text-[10px] uppercase tracking-wider font-medium text-[var(--color-text-muted)] bg-[var(--color-surface-muted)] px-3 py-2">
+              <div>Model</div>
+              <div className="text-right">N</div>
+              <div className="text-right">k</div>
+              <div className="text-right">Total</div>
+              <div className="text-right">Active</div>
+              <div className="text-right">Sparsity</div>
+            </div>
+            {PRODUCTION_MODELS.map((m, idx) => {
+              const expanded = expandedIdx === idx;
+              return (
+                <div key={m.name}>
+                  <button
+                    onClick={() => setExpandedIdx(expanded ? null : idx)}
+                    className={`w-full grid grid-cols-[2fr_1fr_1fr_1fr_1fr_1fr] items-center text-[12px] px-3 py-2 border-t border-[var(--color-border-light)] transition-colors cursor-pointer text-left ${
+                      expanded ? 'bg-[var(--color-primary-bg)]' : 'hover:bg-[var(--color-surface-alt)]'
+                    }`}
+                  >
+                    <div>
+                      <div className="font-medium text-[var(--color-text)]">{m.name}</div>
+                      <div className="text-[10px] text-[var(--color-text-muted)] font-mono">{m.org} \u00b7 {m.released}</div>
+                    </div>
+                    <div className="text-right font-mono text-[var(--color-text-secondary)]">{m.numExperts}{m.sharedExperts ? `+${m.sharedExperts}*` : ''}</div>
+                    <div className="text-right font-mono text-[var(--color-text-secondary)]">{m.topK}</div>
+                    <div className="text-right font-mono font-bold text-[var(--color-red-text)]">{m.totalParams}</div>
+                    <div className="text-right font-mono font-bold text-[var(--color-teal-text)]">{m.activeParams}</div>
+                    <div className="text-right font-mono text-[var(--color-primary-text)]">{m.sparsity}</div>
+                  </button>
+                  {expanded && (
+                    <div className="px-3 py-3 bg-[var(--color-surface)] border-t border-[var(--color-border-light)]">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-2">
+                        <KvSimple label="MoE layers" value={m.moeLayers} />
+                        <KvSimple label="Shared experts" value={m.sharedExperts > 0 ? `${m.sharedExperts} \u2014 every token also uses these` : 'none'} />
+                      </div>
+                      <div className="text-[12px] text-[var(--color-text-secondary)] italic leading-relaxed">
+                        {m.notes}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="text-[11px] text-[var(--color-text-secondary)] mt-3 italic">
+            * shared experts: experts that <em>all</em> tokens always use, on top of the top-k chosen by the router.
+          </div>
+        </div>
+      </Panel>
+
+      <Panel className="mt-4">
+        <PanelHeader>The trend lines</PanelHeader>
+        <div className="px-4 pb-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+          <TrendCard
+            title="More experts"
+            from="8 (Mixtral, 2023)"
+            to="256 (DeepSeek-V3, 2024)"
+            note="Fine-grained experts let the router learn more specialised behaviour. The trade is harder training stability."
+          />
+          <TrendCard
+            title="Higher k"
+            from="2 (Mixtral)"
+            to="8 (DeepSeek-V3, Qwen2-57B)"
+            note="More experts per token blends finer-grained specialisations together. The trade is more compute and more all-to-all traffic."
+          />
+          <TrendCard
+            title="Shared experts"
+            from="0 (Mixtral)"
+            to="1\u20134 (DeepSeek, Qwen2)"
+            note="Shared experts capture common knowledge every token needs, freeing the routed experts to specialise harder. Now the standard recipe."
+          />
+        </div>
+      </Panel>
+
+      <Callout
+        type="good"
+        message="<strong>Why so many configurations.</strong> MoE is a fairly young architecture in production (Mixtral was the breakout in late 2023). The right N/k/shared-experts trio is still being explored. Each new release tries a different point in the design space, which is why the table looks more scattered than dense-model release notes."
+      />
+    </div>
+  );
+}
+
+function KvSimple({ label, value }) {
+  return (
+    <div>
+      <div className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] font-medium">{label}</div>
+      <div className="text-[12px] font-mono text-[var(--color-text)]">{value}</div>
+    </div>
+  );
+}
+
+function TrendCard({ title, from, to, note }) {
+  return (
+    <div className="rounded-lg border border-[var(--color-border-light)] bg-[var(--color-surface-muted)] p-3">
+      <div className="text-[11px] uppercase tracking-wider text-[var(--color-primary-text)] font-medium mb-2">{title}</div>
+      <div className="flex items-center gap-2 mb-2 text-[11px] font-mono">
+        <span className="text-[var(--color-text-secondary)]">{from}</span>
+        <span className="text-[var(--color-text-muted)]">\u2192</span>
+        <span className="text-[var(--color-text)] font-bold">{to}</span>
+      </div>
+      <div className="text-[11px] text-[var(--color-text-secondary)] italic leading-relaxed">{note}</div>
+    </div>
+  );
+}
+
+/* ================================================================
+   PAGE 9 — Stop 19 at a Glance
+   Resource tradeoff table + forward links to Stops 21, 22, 23.
+   ================================================================ */
+function SummaryPage() {
+  const arrow = (d) => {
+    if (d === 'up') return { sym: '\u2191', color: 'var(--color-red-text)',  bg: 'var(--color-red-bg)',  border: 'var(--color-red)' };
+    if (d === 'down') return { sym: '\u2193', color: 'var(--color-teal-text)', bg: 'var(--color-teal-bg)', border: 'var(--color-teal)' };
+    return { sym: '\u2192', color: 'var(--color-text-muted)', bg: 'var(--color-surface-muted)', border: 'var(--color-border)' };
+  };
+
+  return (
+    <div>
+      <Panel>
+        <PanelHeader>MoE: what shifts, what stays</PanelHeader>
+        <InfoBox>
+          Every Act 3 architecture trades one resource for another. MoE\u2019s
+          trade: compute goes down, weight memory goes up, KV cache stays
+          the same, and you pick up a new inter-GPU communication pattern.
+          The table below is the one-page summary of this stop.
+        </InfoBox>
+        <div className="px-4 pb-4 overflow-x-auto">
+          <table className="w-full border-collapse text-[12px]">
+            <thead>
+              <tr className="text-left text-[var(--color-text-muted)]">
+                <th className="px-3 py-2 border-b border-[var(--color-border-light)]">Resource</th>
+                <th className="px-3 py-2 border-b border-[var(--color-border-light)]">Dense baseline</th>
+                <th className="px-3 py-2 border-b border-[var(--color-border-light)]">MoE</th>
+                <th className="px-3 py-2 border-b border-[var(--color-border-light)] text-center">Direction</th>
+              </tr>
+            </thead>
+            <tbody>
+              {RESOURCE_TRADEOFFS.map((t, i) => {
+                const a = arrow(t.direction);
+                return (
+                  <tr key={i}>
+                    <td className="px-3 py-2 border-b border-[var(--color-border-light)] font-mono text-[var(--color-text)]">{t.resource}</td>
+                    <td className="px-3 py-2 border-b border-[var(--color-border-light)] font-mono text-[var(--color-text-secondary)]">{t.dense}</td>
+                    <td className="px-3 py-2 border-b border-[var(--color-border-light)] font-mono text-[var(--color-text-secondary)]">{t.moe}</td>
+                    <td className="px-3 py-2 border-b border-[var(--color-border-light)] text-center">
+                      <span
+                        className="inline-flex items-center justify-center w-7 h-7 rounded-full border font-bold text-[14px]"
+                        style={{ background: a.bg, borderColor: a.border, color: a.color }}
+                      >
+                        {a.sym}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </Panel>
+
+      <Panel className="mt-4">
+        <PanelHeader>Where Act 3 goes from here</PanelHeader>
+        <div className="px-4 pb-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+          {FORWARD_LINKS.map((link) => (
+            <div key={link.stop} className="rounded-lg border border-[var(--color-border-light)] bg-[var(--color-surface-muted)] p-3">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[var(--color-amber-bg)] border border-[var(--color-amber)] text-[var(--color-amber-text)] font-bold">
+                  Stop {link.stop}
+                </span>
+                <span className="text-[12px] font-medium text-[var(--color-text)]">
+                  {link.label}
+                </span>
+              </div>
+              <div className="text-[11px] text-[var(--color-text-secondary)] leading-relaxed italic">
+                {link.why}
+              </div>
+            </div>
+          ))}
+        </div>
+      </Panel>
+
+      <Callout
+        type="good"
+        message="<strong>End of Stop 19.</strong> MoE is the smallest swap Act 3 will introduce \u2014 keep the transformer shape, replace the FFN block. The next four stops change bigger pieces: <strong>Stop 20</strong> changes the attention pattern (sliding window), <strong>Stop 21</strong> changes the attention math (linear/kernel), <strong>Stop 22</strong> drops attention altogether (state space models), and <strong>Stop 23</strong> mixes everything together (hybrid models). The lens stays the same: how does each architectural choice reshape the cache memory model?"
+      />
+    </div>
+  );
+}
+
+/* ================================================================
    Placeholder pages (filled in progressively).
    ================================================================ */
 function PlaceholderPage({ title }) {
@@ -1189,8 +1399,8 @@ export default function MixtureOfExperts() {
         {page.id === 'inference-cost'    && <InferenceCostPage />}
         {page.id === 'expert-parallel'   && <ExpertParallelPage />}
         {page.id === 'kv-cache-impact'   && <KvCacheImpactPage />}
-        {page.id === 'production'        && <PlaceholderPage title="In Production Today" />}
-        {page.id === 'summary'           && <PlaceholderPage title="Stop 19 at a Glance" />}
+        {page.id === 'production'        && <ProductionPage />}
+        {page.id === 'summary'           && <SummaryPage />}
       </div>
 
       <PageNav
