@@ -838,6 +838,301 @@ function CostRow({ label, value, sub, tone }) {
 }
 
 /* ================================================================
+   PAGE 6 — Expert Parallelism + All-to-All
+   8-GPU cluster, EP=8 (one expert per GPU). 16 tokens distributed
+   across the 8 GPUs, each routing to 2 experts. The crossing arrows
+   between top and bottom rows make the all-to-all pattern visible.
+   ================================================================ */
+function ExpertParallelPage() {
+  const [highlightedToken, setHighlightedToken] = useState(null);
+  const { numGpus, tokenBatch } = EP_DEMO;
+
+  return (
+    <div>
+      <Panel>
+        <PanelHeader>Expert parallelism: one expert per GPU, every token may travel</PanelHeader>
+        <InfoBox>
+          With expert parallelism, each GPU holds a different subset of
+          experts. When the router sends a token to an expert, the token has
+          to travel to wherever that expert lives. With <em>every token</em>
+          choosing 2 experts independently, the result is a dense crossing of
+          token traffic between all GPUs \u2014 a textbook NCCL <strong>all-to-all
+          collective</strong>.
+        </InfoBox>
+
+        <div className="px-4 pb-4">
+          <EpDiagram
+            numGpus={numGpus}
+            tokenBatch={tokenBatch}
+            highlightedToken={highlightedToken}
+            onHighlight={setHighlightedToken}
+          />
+
+          <div className="mt-3 text-[11px] text-[var(--color-text-secondary)] leading-relaxed italic">
+            Click a token in the bottom row to highlight its 2 routing
+            destinations. The crossing pattern across all 16 tokens is what
+            NCCL\u2019s <code>all-to-all</code> primitive moves at every MoE
+            layer. There\u2019s no shortcut: the source-GPU and target-GPU
+            permutation differs every layer, so a single optimised collective
+            handles the whole thing in one shot.
+          </div>
+        </div>
+      </Panel>
+
+      <Panel className="mt-4">
+        <PanelHeader>Three communication patterns, three personalities</PanelHeader>
+        <InfoBox>
+          MoE adds a third communication pattern to the parallelism trio from
+          Stop 13. Each pattern stresses the fabric differently.
+        </InfoBox>
+        <div className="px-4 pb-4 overflow-x-auto">
+          <table className="w-full border-collapse text-[11px]">
+            <thead>
+              <tr className="text-left text-[var(--color-text-muted)]">
+                <th className="px-3 py-2 border-b border-[var(--color-border-light)]">Pattern</th>
+                <th className="px-3 py-2 border-b border-[var(--color-border-light)]">Participants</th>
+                <th className="px-3 py-2 border-b border-[var(--color-border-light)]">Per forward step</th>
+                <th className="px-3 py-2 border-b border-[var(--color-border-light)]">Payload</th>
+                <th className="px-3 py-2 border-b border-[var(--color-border-light)]">Fabric need</th>
+              </tr>
+            </thead>
+            <tbody>
+              {COLLECTIVE_COMPARISON.map((c) => (
+                <tr key={c.type} className={c.new ? 'bg-[var(--color-amber-bg)]' : ''}>
+                  <td className="px-3 py-2 border-b border-[var(--color-border-light)] font-mono font-medium text-[var(--color-text)]">
+                    {c.type} {c.new && <span className="text-[var(--color-amber-text)] font-bold">\u2605 new</span>}
+                  </td>
+                  <td className="px-3 py-2 border-b border-[var(--color-border-light)] text-[var(--color-text-secondary)]">{c.participants}</td>
+                  <td className="px-3 py-2 border-b border-[var(--color-border-light)] font-mono text-[var(--color-text-secondary)]">{c.perStep}</td>
+                  <td className="px-3 py-2 border-b border-[var(--color-border-light)] font-mono text-[var(--color-text-secondary)]">{c.payload}</td>
+                  <td className="px-3 py-2 border-b border-[var(--color-border-light)] text-[var(--color-text-secondary)]">{c.bandwidth}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Panel>
+
+      <Callout
+        type="warning"
+        message="<strong>Why all-to-all is the most demanding.</strong> All-reduce can use ring or tree algorithms that move data in bounded hops. Point-to-point sends only need one link. All-to-all has every rank talking to every other rank in the same step \u2014 the bisection bandwidth of the fabric becomes the bottleneck. For large EP groups on NVLink this is fine; once you cross node boundaries onto InfiniBand, the all-to-all cost is what limits MoE scaling more than anything else."
+      />
+    </div>
+  );
+}
+
+function EpDiagram({ numGpus, tokenBatch, highlightedToken, onHighlight }) {
+  const W = 720, H = 320;
+  const gpuY = 30, gpuH = 50;
+  const tokenY = 240, tokenH = 24;
+  const gpuSpacing = W / numGpus;
+  const gpuCx = (i) => gpuSpacing * (i + 0.5);
+  const tokenCount = tokenBatch.length;
+  const tokenSpacing = W / tokenCount;
+  const tokenCx = (i) => tokenSpacing * (i + 0.5);
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full rounded border border-[var(--color-border-light)] bg-[var(--color-surface-muted)]">
+      {/* GPU labels along top */}
+      <text x={10} y={18} fontSize={10} fill="var(--color-text-muted)" fontFamily="monospace">
+        GPUs / Experts (top \u2014 each GPU holds one expert)
+      </text>
+
+      {/* GPU boxes (top row) */}
+      {Array.from({ length: numGpus }, (_, i) => (
+        <g key={i}>
+          <rect
+            x={gpuCx(i) - 40} y={gpuY}
+            width={80} height={gpuH}
+            rx={6}
+            fill="var(--color-surface)"
+            stroke="var(--color-primary)"
+            strokeWidth={1.5}
+          />
+          <text x={gpuCx(i)} y={gpuY + 18} fontSize={10} fontWeight={700} textAnchor="middle" fill="var(--color-primary-text)" fontFamily="monospace">
+            GPU {i}
+          </text>
+          <text x={gpuCx(i)} y={gpuY + 34} fontSize={9} textAnchor="middle" fill="var(--color-text-secondary)" fontFamily="monospace">
+            Expert {i}
+          </text>
+        </g>
+      ))}
+
+      {/* Routing lines */}
+      {tokenBatch.map((t, ti) => {
+        const isHighlight = highlightedToken === ti;
+        const isDim = highlightedToken !== null && !isHighlight;
+        return t.dst.map((dGpu, k) => (
+          <line
+            key={`${ti}-${k}`}
+            x1={tokenCx(ti)} y1={tokenY}
+            x2={gpuCx(dGpu)} y2={gpuY + gpuH}
+            stroke={isHighlight ? 'var(--color-amber)' : 'var(--color-text-muted)'}
+            strokeWidth={isHighlight ? 2.5 : 1}
+            opacity={isDim ? 0.08 : isHighlight ? 1 : 0.3}
+          />
+        ));
+      })}
+
+      {/* Token labels along bottom */}
+      <text x={10} y={H - 8} fontSize={10} fill="var(--color-text-muted)" fontFamily="monospace">
+        Tokens (bottom \u2014 grouped by source GPU, click to highlight destinations)
+      </text>
+
+      {/* Token boxes */}
+      {tokenBatch.map((t, ti) => {
+        const isHighlight = highlightedToken === ti;
+        const isDim = highlightedToken !== null && !isHighlight;
+        const groupAccent = `color-mix(in srgb, var(--color-primary) ${Math.round((t.src / numGpus) * 50 + 10)}%, transparent)`;
+        return (
+          <g key={ti} style={{ cursor: 'pointer' }} onClick={() => onHighlight(isHighlight ? null : ti)}>
+            <rect
+              x={tokenCx(ti) - 18} y={tokenY}
+              width={36} height={tokenH}
+              rx={3}
+              fill={isHighlight ? 'var(--color-amber-bg)' : 'var(--color-surface)'}
+              stroke={isHighlight ? 'var(--color-amber)' : 'var(--color-border)'}
+              strokeWidth={isHighlight ? 1.8 : 1}
+              opacity={isDim ? 0.4 : 1}
+            />
+            <line
+              x1={tokenCx(ti) - 18} y1={tokenY + tokenH - 1}
+              x2={tokenCx(ti) + 18} y2={tokenY + tokenH - 1}
+              stroke={groupAccent}
+              strokeWidth={3}
+            />
+            <text
+              x={tokenCx(ti)} y={tokenY + 16}
+              fontSize={10}
+              fontWeight={isHighlight ? 700 : 400}
+              textAnchor="middle"
+              fontFamily="monospace"
+              fill={isHighlight ? 'var(--color-amber-text)' : 'var(--color-text)'}
+              opacity={isDim ? 0.6 : 1}
+            >
+              {t.label}
+            </text>
+            <text
+              x={tokenCx(ti)} y={tokenY + tokenH + 11}
+              fontSize={8}
+              textAnchor="middle"
+              fill="var(--color-text-muted)"
+              fontFamily="monospace"
+              opacity={isDim ? 0.5 : 0.85}
+            >
+              from G{t.src}
+            </text>
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+/* ================================================================
+   PAGE 7 — What This Does to the KV Cache
+   Layer-step diff table. Most rows are identical to a dense
+   transformer. The MoE-specific rows are highlighted.
+   ================================================================ */
+function KvCacheImpactPage() {
+  return (
+    <div>
+      <Panel>
+        <PanelHeader>The cache itself is untouched. Everything around it shifts.</PanelHeader>
+        <InfoBox>
+          The KV cache stores K and V vectors that come from attention\u2019s
+          Q/K/V projections \u2014 a part of the model that <em>doesn\u2019t change</em>
+          between dense and MoE. So cache memory, layout, and bandwidth
+          numbers are identical to a dense model with the same d_model,
+          n_layers, and head configuration.
+        </InfoBox>
+        <InfoBox>
+          What changes is what runs <em>around</em> the cache: an extra router
+          compute, an all-to-all dispatch before FFN, the FFN computed only
+          on a subset of experts, and an all-to-all combine after. The table
+          below walks one layer-step, highlighting which stages MoE adds or
+          modifies.
+        </InfoBox>
+
+        <div className="px-4 pb-4 overflow-x-auto">
+          <table className="w-full border-collapse text-[11px]">
+            <thead>
+              <tr className="text-left text-[var(--color-text-muted)]">
+                <th className="px-3 py-2 border-b border-[var(--color-border-light)]">Layer stage</th>
+                <th className="px-3 py-2 border-b border-[var(--color-border-light)]">Dense transformer</th>
+                <th className="px-3 py-2 border-b border-[var(--color-border-light)]">MoE transformer</th>
+                <th className="px-3 py-2 border-b border-[var(--color-border-light)] text-center">Differs?</th>
+              </tr>
+            </thead>
+            <tbody>
+              {LAYER_STEP_DIFF.map((row, idx) => (
+                <tr key={idx} className={row.changed ? 'bg-[var(--color-amber-bg)]' : ''}>
+                  <td className="px-3 py-2 border-b border-[var(--color-border-light)] font-mono text-[var(--color-text)]">
+                    {row.stage}
+                  </td>
+                  <td className="px-3 py-2 border-b border-[var(--color-border-light)] font-mono text-[var(--color-text-secondary)]">
+                    {row.dense}
+                  </td>
+                  <td className="px-3 py-2 border-b border-[var(--color-border-light)] font-mono text-[var(--color-text-secondary)]">
+                    {row.moe}
+                  </td>
+                  <td className="px-3 py-2 border-b border-[var(--color-border-light)] text-center">
+                    {row.changed
+                      ? <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-[var(--color-amber-bg)] border border-[var(--color-amber)] text-[var(--color-amber-text)]">yes</span>
+                      : <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-[var(--color-teal-bg)] border border-[var(--color-teal)] text-[var(--color-teal-text)]">same</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Panel>
+
+      <Panel className="mt-4">
+        <PanelHeader>What this means for capacity planning</PanelHeader>
+        <InfoBox>
+          For an infra engineer sizing an MoE deployment, the takeaway is:
+        </InfoBox>
+        <div className="px-4 pb-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="rounded-lg border border-[var(--color-teal)] bg-[var(--color-teal-bg)] p-3">
+            <div className="text-[11px] uppercase tracking-wider font-medium text-[var(--color-teal-text)] mb-1">
+              KV cache sizing
+            </div>
+            <div className="text-[13px] text-[var(--color-text)] mb-1">
+              <strong>Same formula as dense.</strong>
+            </div>
+            <div className="text-[11px] italic text-[var(--color-text-secondary)] font-mono">
+              size = layers \u00d7 n_kv_heads \u00d7 d_head \u00d7 2 (K and V) \u00d7 2 bytes (FP16) \u00d7 tokens
+            </div>
+            <div className="text-[11px] italic text-[var(--color-text-secondary)] mt-1">
+              Use the model\u2019s configured attention dimensions; the MoE FFN is irrelevant.
+            </div>
+          </div>
+          <div className="rounded-lg border border-[var(--color-red)] bg-[var(--color-red-bg)] p-3">
+            <div className="text-[11px] uppercase tracking-wider font-medium text-[var(--color-red-text)] mb-1">
+              Fabric sizing
+            </div>
+            <div className="text-[13px] text-[var(--color-text)] mb-1">
+              <strong>Different from dense.</strong>
+            </div>
+            <div className="text-[11px] italic text-[var(--color-text-secondary)]">
+              Plan for <strong>two extra all-to-all collectives per MoE layer</strong> on top of TP\u2019s
+              all-reduces. The collectives compete for NVLink and (worse) InfiniBand bandwidth.
+              In practice you keep EP groups inside a single NVLink domain whenever you can.
+            </div>
+          </div>
+        </div>
+      </Panel>
+
+      <Callout
+        type="info"
+        message="<strong>Forward pointer.</strong> The other Act 3 architectures take much bigger swings at the cache. Sliding-window attention (Stop 20) bounds it. Linear attention (Stop 21) reformulates the math. State space models (Stop 22) remove it entirely. Hybrid models (Stop 23) mix and match these to get the best of every world. By comparison, MoE\u2019s lack of cache impact is the friendliest case."
+      />
+    </div>
+  );
+}
+
+/* ================================================================
    Placeholder pages (filled in progressively).
    ================================================================ */
 function PlaceholderPage({ title }) {
@@ -892,8 +1187,8 @@ export default function MixtureOfExperts() {
         {page.id === 'router'            && <RouterPage />}
         {page.id === 'sparse-activation' && <SparseActivationPage />}
         {page.id === 'inference-cost'    && <InferenceCostPage />}
-        {page.id === 'expert-parallel'   && <PlaceholderPage title="Expert Parallelism + All-to-All" />}
-        {page.id === 'kv-cache-impact'   && <PlaceholderPage title="What This Does to the KV Cache" />}
+        {page.id === 'expert-parallel'   && <ExpertParallelPage />}
+        {page.id === 'kv-cache-impact'   && <KvCacheImpactPage />}
         {page.id === 'production'        && <PlaceholderPage title="In Production Today" />}
         {page.id === 'summary'           && <PlaceholderPage title="Stop 19 at a Glance" />}
       </div>
