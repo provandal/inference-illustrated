@@ -570,6 +570,274 @@ function ExpertLogitsBar({ logits, topKIndices, expertLabels }) {
 }
 
 /* ================================================================
+   PAGE 4 — Sparse Activation
+   Live calculator: tune N, k, d_ffn, layers, d_model and see total
+   vs active params, with a dense baseline for context.
+   ================================================================ */
+function SparseActivationPage() {
+  const [config, setConfig] = useState(SPARSE_ACTIVATION_DEFAULTS);
+  const counts = useMemo(() => moeParamCounts(config), [config]);
+
+  const setField = (key, value) => setConfig((c) => ({ ...c, [key]: value }));
+
+  // Presets for quick comparison
+  const presets = [
+    { name: 'Llama-3 8B (dense)',    N: 1,   k: 1, layers: 32,  dModel: 4096,  dFfn: 14336, dHead: 128, nKvHeads: 8, vocab: 128256 },
+    { name: 'Mixtral 8\u00d77B',       N: 8,   k: 2, layers: 32,  dModel: 4096,  dFfn: 14336, dHead: 128, nKvHeads: 8, vocab: 32000  },
+    { name: 'DeepSeek-V3 (sketch)',  N: 256, k: 8, layers: 61,  dModel: 7168,  dFfn: 2048,  dHead: 128, nKvHeads: 8, vocab: 128256 },
+    { name: 'Llama-3 70B (dense)',   N: 1,   k: 1, layers: 80,  dModel: 8192,  dFfn: 28672, dHead: 128, nKvHeads: 8, vocab: 128256 },
+  ];
+
+  return (
+    <div>
+      <Panel>
+        <PanelHeader>Total vs active parameters \u2014 live calculator</PanelHeader>
+        <InfoBox>
+          Set N (experts), k (top-k), and the standard transformer dimensions.
+          The calculator computes <strong>total parameters</strong> (what loads
+          into HBM) and <strong>active parameters per token</strong> (what
+          governs compute). The dense baseline shows what a non-MoE model with
+          the same FFN width would cost.
+        </InfoBox>
+
+        <div className="px-4 pb-4 space-y-3">
+          <div className="flex flex-wrap gap-2 mb-2">
+            <span className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] font-medium self-center">Presets:</span>
+            {presets.map((p) => (
+              <button
+                key={p.name}
+                onClick={() => setConfig(p)}
+                className="px-2 py-1 text-[11px] rounded border border-[var(--color-border)] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-alt)] cursor-pointer font-mono"
+              >
+                {p.name}
+              </button>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <SparseSlider label="N (experts)" value={config.N} min={1} max={256} step={1} onChange={(v) => setField('N', v)} fmt={(v) => v} />
+            <SparseSlider label="k (top-k routing)" value={config.k} min={1} max={Math.min(16, config.N)} step={1} onChange={(v) => setField('k', v)} fmt={(v) => v} />
+            <SparseSlider label="d_model" value={config.dModel} min={1024} max={16384} step={512} onChange={(v) => setField('dModel', v)} fmt={(v) => v.toLocaleString()} />
+            <SparseSlider label="d_ffn (per expert)" value={config.dFfn} min={1024} max={32768} step={512} onChange={(v) => setField('dFfn', v)} fmt={(v) => v.toLocaleString()} />
+            <SparseSlider label="layers" value={config.layers} min={4} max={126} step={1} onChange={(v) => setField('layers', v)} fmt={(v) => v} />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-2">
+            <BigMetric label="Total params (HBM)" value={`${counts.totalB.toFixed(1)} B`} color="red" />
+            <BigMetric label="Active per token (compute)" value={`${counts.activeB.toFixed(1)} B`} color="teal" />
+            <BigMetric label="Sparsity ratio" value={`${(counts.sparsityRatio * 100).toFixed(1)}%`} color="primary" />
+          </div>
+
+          <div className="rounded-lg border border-[var(--color-border-light)] bg-[var(--color-surface-muted)] p-3">
+            <div className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] mb-2 font-medium">
+              MoE vs equivalent dense baseline
+            </div>
+            <SparsityBars total={counts.totalB} active={counts.activeB} dense={counts.denseB} />
+            <div className="text-[11px] text-[var(--color-text-secondary)] italic mt-3 leading-relaxed">
+              The bar in the middle is the &ldquo;dense baseline&rdquo; \u2014 a
+              non-MoE model with the same FFN width per layer. Notice that
+              MoE\u2019s <em>active</em> compute is much less than dense, but
+              its <em>total</em> memory is much more. This is the central
+              trade we unpack on Page 5.
+            </div>
+          </div>
+        </div>
+      </Panel>
+
+      <Callout
+        type="good"
+        message="<strong>Sanity check.</strong> Try preset \u201cMixtral 8\u00d77B\u201d: the calculator should show ~47B total and ~13B active. Try \u201cDeepSeek-V3\u201d: ~670B total and ~37B active. (The DeepSeek calculation is approximate \u2014 their shared-expert + fine-grained design isn\u2019t captured exactly by N/k alone.)"
+      />
+    </div>
+  );
+}
+
+function SparseSlider({ label, value, min, max, step, onChange, fmt }) {
+  return (
+    <div className="rounded border border-[var(--color-border-light)] bg-[var(--color-surface-muted)] p-3">
+      <div className="flex items-baseline justify-between mb-1">
+        <span className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] font-medium">{label}</span>
+        <span className="text-[14px] font-bold font-mono text-[var(--color-primary-text)]">{fmt(value)}</span>
+      </div>
+      <input
+        type="range"
+        min={min} max={max} step={step}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="anim-scrubber w-full"
+      />
+    </div>
+  );
+}
+
+function BigMetric({ label, value, color }) {
+  const colors = {
+    red:     { bg: 'var(--color-red-bg)',     border: 'var(--color-red)',     text: 'var(--color-red-text)'     },
+    teal:    { bg: 'var(--color-teal-bg)',    border: 'var(--color-teal)',    text: 'var(--color-teal-text)'    },
+    primary: { bg: 'var(--color-primary-bg)', border: 'var(--color-primary)', text: 'var(--color-primary-text)' },
+  };
+  const c = colors[color];
+  return (
+    <div className="rounded-lg border p-3" style={{ background: c.bg, borderColor: c.border }}>
+      <div className="text-[10px] uppercase tracking-wider font-medium" style={{ color: c.text }}>
+        {label}
+      </div>
+      <div className="text-[24px] font-bold font-mono mt-1" style={{ color: c.text }}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function SparsityBars({ total, active, dense }) {
+  const max = Math.max(total, dense);
+  const bar = (label, value, color) => (
+    <div className="flex items-center gap-2">
+      <div className="min-w-[110px] text-[11px] font-mono text-[var(--color-text-secondary)]">{label}</div>
+      <div className="flex-1 relative h-6 bg-[var(--color-surface)] border border-[var(--color-border-light)] rounded overflow-hidden">
+        <div className="h-full transition-all" style={{ background: color, width: `${(value / max) * 100}%` }} />
+        <div className="absolute inset-0 flex items-center px-2 text-[11px] font-mono font-bold text-[var(--color-text)]">
+          {value.toFixed(1)} B
+        </div>
+      </div>
+    </div>
+  );
+  return (
+    <div className="space-y-2">
+      {bar('MoE total',  total,  'var(--color-red)')}
+      {bar('Dense baseline', dense, 'var(--color-text-muted)')}
+      {bar('MoE active', active, 'var(--color-teal)')}
+    </div>
+  );
+}
+
+/* ================================================================
+   PAGE 5 — Inference Cost (The Catch)
+   The non-obvious story: MoE is a throughput play, not a memory
+   saving. HBM has to hold ALL experts. Compute is what shrinks.
+   ================================================================ */
+function InferenceCostPage() {
+  const c = COST_WALKTHROUGH;
+
+  return (
+    <div>
+      <Panel>
+        <PanelHeader>What MoE actually buys you</PanelHeader>
+        <InfoBox>
+          Reading the calculator on the previous page, it\u2019s tempting to
+          conclude &ldquo;MoE means smaller models in HBM.&rdquo; <strong>It
+          does not.</strong> All N experts must be resident, because you
+          don\u2019t know in advance which one the next token will request. The
+          compute story is different from the memory story. Below: a walk
+          through {c.model} on a single H100, line by line.
+        </InfoBox>
+
+        <div className="px-4 pb-4 space-y-3">
+          <CostRow
+            label="Total parameters"
+            value={`${c.totalParams_B} B`}
+            sub={`${c.N} experts \u00d7 ~5.9 B per expert + attention/embeddings`}
+            tone="neutral"
+          />
+          <CostRow
+            label="Active parameters per token"
+            value={`${c.activeParams_B} B`}
+            sub={`k=${c.k} of ${c.N} experts hit by each token`}
+            tone="positive"
+          />
+          <CostRow
+            label="HBM occupied (FP4)"
+            value={`${c.totalMemoryFP4_GB} GB`}
+            sub={`Determined by TOTAL params \u2014 every expert is resident`}
+            tone="negative"
+          />
+          <CostRow
+            label="HBM occupied (FP16)"
+            value={`${c.totalMemoryFP16_GB} GB`}
+            sub={`Cannot fit on a single H100 (80 GB) at FP16 \u2014 forces TP=2`}
+            tone="negative"
+          />
+          <CostRow
+            label="Compute per token"
+            value={`~${c.compute_TFLOPs_perToken} TFLOPs`}
+            sub={`Governed by ACTIVE params: ~2 \u00d7 active = ~26 TFLOPs/token`}
+            tone="positive"
+          />
+          <CostRow
+            label="HBM bandwidth read (single-token)"
+            value={`~${c.bandwidth_GB_perStep_naive} GB / layer-step`}
+            sub={`If you literally read only the active experts\u2019 weights`}
+            tone="positive"
+          />
+          <CostRow
+            label="HBM bandwidth read (full batch)"
+            value={`~${c.bandwidth_GB_perStep_batched} GB / layer-step`}
+            sub={`In a batch big enough to use every expert at least once, you end up reading ALL of them anyway`}
+            tone="negative"
+          />
+        </div>
+      </Panel>
+
+      <Panel className="mt-4">
+        <PanelHeader>The right way to think about MoE</PanelHeader>
+        <div className="px-4 pb-4 space-y-3">
+          <div className="rounded-lg border border-[var(--color-red)] bg-[var(--color-red-bg)] p-3">
+            <div className="text-[11px] uppercase tracking-wider font-medium text-[var(--color-red-text)] mb-1">Common misconception</div>
+            <div className="text-[13px] text-[var(--color-text)]">
+              &ldquo;MoE means I can run a 47B model in the memory of a 13B model.&rdquo;
+            </div>
+            <div className="text-[11px] italic text-[var(--color-text-secondary)] mt-1">
+              False. You still need 47B in HBM.
+            </div>
+          </div>
+          <div className="rounded-lg border border-[var(--color-teal)] bg-[var(--color-teal-bg)] p-3">
+            <div className="text-[11px] uppercase tracking-wider font-medium text-[var(--color-teal-text)] mb-1">The correct framing</div>
+            <div className="text-[13px] text-[var(--color-text)]">
+              &ldquo;MoE means I can serve the quality of a {c.totalParams_B}B model with the per-token compute of a {c.activeParams_B}B model.&rdquo;
+            </div>
+            <div className="text-[11px] italic text-[var(--color-text-secondary)] mt-1">
+              That extra capacity sits in HBM but it costs almost nothing per token to leave it there. It earns its keep by being available when the router asks for it. This is fundamentally a <strong>throughput / quality</strong> play, not a memory-savings play.
+            </div>
+          </div>
+        </div>
+      </Panel>
+
+      <Callout
+        type="info"
+        message="<strong>When MoE actually wins.</strong> Workloads with low batch sizes and tight latency budgets where compute (not memory) is the bottleneck. Or workloads where the alternative is paying more in $/hour for a bigger dense model. MoE rarely wins on a small server with one H100 and one user, because the memory pressure shows up before the compute savings do."
+      />
+    </div>
+  );
+}
+
+function CostRow({ label, value, sub, tone }) {
+  const tones = {
+    positive: { border: 'var(--color-teal)',  bg: 'var(--color-teal-bg)',  text: 'var(--color-teal-text)'  },
+    negative: { border: 'var(--color-red)',   bg: 'var(--color-red-bg)',   text: 'var(--color-red-text)'   },
+    neutral:  { border: 'var(--color-border)', bg: 'var(--color-surface-muted)', text: 'var(--color-text)' },
+  };
+  const t = tones[tone] || tones.neutral;
+  return (
+    <div
+      className="rounded border p-3 grid grid-cols-1 md:grid-cols-[1fr_auto] gap-2 items-center"
+      style={{ background: t.bg, borderColor: t.border }}
+    >
+      <div>
+        <div className="text-[11px] font-mono uppercase tracking-wider" style={{ color: t.text }}>
+          {label}
+        </div>
+        <div className="text-[10px] italic text-[var(--color-text-secondary)] mt-0.5 leading-relaxed">
+          {sub}
+        </div>
+      </div>
+      <div className="text-[20px] font-bold font-mono" style={{ color: t.text }}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+/* ================================================================
    Placeholder pages (filled in progressively).
    ================================================================ */
 function PlaceholderPage({ title }) {
@@ -622,8 +890,8 @@ export default function MixtureOfExperts() {
         {page.id === 'weights-live'      && <WeightsLivePage />}
         {page.id === 'moe-idea'          && <MoeIdeaPage />}
         {page.id === 'router'            && <RouterPage />}
-        {page.id === 'sparse-activation' && <PlaceholderPage title="Sparse Activation" />}
-        {page.id === 'inference-cost'    && <PlaceholderPage title="Inference Cost \u2014 The Catch" />}
+        {page.id === 'sparse-activation' && <SparseActivationPage />}
+        {page.id === 'inference-cost'    && <InferenceCostPage />}
         {page.id === 'expert-parallel'   && <PlaceholderPage title="Expert Parallelism + All-to-All" />}
         {page.id === 'kv-cache-impact'   && <PlaceholderPage title="What This Does to the KV Cache" />}
         {page.id === 'production'        && <PlaceholderPage title="In Production Today" />}
