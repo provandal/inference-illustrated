@@ -17,7 +17,7 @@ const NARRATIONS = {
     'We&rsquo;ll track the token &ldquo;faulty&rdquo; through six layers to see how its representation evolves from a generic adjective to an integrated contextual understanding. Each layer&rsquo;s attention and FFN progressively enrich the representation.',
 
   ffn:
-    'The FFN is the dominant component in each layer &mdash; about 82% of all parameters with SwiGLU\u2019s three matrices. It stores factual knowledge in its frozen weight matrices, processes each token independently, and creates <strong>no cache</strong>.',
+    'The FFN is the dominant component in each layer &mdash; about 82% of all parameters with SwiGLU’s three matrices. It stores factual knowledge in its frozen weight matrices, processes each token independently, and creates <strong>no cache</strong>.',
 
   'full-stack':
     'A production model repeats this two-component layer dozens or hundreds of times. Each layer maintains its own KV cache. Below, we put concrete numbers on the per-layer and per-model cache costs.',
@@ -680,10 +680,10 @@ function ArchitecturePage() {
       stops: 'Stop 3',
     },
     {
-      title: 'Transformer Layers (\u00d780 for 70B)',
-      desc: 'Each layer: RMSNorm \u2192 Multi-Head Attention (+ residual) \u2192 RMSNorm \u2192 FFN (+ residual). K and V cached per layer.',
+      title: 'Transformer Layers (×80 for 70B)',
+      desc: 'Each layer: RMSNorm → Multi-Head Attention (+ residual) → RMSNorm → FFN (+ residual). K and V cached per layer.',
       highlight: true,
-      stops: 'Stops 3\u20139',
+      stops: 'Stops 3–9',
     },
     {
       title: 'Final RMSNorm',

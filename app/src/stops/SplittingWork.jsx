@@ -128,10 +128,10 @@ const PARALLELISM_CONFIGS = [
     ],
     arrows: 'all-reduce',
     arrowLabel: 'all-reduce',
-    description: 'Every GPU holds all 80 layers but only a slice (1/8) of each layer\u2019s weight matrices. When processing a token, all 8 GPUs compute their slice in parallel, then synchronize results via an all-reduce operation. This happens twice per layer (after attention and after FFN) \u2014 160 all-reduces per forward pass for Llama-3 70B. The benefit: each GPU only needs 1/8 of the weights in memory, freeing space for more KV cache.',
-    users: '1 model instance, many concurrent users. All 8 GPUs collaborate on every forward pass, but each pass still batches tokens from dozens of users together (continuous batching from Stop 12). What\u2019s being split here is the model, not the users. In fact, TP=8 typically serves MORE concurrent users than DP=8: shrinking weight memory to 1/8 per GPU frees disproportionately more space for KV cache (the super-linear scaling effect from Stop 9).',
-    communication: 'Heavy. Two all-reduce operations per layer, 80 layers = 160 all-reduces per token. Each all-reduce requires every GPU to send its partial result to every other GPU and receive back the combined result. At NVLink speeds within a node this takes microseconds per operation. Across nodes (InfiniBand at 50 GB/s) it\u2019s 18\u00d7 slower \u2014 which is why TP should stay within a single node.',
-    kvCache: 'Sharded across GPUs \u2014 each GPU holds 1/8 of the KV cache (1/8 of the attention heads). This is the super-linear scaling effect: with TP=8, the weight memory per GPU drops to 1/8, freeing disproportionately more space for cache. Total cache capacity across the cluster is much larger than 8\u00d7 one GPU\u2019s cache.',
+    description: 'Every GPU holds all 80 layers but only a slice (1/8) of each layer’s weight matrices. When processing a token, all 8 GPUs compute their slice in parallel, then synchronize results via an all-reduce operation. This happens twice per layer (after attention and after FFN) — 160 all-reduces per forward pass for Llama-3 70B. The benefit: each GPU only needs 1/8 of the weights in memory, freeing space for more KV cache.',
+    users: '1 model instance, many concurrent users. All 8 GPUs collaborate on every forward pass, but each pass still batches tokens from dozens of users together (continuous batching from Stop 12). What’s being split here is the model, not the users. In fact, TP=8 typically serves MORE concurrent users than DP=8: shrinking weight memory to 1/8 per GPU frees disproportionately more space for KV cache (the super-linear scaling effect from Stop 9).',
+    communication: 'Heavy. Two all-reduce operations per layer, 80 layers = 160 all-reduces per token. Each all-reduce requires every GPU to send its partial result to every other GPU and receive back the combined result. At NVLink speeds within a node this takes microseconds per operation. Across nodes (InfiniBand at 50 GB/s) it’s 18× slower — which is why TP should stay within a single node.',
+    kvCache: 'Sharded across GPUs — each GPU holds 1/8 of the KV cache (1/8 of the attention heads). This is the super-linear scaling effect: with TP=8, the weight memory per GPU drops to 1/8, freeing disproportionately more space for cache. Total cache capacity across the cluster is much larger than 8× one GPU’s cache.',
   },
   {
     id: 'pp8',
@@ -146,23 +146,23 @@ const PARALLELISM_CONFIGS = [
         textColor: 'var(--color-blue-text)',
         gradient: true,
         gpus: [
-          { id: 0, content: 'Layers 1\u201310' },
-          { id: 1, content: 'Layers 11\u201320' },
-          { id: 2, content: 'Layers 21\u201330' },
-          { id: 3, content: 'Layers 31\u201340' },
-          { id: 4, content: 'Layers 41\u201350' },
-          { id: 5, content: 'Layers 51\u201360' },
-          { id: 6, content: 'Layers 61\u201370' },
-          { id: 7, content: 'Layers 71\u201380' },
+          { id: 0, content: 'Layers 1–10' },
+          { id: 1, content: 'Layers 11–20' },
+          { id: 2, content: 'Layers 21–30' },
+          { id: 3, content: 'Layers 31–40' },
+          { id: 4, content: 'Layers 41–50' },
+          { id: 5, content: 'Layers 51–60' },
+          { id: 6, content: 'Layers 61–70' },
+          { id: 7, content: 'Layers 71–80' },
         ],
       },
     ],
     arrows: 'pipeline',
     arrowLabel: '16 KB',
-    description: 'Each GPU holds a contiguous range of layers (10 out of 80). A token enters GPU 0, passes through layers 1\u201310, then the output (a single d_model-sized vector \u2014 just 16 KB) is handed off to GPU 1 for layers 11\u201320, and so on through all 8 stages. The benefit: each GPU holds only 1/8 of the model weights AND only 1/8 of the KV cache (since each layer\u2019s cache stays on the GPU that owns those layers).',
-    users: '1 model instance, many concurrent users. A single token traverses the 8 GPUs sequentially, so GPUs would sit idle if only one user were in flight. To keep every stage busy, micro-batching feeds many users\u2019 tokens into the pipeline at once: GPU 0 may be processing User A\u2019s token while GPU 7 finishes User H\u2019s earlier token. Per-token latency is higher than TP, but aggregate throughput across dozens of concurrent users is competitive.',
-    communication: 'Light. Only 16 KB of activation data passes between adjacent GPUs at each stage boundary. This is a simple point-to-point send \u2014 no collective operation like all-reduce. The communication cost is negligible compared to TP, making PP viable across nodes (InfiniBand) and even across racks.',
-    kvCache: 'Naturally split by layer. Each GPU caches K and V only for its 10 layers. No GPU needs to store the full 80-layer cache. Cache placement maps directly to the pipeline stage structure \u2014 there is no ambiguity about which GPU holds which cache entries.',
+    description: 'Each GPU holds a contiguous range of layers (10 out of 80). A token enters GPU 0, passes through layers 1–10, then the output (a single d_model-sized vector — just 16 KB) is handed off to GPU 1 for layers 11–20, and so on through all 8 stages. The benefit: each GPU holds only 1/8 of the model weights AND only 1/8 of the KV cache (since each layer’s cache stays on the GPU that owns those layers).',
+    users: '1 model instance, many concurrent users. A single token traverses the 8 GPUs sequentially, so GPUs would sit idle if only one user were in flight. To keep every stage busy, micro-batching feeds many users’ tokens into the pipeline at once: GPU 0 may be processing User A’s token while GPU 7 finishes User H’s earlier token. Per-token latency is higher than TP, but aggregate throughput across dozens of concurrent users is competitive.',
+    communication: 'Light. Only 16 KB of activation data passes between adjacent GPUs at each stage boundary. This is a simple point-to-point send — no collective operation like all-reduce. The communication cost is negligible compared to TP, making PP viable across nodes (InfiniBand) and even across racks.',
+    kvCache: 'Naturally split by layer. Each GPU caches K and V only for its 10 layers. No GPU needs to store the full 80-layer cache. Cache placement maps directly to the pipeline stage structure — there is no ambiguity about which GPU holds which cache entries.',
   },
   {
     id: 'dp8',
@@ -182,15 +182,15 @@ const PARALLELISM_CONFIGS = [
     ],
     arrows: 'none',
     arrowLabel: '',
-    description: 'The simplest strategy: copy the entire model onto every GPU. Each GPU is a fully independent inference server \u2014 it holds all 80 layers, all weight matrices, and serves its own set of users. No GPU needs to communicate with any other during inference. The downside: the model weights are duplicated 8 times (8 \u00d7 35 GB = 280 GB of HBM consumed by redundant weight copies), leaving less room for KV cache per GPU.',
-    users: '8 model instances, each batching its own users. Every GPU runs its own continuous batch independently \u2014 with 45 GB free per GPU after weights, that\u2019s room for ~18 users at 8K tokens, so the cluster can serve up to ~144 users total. Zero coordination overhead between GPUs. The catch: weights are duplicated 8 times, which limits the per-instance KV cache compared to a TP cluster that pools its memory.',
+    description: 'The simplest strategy: copy the entire model onto every GPU. Each GPU is a fully independent inference server — it holds all 80 layers, all weight matrices, and serves its own set of users. No GPU needs to communicate with any other during inference. The downside: the model weights are duplicated 8 times (8 × 35 GB = 280 GB of HBM consumed by redundant weight copies), leaving less room for KV cache per GPU.',
+    users: '8 model instances, each batching its own users. Every GPU runs its own continuous batch independently — with 45 GB free per GPU after weights, that’s room for ~18 users at 8K tokens, so the cluster can serve up to ~144 users total. Zero coordination overhead between GPUs. The catch: weights are duplicated 8 times, which limits the per-instance KV cache compared to a TP cluster that pools its memory.',
     communication: 'Zero during inference. Each GPU runs the complete forward pass independently. There is no all-reduce, no pipeline handoff, no synchronization of any kind between GPUs. (During training, gradients must be synchronized, but inference has no gradients.)',
-    kvCache: 'Fully independent. Each GPU holds the complete KV cache for its own users only. No cache sharing between GPUs. The constraint: with 35 GB of weights on each GPU, only 45 GB remains for cache \u2014 enough for ~18 concurrent users at 8K tokens each. If one GPU\u2019s users need more cache, you can\u2019t borrow from another GPU\u2019s free space.',
+    kvCache: 'Fully independent. Each GPU holds the complete KV cache for its own users only. No cache sharing between GPUs. The constraint: with 35 GB of weights on each GPU, only 45 GB remains for cache — enough for ~18 concurrent users at 8K tokens each. If one GPU’s users need more cache, you can’t borrow from another GPU’s free space.',
   },
   {
     id: 'tp4pp2',
-    label: 'TP\u00d7PP',
-    fullLabel: 'TP=4 \u00d7 PP=2',
+    label: 'TP×PP',
+    fullLabel: 'TP=4 × PP=2',
     gpuCount: 8,
     layout: { cols: 4, rows: 2 },
     groups: [
@@ -199,10 +199,10 @@ const PARALLELISM_CONFIGS = [
         bg: 'var(--color-red-bg)',
         textColor: 'var(--color-red-text)',
         gpus: [
-          { id: 0, content: 'L 1\u201340\n1/4 weights' },
-          { id: 1, content: 'L 1\u201340\n1/4 weights' },
-          { id: 2, content: 'L 1\u201340\n1/4 weights' },
-          { id: 3, content: 'L 1\u201340\n1/4 weights' },
+          { id: 0, content: 'L 1–40\n1/4 weights' },
+          { id: 1, content: 'L 1–40\n1/4 weights' },
+          { id: 2, content: 'L 1–40\n1/4 weights' },
+          { id: 3, content: 'L 1–40\n1/4 weights' },
         ],
       },
       {
@@ -210,24 +210,24 @@ const PARALLELISM_CONFIGS = [
         bg: 'var(--color-blue-bg)',
         textColor: 'var(--color-blue-text)',
         gpus: [
-          { id: 4, content: 'L 41\u201380\n1/4 weights' },
-          { id: 5, content: 'L 41\u201380\n1/4 weights' },
-          { id: 6, content: 'L 41\u201380\n1/4 weights' },
-          { id: 7, content: 'L 41\u201380\n1/4 weights' },
+          { id: 4, content: 'L 41–80\n1/4 weights' },
+          { id: 5, content: 'L 41–80\n1/4 weights' },
+          { id: 6, content: 'L 41–80\n1/4 weights' },
+          { id: 7, content: 'L 41–80\n1/4 weights' },
         ],
       },
     ],
     arrows: 'tp-pp',
     arrowLabel: '',
-    description: 'Combines both splitting strategies on the same 8 GPUs. The model is sliced two ways: horizontally (TP splits each layer\u2019s weights across 4 GPUs) and vertically (PP splits the 80 layers into 2 stages of 40). The top row of 4 GPUs runs layers 1\u201340 with tensor parallelism; the bottom row runs layers 41\u201380. A token is processed by the top row first (with all-reduce between the 4 GPUs), then the result passes to the bottom row (a 16 KB pipeline handoff).',
+    description: 'Combines both splitting strategies on the same 8 GPUs. The model is sliced two ways: horizontally (TP splits each layer’s weights across 4 GPUs) and vertically (PP splits the 80 layers into 2 stages of 40). The top row of 4 GPUs runs layers 1–40 with tensor parallelism; the bottom row runs layers 41–80. A token is processed by the top row first (with all-reduce between the 4 GPUs), then the result passes to the bottom row (a 16 KB pipeline handoff).',
     users: '1 model instance, many concurrent users. The instance is spread across all 8 GPUs (TP within each row, PP between rows), but continuous batching plus micro-batching let it serve many users at once. Compared to pure TP=8: fewer all-reduce participants per operation (4 instead of 8), at the cost of an added pipeline handoff between stages.',
     communication: 'Mixed. Within each row: all-reduce between 4 GPUs (TP). Between rows: 16 KB point-to-point handoff (PP). The TP all-reduce stays within a 4-GPU node (fast NVLink), while the PP handoff can cross nodes (only 16 KB, so the latency is manageable).',
-    kvCache: 'Doubly split. Each GPU holds 1/4 of the cache for its layers only. GPU 0 holds 1/4 of the heads for layers 1\u201340. No single GPU holds the full cache for any layer.',
+    kvCache: 'Doubly split. Each GPU holds 1/4 of the cache for its layers only. GPU 0 holds 1/4 of the heads for layers 1–40. No single GPU holds the full cache for any layer.',
   },
   {
     id: 'tp4dp2',
-    label: 'TP\u00d7DP',
-    fullLabel: 'TP=4 \u00d7 DP=2',
+    label: 'TP×DP',
+    fullLabel: 'TP=4 × DP=2',
     gpuCount: 8,
     layout: { cols: 4, rows: 2, groupGap: true },
     groups: [
@@ -259,14 +259,14 @@ const PARALLELISM_CONFIGS = [
     arrows: 'tp-dp',
     arrowLabel: '',
     description: 'The most common production configuration. Two independent TP instances. Instance A (4 GPUs) uses tensor parallelism: each GPU holds 1/4 of the weights and they all-reduce together. Instance B (4 GPUs) does the same. Each instance batches many users via continuous batching, and the two instances operate completely independently. This gives you the memory efficiency of TP (each GPU holds only 1/4 of the weights) with the throughput multiplier of DP (two parallel inference engines instead of one).',
-    users: '2 model instances, each batching many users. Instance A (4 GPUs, TP) and Instance B (4 GPUs, TP) each serve their own continuous batch of dozens of concurrent users. The instances are completely independent. With a 32-GPU cluster you\u2019d have 8 such instances, multiplying the throughput again.',
+    users: '2 model instances, each batching many users. Instance A (4 GPUs, TP) and Instance B (4 GPUs, TP) each serve their own continuous batch of dozens of concurrent users. The instances are completely independent. With a 32-GPU cluster you’d have 8 such instances, multiplying the throughput again.',
     communication: 'All-reduce within each group (4 GPUs, 160 all-reduces per forward pass). Zero communication between groups. This is why TP+DP scales well: the heavy TP communication stays within a NVLink-connected node, while the DP replication requires no communication at all.',
-    kvCache: 'Sharded within each instance. Each GPU in Instance A holds 1/4 of the heads for every user batched on Instance A. Same for Instance B with its own batch. No cache sharing between instances. This is the super-linear scaling effect from Stop 9 \u2014 TP=4 frees disproportionately more memory for cache than running at TP=1.',
+    kvCache: 'Sharded within each instance. Each GPU in Instance A holds 1/4 of the heads for every user batched on Instance A. Same for Instance B with its own batch. No cache sharing between instances. This is the super-linear scaling effect from Stop 9 — TP=4 frees disproportionately more memory for cache than running at TP=1.',
   },
   {
     id: 'pp4dp2',
-    label: 'PP\u00d7DP',
-    fullLabel: 'PP=4 \u00d7 DP=2',
+    label: 'PP×DP',
+    fullLabel: 'PP=4 × DP=2',
     gpuCount: 8,
     layout: { cols: 4, rows: 2, groupGap: true },
     groups: [
@@ -277,10 +277,10 @@ const PARALLELISM_CONFIGS = [
         label: 'Pipeline A',
         gradient: true,
         gpus: [
-          { id: 0, content: 'L 1\u201320' },
-          { id: 1, content: 'L 21\u201340' },
-          { id: 2, content: 'L 41\u201360' },
-          { id: 3, content: 'L 61\u201380' },
+          { id: 0, content: 'L 1–20' },
+          { id: 1, content: 'L 21–40' },
+          { id: 2, content: 'L 41–60' },
+          { id: 3, content: 'L 61–80' },
         ],
       },
       {
@@ -290,24 +290,24 @@ const PARALLELISM_CONFIGS = [
         label: 'Pipeline B',
         gradient: true,
         gpus: [
-          { id: 4, content: 'L 1\u201320' },
-          { id: 5, content: 'L 21\u201340' },
-          { id: 6, content: 'L 41\u201360' },
-          { id: 7, content: 'L 61\u201380' },
+          { id: 4, content: 'L 1–20' },
+          { id: 5, content: 'L 21–40' },
+          { id: 6, content: 'L 41–60' },
+          { id: 7, content: 'L 61–80' },
         ],
       },
     ],
     arrows: 'pp-dp',
     arrowLabel: '16 KB',
-    description: 'Two independent pipeline instances. Pipeline A (4 GPUs) splits the 80 layers across 4 stages; Pipeline B does the same. Each pipeline serves its own continuous batch of users, with micro-batching keeping all 4 stages busy. The pipelines are completely independent \u2014 no communication between them. This is less common than TP+DP in practice because pipeline parallelism introduces per-token latency (tokens must traverse all stages) and is harder to keep fully utilized.',
+    description: 'Two independent pipeline instances. Pipeline A (4 GPUs) splits the 80 layers across 4 stages; Pipeline B does the same. Each pipeline serves its own continuous batch of users, with micro-batching keeping all 4 stages busy. The pipelines are completely independent — no communication between them. This is less common than TP+DP in practice because pipeline parallelism introduces per-token latency (tokens must traverse all stages) and is harder to keep fully utilized.',
     users: '2 model instances, each batching many users. Pipeline A and Pipeline B are independent 4-stage pipelines; each serves its own continuous batch via micro-batching that keeps all 4 stages busy.',
     communication: 'Sequential point-to-point handoffs (16 KB) within each pipeline. Zero communication between pipelines. Lower total communication than TP+DP because pipeline handoffs are tiny compared to all-reduce operations.',
-    kvCache: 'Split by layer within each pipeline. Each GPU caches K and V only for its assigned layers (20 layers per GPU in a 4-stage pipeline). Cache placement is clear and deterministic \u2014 no sharding ambiguity.',
+    kvCache: 'Split by layer within each pipeline. Each GPU caches K and V only for its assigned layers (20 layers per GPU in a 4-stage pipeline). Cache placement is clear and deterministic — no sharding ambiguity.',
   },
   {
     id: 'tp2pp3dp4',
     label: 'All Three',
-    fullLabel: 'TP=2 \u00d7 PP=3 \u00d7 DP=4',
+    fullLabel: 'TP=2 × PP=3 × DP=4',
     gpuCount: 24,
     layout: { cols: 6, rows: 4, groupGap: true },
     groups: [
@@ -317,12 +317,12 @@ const PARALLELISM_CONFIGS = [
         textColor: 'var(--color-red-text)',
         label: 'Replica 1',
         gpus: [
-          { id: 0, content: 'L 1\u201327\n\u00bd wt' },
-          { id: 1, content: 'L 1\u201327\n\u00bd wt' },
-          { id: 2, content: 'L 28\u201354\n\u00bd wt' },
-          { id: 3, content: 'L 28\u201354\n\u00bd wt' },
-          { id: 4, content: 'L 55\u201380\n\u00bd wt' },
-          { id: 5, content: 'L 55\u201380\n\u00bd wt' },
+          { id: 0, content: 'L 1–27\n½ wt' },
+          { id: 1, content: 'L 1–27\n½ wt' },
+          { id: 2, content: 'L 28–54\n½ wt' },
+          { id: 3, content: 'L 28–54\n½ wt' },
+          { id: 4, content: 'L 55–80\n½ wt' },
+          { id: 5, content: 'L 55–80\n½ wt' },
         ],
       },
       {
@@ -331,12 +331,12 @@ const PARALLELISM_CONFIGS = [
         textColor: 'var(--color-blue-text)',
         label: 'Replica 2',
         gpus: [
-          { id: 6, content: 'L 1\u201327\n\u00bd wt' },
-          { id: 7, content: 'L 1\u201327\n\u00bd wt' },
-          { id: 8, content: 'L 28\u201354\n\u00bd wt' },
-          { id: 9, content: 'L 28\u201354\n\u00bd wt' },
-          { id: 10, content: 'L 55\u201380\n\u00bd wt' },
-          { id: 11, content: 'L 55\u201380\n\u00bd wt' },
+          { id: 6, content: 'L 1–27\n½ wt' },
+          { id: 7, content: 'L 1–27\n½ wt' },
+          { id: 8, content: 'L 28–54\n½ wt' },
+          { id: 9, content: 'L 28–54\n½ wt' },
+          { id: 10, content: 'L 55–80\n½ wt' },
+          { id: 11, content: 'L 55–80\n½ wt' },
         ],
       },
       {
@@ -345,12 +345,12 @@ const PARALLELISM_CONFIGS = [
         textColor: 'var(--color-teal-text)',
         label: 'Replica 3',
         gpus: [
-          { id: 12, content: 'L 1\u201327\n\u00bd wt' },
-          { id: 13, content: 'L 1\u201327\n\u00bd wt' },
-          { id: 14, content: 'L 28\u201354\n\u00bd wt' },
-          { id: 15, content: 'L 28\u201354\n\u00bd wt' },
-          { id: 16, content: 'L 55\u201380\n\u00bd wt' },
-          { id: 17, content: 'L 55\u201380\n\u00bd wt' },
+          { id: 12, content: 'L 1–27\n½ wt' },
+          { id: 13, content: 'L 1–27\n½ wt' },
+          { id: 14, content: 'L 28–54\n½ wt' },
+          { id: 15, content: 'L 28–54\n½ wt' },
+          { id: 16, content: 'L 55–80\n½ wt' },
+          { id: 17, content: 'L 55–80\n½ wt' },
         ],
       },
       {
@@ -359,21 +359,21 @@ const PARALLELISM_CONFIGS = [
         textColor: 'var(--color-amber-text)',
         label: 'Replica 4',
         gpus: [
-          { id: 18, content: 'L 1\u201327\n\u00bd wt' },
-          { id: 19, content: 'L 1\u201327\n\u00bd wt' },
-          { id: 20, content: 'L 28\u201354\n\u00bd wt' },
-          { id: 21, content: 'L 28\u201354\n\u00bd wt' },
-          { id: 22, content: 'L 55\u201380\n\u00bd wt' },
-          { id: 23, content: 'L 55\u201380\n\u00bd wt' },
+          { id: 18, content: 'L 1–27\n½ wt' },
+          { id: 19, content: 'L 1–27\n½ wt' },
+          { id: 20, content: 'L 28–54\n½ wt' },
+          { id: 21, content: 'L 28–54\n½ wt' },
+          { id: 22, content: 'L 55–80\n½ wt' },
+          { id: 23, content: 'L 55–80\n½ wt' },
         ],
       },
     ],
     arrows: 'all-three',
     arrowLabel: '',
-    description: 'All three strategies combined. 24 GPUs organized as 4 independent replicas (DP=4), each replica containing 6 GPUs arranged as 2 GPUs wide (TP=2) and 3 GPUs deep (PP=3). Within each replica: TP handles width (all-reduce between pairs), PP handles depth (pipeline handoffs between stages). Across replicas: complete independence (DP). This is how the largest production clusters operate \u2014 hundreds or thousands of GPUs, organized along all three axes simultaneously.',
-    users: '4 model instances, each batching many users. Each 6-GPU replica (TP=2 \u00d7 PP=3) runs its own continuous batch of dozens of concurrent users. The 4 replicas are completely independent. Scaling out: with 72 GPUs (NVL72) you\u2019d have 12 such replicas, multiplying serving capacity 3\u00d7. The DP axis controls instance count; TP and PP control how each instance is laid out internally.',
+    description: 'All three strategies combined. 24 GPUs organized as 4 independent replicas (DP=4), each replica containing 6 GPUs arranged as 2 GPUs wide (TP=2) and 3 GPUs deep (PP=3). Within each replica: TP handles width (all-reduce between pairs), PP handles depth (pipeline handoffs between stages). Across replicas: complete independence (DP). This is how the largest production clusters operate — hundreds or thousands of GPUs, organized along all three axes simultaneously.',
+    users: '4 model instances, each batching many users. Each 6-GPU replica (TP=2 × PP=3) runs its own continuous batch of dozens of concurrent users. The 4 replicas are completely independent. Scaling out: with 72 GPUs (NVL72) you’d have 12 such replicas, multiplying serving capacity 3×. The DP axis controls instance count; TP and PP control how each instance is laid out internally.',
     communication: 'All three types coexist: all-reduce within TP pairs (heaviest, stays on NVLink), pipeline handoffs between PP stages (light, 16 KB), and zero communication between DP replicas. The key design constraint: TP must stay within a single NVLink domain; PP can cross nodes; DP can span the entire cluster.',
-    kvCache: 'Triple-split. Within each replica: sharded by TP (each GPU holds 1/2 of the heads) and split by PP (each GPU holds 1/3 of the layers). Across replicas: fully independent. Each GPU holds a small, well-defined slice of one user\u2019s cache.',
+    kvCache: 'Triple-split. Within each replica: sharded by TP (each GPU holds 1/2 of the heads) and split by PP (each GPU holds 1/3 of the layers). Across replicas: fully independent. Each GPU holds a small, well-defined slice of one user’s cache.',
   },
 ];
 
@@ -426,7 +426,7 @@ function ArrowRow({ arrows, arrowLabel, cols }) {
     return (
       <div className="flex items-center justify-center gap-1 py-1 flex-wrap">
         <span className="text-[10px] font-medium" style={{ color: 'var(--color-red-text)' }}>
-          {'\u2194'.repeat(Math.min(cols - 1, 7))}
+          {'↔'.repeat(Math.min(cols - 1, 7))}
         </span>
         <span className="text-[9px] px-1.5 py-0.5 rounded bg-[var(--color-red-bg)] border border-[var(--color-red)]" style={{ color: 'var(--color-red-text)' }}>
           {arrowLabel}
@@ -438,7 +438,7 @@ function ArrowRow({ arrows, arrowLabel, cols }) {
     return (
       <div className="flex items-center justify-center gap-1 py-1 flex-wrap">
         <span className="text-[10px] font-medium" style={{ color: 'var(--color-blue-text)' }}>
-          {'\u2192  '.repeat(Math.min(cols - 1, 7)).trim()}
+          {'→  '.repeat(Math.min(cols - 1, 7)).trim()}
         </span>
         <span className="text-[9px] px-1.5 py-0.5 rounded bg-[var(--color-blue-bg)] border border-[var(--color-blue)]" style={{ color: 'var(--color-blue-text)' }}>
           {arrowLabel}
@@ -3184,7 +3184,7 @@ function ConfigGrid({ config }) {
             {gi === 0 && (
               <div className="flex items-center justify-center gap-1 py-0.5 flex-wrap">
                 <span className="text-[10px] font-medium" style={{ color: 'var(--color-red-text)' }}>
-                  {'\u2194'.repeat(3)}
+                  {'↔'.repeat(3)}
                 </span>
                 <span className="text-[8px] px-1 py-0.5 rounded bg-[var(--color-red-bg)] border border-[var(--color-red)]" style={{ color: 'var(--color-red-text)' }}>
                   all-reduce (TP)
@@ -3194,7 +3194,7 @@ function ConfigGrid({ config }) {
             {gi === 0 && (
               <div className="flex items-center justify-center gap-1 py-0.5">
                 <span className="text-[12px] font-medium" style={{ color: 'var(--color-blue-text)' }}>
-                  {'\u2193  '.repeat(4).trim()}
+                  {'↓  '.repeat(4).trim()}
                 </span>
                 <span className="text-[8px] px-1 py-0.5 rounded bg-[var(--color-blue-bg)] border border-[var(--color-blue)]" style={{ color: 'var(--color-blue-text)' }}>
                   pipeline (PP)
@@ -3205,7 +3205,7 @@ function ConfigGrid({ config }) {
         ))}
         <div className="flex items-center justify-center gap-1 py-0.5 flex-wrap">
           <span className="text-[10px] font-medium" style={{ color: 'var(--color-blue-text)' }}>
-            {'\u2194'.repeat(3)}
+            {'↔'.repeat(3)}
           </span>
           <span className="text-[8px] px-1 py-0.5 rounded bg-[var(--color-blue-bg)] border border-[var(--color-blue)]" style={{ color: 'var(--color-blue-text)' }}>
             all-reduce (TP)
@@ -3231,7 +3231,7 @@ function ConfigGrid({ config }) {
               {isTP ? (
                 <>
                   <span className="text-[10px] font-medium" style={{ color: grp.textColor }}>
-                    {'\u2194'.repeat(3)}
+                    {'↔'.repeat(3)}
                   </span>
                   <span className="text-[8px] px-1 py-0.5 rounded" style={{ background: grp.bg, border: `1px solid ${grp.color}`, color: grp.textColor }}>
                     all-reduce (TP)
@@ -3240,7 +3240,7 @@ function ConfigGrid({ config }) {
               ) : (
                 <>
                   <span className="text-[10px] font-medium" style={{ color: grp.textColor }}>
-                    {'\u2192  '.repeat(3).trim()}
+                    {'→  '.repeat(3).trim()}
                   </span>
                   <span className="text-[8px] px-1 py-0.5 rounded" style={{ background: grp.bg, border: `1px solid ${grp.color}`, color: grp.textColor }}>
                     pipeline {arrowLabel}
@@ -3270,10 +3270,10 @@ function ConfigGrid({ config }) {
             <GpuGroup group={grp} cols={cols} isSmall={true} />
             <div className="flex items-center justify-center gap-2 py-0.5 flex-wrap">
               <span className="text-[8px] px-1 py-0.5 rounded bg-[var(--color-red-bg)] border border-[var(--color-red)]" style={{ color: 'var(--color-red-text)' }}>
-                {'\u2194'} TP pairs
+                {'↔'} TP pairs
               </span>
               <span className="text-[8px] px-1 py-0.5 rounded bg-[var(--color-blue-bg)] border border-[var(--color-blue)]" style={{ color: 'var(--color-blue-text)' }}>
-                {'\u2192'} PP stages
+                {'→'} PP stages
               </span>
             </div>
           </div>
@@ -3296,7 +3296,7 @@ function ParallelismConfigurator() {
   return (
     <Panel className="mt-4">
       <PanelHeader>
-        Parallelism configurations {config.gpuCount === 24 ? '\u2014 24 GPUs' : '\u2014 8 GPUs'}
+        Parallelism configurations {config.gpuCount === 24 ? '— 24 GPUs' : '— 8 GPUs'}
       </PanelHeader>
       <div className="p-4">
         <div className="text-[13px] text-[var(--color-text-secondary)] leading-relaxed mb-3">

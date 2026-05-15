@@ -75,7 +75,7 @@ function IntroPage() {
           {[
             'How does inference actually work, step by step?',
             'Why is the cache necessary?',
-            'What happens when it outgrows the GPU\u2019s memory?',
+            'What happens when it outgrows the GPU’s memory?',
           ].map((q, i) => (
             <div key={i} className="flex gap-3 items-start text-[13px]">
               <span className="flex-shrink-0 w-6 h-6 rounded-full bg-[var(--color-primary-bg)] border border-[var(--color-primary)] text-[var(--color-primary-text)] text-xs font-medium flex items-center justify-center">
@@ -120,15 +120,15 @@ function TwoPhasesPage() {
           {[
             {
               num: '1',
-              text: 'All 2,000 tokens are transformed through W_Q, W_K, W_V \u2014 producing 2,000 Q vectors, 2,000 K vectors, and 2,000 V vectors.',
+              text: 'All 2,000 tokens are transformed through W_Q, W_K, W_V — producing 2,000 Q vectors, 2,000 K vectors, and 2,000 V vectors.',
             },
             {
               num: '2',
-              text: 'All 2,000 K and V vectors are stored in that layer\u2019s KV cache.',
+              text: 'All 2,000 K and V vectors are stored in that layer’s KV cache.',
             },
             {
               num: '3',
-              text: 'Each token\u2019s Q is compared against the K vectors of all tokens at its position or earlier. Token 1 sees only itself. Token 500 sees tokens 1\u2013500. Token 2,000 sees all 2,000. A token always attends to its own K \u2014 this ensures its identity contributes to the attention output alongside context from other tokens.',
+              text: 'Each token’s Q is compared against the K vectors of all tokens at its position or earlier. Token 1 sees only itself. Token 500 sees tokens 1–500. Token 2,000 sees all 2,000. A token always attends to its own K — this ensures its identity contributes to the attention output alongside context from other tokens.',
             },
             {
               num: '4',
@@ -189,12 +189,12 @@ function TwoPhasesPage() {
             {
               num: '1',
               label: 'Output projection',
-              text: 'A weight matrix of size d_model \u00d7 vocab_size (8,192 \u00d7 128,256 for Llama-3) multiplies the vector, producing a score for every token in the vocabulary. These scores are called logits \u2014 raw, unnormalized numbers. A high logit means the model considers that vocabulary entry a likely next token.',
+              text: 'A weight matrix of size d_model × vocab_size (8,192 × 128,256 for Llama-3) multiplies the vector, producing a score for every token in the vocabulary. These scores are called logits — raw, unnormalized numbers. A high logit means the model considers that vocabulary entry a likely next token.',
             },
             {
               num: '2',
               label: 'Softmax',
-              text: 'The same function from Stop 6, applied here to 128,256 logits instead of attention scores. It converts them into a probability distribution \u2014 128,256 probabilities summing to 1. "The" might be 0.12, "A" might be 0.08, "banana" might be 0.000001.',
+              text: 'The same function from Stop 6, applied here to 128,256 logits instead of attention scores. It converts them into a probability distribution — 128,256 probabilities summing to 1. "The" might be 0.12, "A" might be 0.08, "banana" might be 0.000001.',
             },
             {
               num: '3',
@@ -236,23 +236,23 @@ function TwoPhasesPage() {
           {[
             {
               num: '1',
-              text: 'The selected first response token is embedded (looked up in the embedding table, producing a d_model-sized vector \u2014 the same process prompt tokens went through) and fed into Layer 1.',
+              text: 'The selected first response token is embedded (looked up in the embedding table, producing a d_model-sized vector — the same process prompt tokens went through) and fed into Layer 1.',
             },
             {
               num: '2',
-              text: 'This single new token computes its Q, K, V through the weight matrices. Its K and V are appended to the existing cache (which already has 2,000 entries at this layer). Its Q is compared against all 2,001 cached K vectors \u2014 including its own.',
+              text: 'This single new token computes its Q, K, V through the weight matrices. Its K and V are appended to the existing cache (which already has 2,000 entries at this layer). Its Q is compared against all 2,001 cached K vectors — including its own.',
             },
             {
               num: '3',
-              text: 'The enriched representation passes through the FFN, then into Layer 2. The same process repeats at every layer: compute Q, K, V; append K, V to that layer\u2019s cache; attend to all cached K vectors; blend Values; FFN; pass to the next layer.',
+              text: 'The enriched representation passes through the FFN, then into Layer 2. The same process repeats at every layer: compute Q, K, V; append K, V to that layer’s cache; attend to all cached K vectors; blend Values; FFN; pass to the next layer.',
             },
             {
               num: '4',
-              text: 'The token must pass through all 80 layers before the next token can begin. There is no way to pipeline this \u2014 Layer 1 cannot start on the next token while Layer 2 works on the current one \u2014 because the next token\u2019s identity is determined by the output of Layer 80. It does not exist yet.',
+              text: 'The token must pass through all 80 layers before the next token can begin. There is no way to pipeline this — Layer 1 cannot start on the next token while Layer 2 works on the current one — because the next token’s identity is determined by the output of Layer 80. It does not exist yet.',
             },
             {
               num: '5',
-              text: 'After Layer 80, the last-position vector passes through the same output projection \u2192 softmax \u2192 sampling sequence. The selected token is embedded and fed back into Layer 1. The cycle repeats.',
+              text: 'After Layer 80, the last-position vector passes through the same output projection → softmax → sampling sequence. The selected token is embedded and fed back into Layer 1. The cycle repeats.',
             },
           ].map((step) => (
             <div key={step.num} className="flex gap-3 items-start text-[13px]">
@@ -684,7 +684,7 @@ function MemoryWallPage() {
                     </span>
                   </td>
                   <td className="px-4 py-2 text-[var(--color-text-secondary)]">
-                    {row.note || '\u2014'}
+                    {row.note || '—'}
                   </td>
                 </tr>
               ))}
@@ -712,7 +712,7 @@ function MemoryWallPage() {
         <PanelHeader>When the wall is hit</PanelHeader>
         <div className="p-4 space-y-2">
           {[
-            { label: 'Evict oldest conversation', detail: 'One user\u2019s cache disappears. They must re-prefill.' },
+            { label: 'Evict oldest conversation', detail: 'One user’s cache disappears. They must re-prefill.' },
             { label: 'Reduce context window', detail: 'Conversation history is truncated. The model forgets.' },
             { label: 'Spill to slower memory', detail: 'Cache migrates to DRAM or NVMe. Latency increases.' },
             { label: 'Add more GPUs', detail: 'Cost increases. The cache must be distributed.' },
@@ -852,14 +852,14 @@ function BridgePage() {
           {[
             { num: 1, text: 'Sequential models (RNNs) lose information over distance.' },
             { num: 2, text: 'Attention lets every token see every other token directly.' },
-            { num: 3, text: 'Q, K, V separate matching, being found, and carrying information \u2014 and K, V must be stored.' },
+            { num: 3, text: 'Q, K, V separate matching, being found, and carrying information — and K, V must be stored.' },
             { num: 4, text: 'Weight matrices learn meaningful attention patterns through training.' },
             { num: 5, text: 'Dot products measure the alignment that training created.' },
             { num: 6, text: 'Scaling and softmax convert raw scores to proper weights.' },
             { num: 7, text: 'The weighted sum blends Values into context-enriched representations.' },
-            { num: 8, text: 'Multiple heads provide parallel perspectives \u2014 and each stores its own K, V.' },
-            { num: 9, text: 'Stacking layers enables progressive refinement \u2014 and each layer has its own cache.' },
-            { num: 10, text: 'The resulting KV cache makes inference possible \u2014 and creates the central infrastructure challenge.' },
+            { num: 8, text: 'Multiple heads provide parallel perspectives — and each stores its own K, V.' },
+            { num: 9, text: 'Stacking layers enables progressive refinement — and each layer has its own cache.' },
+            { num: 10, text: 'The resulting KV cache makes inference possible — and creates the central infrastructure challenge.' },
           ].map((item) => (
             <div key={item.num} className="flex gap-3 items-start text-[13px]">
               <span className="flex-shrink-0 w-6 h-6 rounded-full bg-[var(--color-primary-bg)] border border-[var(--color-primary)] text-[var(--color-primary-text)] text-xs font-medium flex items-center justify-center">

@@ -580,25 +580,25 @@ export default function EveryTokenLooks() {
   let narration = '';
   if (page.id === 'intro') {
     narration =
-      '<strong>Stop 2: Every Token Looks at Every Token.</strong> In Stop 1, we saw the telephone problem \u2014 information decaying through a chain. Attention solved that for one word. Now let\u2019s see what happens when <em>every</em> word gets that same power, all at the same time. This mechanism is the core of the <strong>transformer</strong> architecture, introduced in the landmark 2017 paper <em>"Attention Is All You Need"</em> by Vaswani et al.';
+      '<strong>Stop 2: Every Token Looks at Every Token.</strong> In Stop 1, we saw the telephone problem — information decaying through a chain. Attention solved that for one word. Now let’s see what happens when <em>every</em> word gets that same power, all at the same time. This mechanism is the core of the <strong>transformer</strong> architecture, introduced in the landmark 2017 paper <em>"Attention Is All You Need"</em> by Vaswani et al.';
   } else if (page.id === 'self-attention') {
     narration =
-      'The mechanism that gives every word direct access to every other word has a name: <strong>self-attention</strong>. It\u2019s the foundation of the transformer architecture, and the reason these models can handle long-range dependencies that RNNs could not.';
+      'The mechanism that gives every word direct access to every other word has a name: <strong>self-attention</strong>. It’s the foundation of the transformer architecture, and the reason these models can handle long-range dependencies that RNNs could not.';
   } else if (page.id === 'explore') {
     narration =
       'Time to see self-attention in action. Click any word in the sentence below to see <strong>where its attention flows</strong> — which words it considers most relevant, and why. Every word has its own pattern.';
   } else if (page.id === 'matrix') {
     narration =
-      'Each word attending to every other word produces a grid of numbers — the <strong>attention matrix</strong>. For our 15-word sentence, that\u2019s a 15\u00d715 grid, with 225 attention scores computed simultaneously.';
+      'Each word attending to every other word produces a grid of numbers — the <strong>attention matrix</strong>. For our 15-word sentence, that’s a 15×15 grid, with 225 attention scores computed simultaneously.';
   } else if (page.id === 'scaling') {
     narration =
-      'A 15-word sentence means 225 attention pairs. But real conversations aren\u2019t 15 words. What happens when the sequence grows to thousands — or hundreds of thousands — of tokens?';
+      'A 15-word sentence means 225 attention pairs. But real conversations aren’t 15 words. What happens when the sequence grows to thousands — or hundreds of thousands — of tokens?';
   } else if (page.id === 'context') {
     narration =
-      'The attention matrix is computed over the model\u2019s <strong>context window</strong> — everything the model can see at once. Understanding what goes into that window is key to understanding the cost.';
+      'The attention matrix is computed over the model’s <strong>context window</strong> — everything the model can see at once. Understanding what goes into that window is key to understanding the cost.';
   } else if (page.id === 'bridge') {
     narration =
-      'We\u2019ve seen <em>what</em> self-attention does. But we haven\u2019t explained <em>how</em> the model decides what\u2019s relevant. That mechanism — <strong>Queries, Keys, and Values</strong> — is our next stop.';
+      'We’ve seen <em>what</em> self-attention does. But we haven’t explained <em>how</em> the model decides what’s relevant. That mechanism — <strong>Queries, Keys, and Values</strong> — is our next stop.';
   }
 
   // Page navigation

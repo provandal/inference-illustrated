@@ -1015,13 +1015,13 @@ function CompletePathPage() {
                   <span className="text-[var(--color-text-muted)]">Protocol: </span>
                   <strong className="text-[var(--color-text)]">{s.protocol}</strong>
                 </div>
-                {s.dataVolume !== '\u2014' && (
+                {s.dataVolume !== '—' && (
                   <div>
                     <span className="text-[var(--color-text-muted)]">Data: </span>
                     <span className="font-mono text-[var(--color-text-secondary)]">{s.dataVolume}</span>
                   </div>
                 )}
-                {s.latency !== '\u2014' && (
+                {s.latency !== '—' && (
                   <div>
                     <span className="text-[var(--color-text-muted)]">Latency: </span>
                     <span className="font-mono text-[var(--color-text-secondary)]">{s.latency}</span>
@@ -1269,9 +1269,9 @@ function SummaryPage() {
         <div className="p-4 space-y-2">
           {[
             { color: 'var(--color-primary)', weight: 'thick',  label: 'NVLink between GPUs within a domain', detail: '3.6 TB/s per GPU' },
-            { color: 'var(--color-blue)',    weight: 'medium', label: 'Spectrum-X / RDMA between domains and to ICMS', detail: '50\u2013100 GB/s' },
+            { color: 'var(--color-blue)',    weight: 'medium', label: 'Spectrum-X / RDMA between domains and to ICMS', detail: '50–100 GB/s' },
             { color: 'var(--color-text-muted)', weight: 'thin', label: 'NVMe/RoCE to G4 storage', detail: 'varies' },
-            { color: 'var(--color-teal)',    weight: 'dashed', label: 'CXL to pooled DRAM', detail: '64\u2013128 GB/s, coming' },
+            { color: 'var(--color-teal)',    weight: 'dashed', label: 'CXL to pooled DRAM', detail: '64–128 GB/s, coming' },
           ].map((item) => (
             <div key={item.label} className="flex items-center gap-3 text-[13px]">
               <div

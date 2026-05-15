@@ -423,7 +423,7 @@ function TierColumns({ frame, progress }) {
                       animation: 'pulseArrow 1s ease-in-out infinite',
                     }}
                   >
-                    {tierOrder.indexOf(source) < tierOrder.indexOf(target) ? '\u2193' : '\u2191'}
+                    {tierOrder.indexOf(source) < tierOrder.indexOf(target) ? '↓' : '↑'}
                   </div>
                 )}
               </div>
@@ -679,12 +679,12 @@ function KvbmPage() {
             {
               num: '1',
               label: 'Model Integration',
-              text: 'Connects inference engines (vLLM, TensorRT-LLM, SGLang) to the KVBM. The inference engine does not manage cache placement \u2014 it just calls get_mutable_block() when it needs a cache block, and the KVBM handles where that block lives and how it gets there.',
+              text: 'Connects inference engines (vLLM, TensorRT-LLM, SGLang) to the KVBM. The inference engine does not manage cache placement — it just calls get_mutable_block() when it needs a cache block, and the KVBM handles where that block lives and how it gets there.',
             },
             {
               num: '2',
               label: 'Memory Management (the core)',
-              text: 'Manages block pools across all tiers (G1\u2013G4). Each KV block is a 2D array: [num_layers] x [page_size x inner_dim]. The page_size is configurable (typically 16 tokens per page). Each block holds K,V for 16 tokens across all layers. The KVBM emits CreateEvent/RemoveEvent lifecycle events that storage providers subscribe to.',
+              text: 'Manages block pools across all tiers (G1–G4). Each KV block is a 2D array: [num_layers] x [page_size x inner_dim]. The page_size is configurable (typically 16 tokens per page). Each block holds K,V for 16 tokens across all layers. The KVBM emits CreateEvent/RemoveEvent lifecycle events that storage providers subscribe to.',
             },
             {
               num: '3',
@@ -1116,7 +1116,7 @@ function StorageIOPage() {
               <strong className="text-[var(--color-text)] font-mono">
                 {fullBlockSize > 0
                   ? Math.floor((1024 * 1024 * 1024) / fullBlockSize).toLocaleString()
-                  : '\u2014'}
+                  : '—'}
               </strong>
             </div>
           </div>

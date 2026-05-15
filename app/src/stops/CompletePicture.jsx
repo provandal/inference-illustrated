@@ -398,32 +398,32 @@ function CapstoneDiagramPage() {
         <div className="p-3 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
           <MetricCard
             label="Cache / user"
-            value={m.cachePerUser_GB ? m.cachePerUser_GB.toFixed(2) : '\u2014'}
+            value={m.cachePerUser_GB ? m.cachePerUser_GB.toFixed(2) : '—'}
             unit="GB"
           />
           <MetricCard
             label="Total HBM cache"
-            value={m.totalCacheHBM_GB ? m.totalCacheHBM_GB.toFixed(1) : '\u2014'}
+            value={m.totalCacheHBM_GB ? m.totalCacheHBM_GB.toFixed(1) : '—'}
             unit="GB"
           />
           <MetricCard
             label="HBM utilization"
-            value={m.hbmUtilization ? `${(m.hbmUtilization * 100).toFixed(0)}%` : '\u2014'}
+            value={m.hbmUtilization ? `${(m.hbmUtilization * 100).toFixed(0)}%` : '—'}
             warn={m.hbmUtilization > 0.9}
           />
           <MetricCard
             label="Users / GPU"
-            value={m.usersPerGPU ?? '\u2014'}
+            value={m.usersPerGPU ?? '—'}
             warn={m.usersPerGPU < 2}
           />
           <MetricCard
             label="Max users"
-            value={m.maxUsers ?? '\u2014'}
+            value={m.maxUsers ?? '—'}
             warn={m.maxUsers < concurrentUsers}
           />
           <MetricCard
             label="Est. TTFT"
-            value={m.ttftEstimate_ms ? `${m.ttftEstimate_ms.toFixed(0)}` : '\u2014'}
+            value={m.ttftEstimate_ms ? `${m.ttftEstimate_ms.toFixed(0)}` : '—'}
             unit="ms"
           />
         </div>
@@ -497,10 +497,10 @@ function CapstoneDiagramPage() {
         <PanelHeader>Memory hierarchy</PanelHeader>
         <div className="p-3 space-y-2">
           {[
-            { tier: 'G1 \u2014 HBM', capacity: `${(gpuSpec.hbm_GB * gpuCount).toLocaleString()} GB`, bw: `${gpuSpec.hbmBW_TBs} TB/s`, latency: 'ns', color: 'var(--color-primary)' },
-            { tier: 'G2 \u2014 DRAM', capacity: `~${(gpuCount * 2).toLocaleString()} TB`, bw: '~200 GB/s', latency: '\u00b5s', color: 'var(--color-blue)' },
-            { tier: 'G3.5 \u2014 ICMS', capacity: 'Petabytes (shared)', bw: '14\u2013100 GB/s', latency: '10\u2013100 \u00b5s', color: 'var(--color-teal)' },
-            { tier: 'G4 \u2014 Storage', capacity: 'Unlimited', bw: '1\u201314 GB/s', latency: 'ms', color: 'var(--color-text-muted)' },
+            { tier: 'G1 — HBM', capacity: `${(gpuSpec.hbm_GB * gpuCount).toLocaleString()} GB`, bw: `${gpuSpec.hbmBW_TBs} TB/s`, latency: 'ns', color: 'var(--color-primary)' },
+            { tier: 'G2 — DRAM', capacity: `~${(gpuCount * 2).toLocaleString()} TB`, bw: '~200 GB/s', latency: '\u00b5s', color: 'var(--color-blue)' },
+            { tier: 'G3.5 — ICMS', capacity: 'Petabytes (shared)', bw: '14–100 GB/s', latency: '10–100 \u00b5s', color: 'var(--color-teal)' },
+            { tier: 'G4 — Storage', capacity: 'Unlimited', bw: '1–14 GB/s', latency: 'ms', color: 'var(--color-text-muted)' },
           ].map((t) => (
             <div key={t.tier} className="flex items-center gap-3 text-[12px]">
               <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: t.color }} />
@@ -650,19 +650,19 @@ function TraceRequestPage() {
                     <div className="font-medium text-[var(--color-text)]">{step.phase}</div>
                     <div className="text-[var(--color-text-secondary)] mt-0.5">{step.detail}</div>
                     <div className="flex flex-wrap gap-x-4 gap-y-0.5 mt-1 text-[10px]">
-                      {step.time !== '\u2014' && (
+                      {step.time !== '—' && (
                         <span>
                           <span className="text-[var(--color-text-muted)]">Time: </span>
                           <span className="font-mono text-[var(--color-text)]">{step.time}</span>
                         </span>
                       )}
-                      {step.data !== '\u2014' && (
+                      {step.data !== '—' && (
                         <span>
                           <span className="text-[var(--color-text-muted)]">Data: </span>
                           <span className="font-mono text-[var(--color-text)]">{step.data}</span>
                         </span>
                       )}
-                      {step.protocol !== '\u2014' && (
+                      {step.protocol !== '—' && (
                         <span>
                           <span className="text-[var(--color-text-muted)]">Protocol: </span>
                           <span className="font-mono text-[var(--color-text)]">{step.protocol}</span>
@@ -804,18 +804,18 @@ function DeploymentPlannerPage() {
 
           {/* Metrics grid */}
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 mt-3">
-            <MetricCard label="Weights / GPU" value={m.weightsPerGPU_GB ? m.weightsPerGPU_GB.toFixed(1) : '\u2014'} unit="GB" />
-            <MetricCard label="Cache / user" value={m.cachePerUser_GB ? m.cachePerUser_GB.toFixed(2) : '\u2014'} unit="GB" />
-            <MetricCard label="Avail HBM / GPU" value={m.availHBMPerGPU_GB ? m.availHBMPerGPU_GB.toFixed(1) : '\u2014'} unit="GB" />
-            <MetricCard label="Users / GPU" value={m.usersPerGPU ?? '\u2014'} warn={m.usersPerGPU < 2} />
-            <MetricCard label="DP degree" value={m.dpDegree ?? '\u2014'} />
-            <MetricCard label="Decode GPUs" value={m.effectiveDecodeGPUs ?? '\u2014'} />
-            <MetricCard label="Max users" value={m.maxUsers ?? '\u2014'} warn={m.maxUsers < concurrentUsers} />
-            <MetricCard label="Total HBM" value={m.totalHBM_GB ? `${m.totalHBM_GB.toLocaleString()}` : '\u2014'} unit="GB" />
-            <MetricCard label="HBM used for cache" value={m.totalCacheHBM_GB ? m.totalCacheHBM_GB.toFixed(1) : '\u2014'} unit="GB" />
-            <MetricCard label="HBM utilization" value={m.hbmUtilization ? `${(m.hbmUtilization * 100).toFixed(0)}%` : '\u2014'} warn={m.hbmUtilization > 0.9} />
-            <MetricCard label="Est. TTFT (prefill)" value={m.ttftEstimate_ms ? `${m.ttftEstimate_ms.toFixed(0)}` : '\u2014'} unit="ms" />
-            <MetricCard label="Tok/s per GPU" value={m.tokensPerSecPerGPU ?? '\u2014'} unit="decode" />
+            <MetricCard label="Weights / GPU" value={m.weightsPerGPU_GB ? m.weightsPerGPU_GB.toFixed(1) : '—'} unit="GB" />
+            <MetricCard label="Cache / user" value={m.cachePerUser_GB ? m.cachePerUser_GB.toFixed(2) : '—'} unit="GB" />
+            <MetricCard label="Avail HBM / GPU" value={m.availHBMPerGPU_GB ? m.availHBMPerGPU_GB.toFixed(1) : '—'} unit="GB" />
+            <MetricCard label="Users / GPU" value={m.usersPerGPU ?? '—'} warn={m.usersPerGPU < 2} />
+            <MetricCard label="DP degree" value={m.dpDegree ?? '—'} />
+            <MetricCard label="Decode GPUs" value={m.effectiveDecodeGPUs ?? '—'} />
+            <MetricCard label="Max users" value={m.maxUsers ?? '—'} warn={m.maxUsers < concurrentUsers} />
+            <MetricCard label="Total HBM" value={m.totalHBM_GB ? `${m.totalHBM_GB.toLocaleString()}` : '—'} unit="GB" />
+            <MetricCard label="HBM used for cache" value={m.totalCacheHBM_GB ? m.totalCacheHBM_GB.toFixed(1) : '—'} unit="GB" />
+            <MetricCard label="HBM utilization" value={m.hbmUtilization ? `${(m.hbmUtilization * 100).toFixed(0)}%` : '—'} warn={m.hbmUtilization > 0.9} />
+            <MetricCard label="Est. TTFT (prefill)" value={m.ttftEstimate_ms ? `${m.ttftEstimate_ms.toFixed(0)}` : '—'} unit="ms" />
+            <MetricCard label="Tok/s per GPU" value={m.tokensPerSecPerGPU ?? '—'} unit="decode" />
           </div>
         </div>
       </Panel>

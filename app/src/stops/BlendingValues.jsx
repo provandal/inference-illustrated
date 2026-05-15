@@ -8,25 +8,25 @@ import { useStore } from '../store';
 
 const NARRATIONS = {
   intro:
-    '<strong>Stop 7: Blending the Values \u2014 The Output.</strong> We now know which words "faulty" should listen to, and how much \u2014 controller at 37.9%, crashed at 24.7%, and so on. But knowing who to listen to isn\u2019t enough. The model needs to actually <strong>gather the information</strong>. This is where it does that.',
+    '<strong>Stop 7: Blending the Values — The Output.</strong> We now know which words "faulty" should listen to, and how much — controller at 37.9%, crashed at 24.7%, and so on. But knowing who to listen to isn’t enough. The model needs to actually <strong>gather the information</strong>. This is where it does that.',
 
   'weighted-sum':
-    'Each word carries a <strong>Value vector</strong> \u2014 the payload of information created by W<sub>V</sub> back in Stop 3. The attention weights determine how to <strong>blend</strong> those payloads into a single output. The operation is a <strong>weighted sum</strong>: multiply each Value by its weight, then add.',
+    'Each word carries a <strong>Value vector</strong> — the payload of information created by W<sub>V</sub> back in Stop 3. The attention weights determine how to <strong>blend</strong> those payloads into a single output. The operation is a <strong>weighted sum</strong>: multiply each Value by its weight, then add.',
 
   'worked-example':
-    'Let\u2019s do the math with real numbers. Five Value vectors, five attention weights from Stop 6. Multiply each vector by its weight, then sum across all five. The result is the <strong>output vector for "faulty"</strong> \u2014 a blend of information from the entire context.',
+    'Let’s do the math with real numbers. Five Value vectors, five attention weights from Stop 6. Multiply each vector by its weight, then sum across all five. The result is the <strong>output vector for "faulty"</strong> — a blend of information from the entire context.',
 
   'context-enriched':
-    'The weighted sum has transformed "faulty" from a generic adjective into a <strong>context-specific representation</strong>. The word hasn\u2019t changed \u2014 its representation has been enriched with information gathered from the words it attended to.',
+    'The weighted sum has transformed "faulty" from a generic adjective into a <strong>context-specific representation</strong>. The word hasn’t changed — its representation has been enriched with information gathered from the words it attended to.',
 
   residual:
-    'The attention output doesn\u2019t <strong>replace</strong> the original representation. Instead, it\u2019s <strong>added</strong> to it \u2014 a design choice called a <strong>residual connection</strong> that is essential for training deep models. Without it, transformers with 80+ layers would be nearly impossible to train.',
+    'The attention output doesn’t <strong>replace</strong> the original representation. Instead, it’s <strong>added</strong> to it — a design choice called a <strong>residual connection</strong> that is essential for training deep models. Without it, transformers with 80+ layers would be nearly impossible to train.',
 
   pipeline:
-    'Let\u2019s put the complete attention pipeline together \u2014 all the steps from embedding to context-enriched output in one view. Two of these steps depend on stored vectors from earlier tokens \u2014 that storage is the <strong>KV cache</strong>.',
+    'Let’s put the complete attention pipeline together — all the steps from embedding to context-enriched output in one view. Two of these steps depend on stored vectors from earlier tokens — that storage is the <strong>KV cache</strong>.',
 
   bridge:
-    'We\u2019ve traced the complete path of a single attention computation \u2014 from embedding through Q/K matching, softmax normalization, and Value blending to the final context-enriched output. But this is the work of a single attention <strong>"head."</strong> What happens when we run many heads in parallel?',
+    'We’ve traced the complete path of a single attention computation — from embedding through Q/K matching, softmax normalization, and Value blending to the final context-enriched output. But this is the work of a single attention <strong>"head."</strong> What happens when we run many heads in parallel?',
 };
 
 // --- Page Content Components ---
@@ -352,13 +352,13 @@ function PipelinePage() {
     {
       num: 1,
       title: 'Compute Q',
-      desc: 'Multiply the current word\u2019s embedding by W\u1D60 to produce its Query vector \u2014 "what am I looking for?"',
+      desc: 'Multiply the current word’s embedding by W\u1D60 to produce its Query vector — "what am I looking for?"',
       cache: false,
     },
     {
       num: 2,
       title: 'Retrieve K vectors',
-      desc: 'Retrieve all stored Key vectors from the KV cache \u2014 one K per previous word, created by W\u1D4A in Stop 3.',
+      desc: 'Retrieve all stored Key vectors from the KV cache — one K per previous word, created by W\u1D4A in Stop 3.',
       cache: true,
     },
     {
@@ -370,13 +370,13 @@ function PipelinePage() {
     {
       num: 4,
       title: 'Normalize',
-      desc: 'Softmax (Stop 6) converts scores to attention weights \u2014 probabilities summing to 1.',
+      desc: 'Softmax (Stop 6) converts scores to attention weights — probabilities summing to 1.',
       cache: false,
     },
     {
       num: 5,
       title: 'Blend Values',
-      desc: 'Weighted sum of stored Value vectors from the KV cache \u2014 the step we just completed.',
+      desc: 'Weighted sum of stored Value vectors from the KV cache — the step we just completed.',
       cache: true,
     },
     {
@@ -453,30 +453,35 @@ function BridgePage() {
         they form one complete attention computation.
       </p>
       <p>
-        But consider: the single head we&rsquo;ve been tracking learned one
-        pattern &mdash; connecting &ldquo;faulty&rdquo; to &ldquo;controller&rdquo;
-        via coreference. What about the other relationships in our sentence?
-        &ldquo;Crashed&rdquo; needs to find its subject &ldquo;server.&rdquo;
-        &ldquo;Last&rdquo; needs to modify &ldquo;week.&rdquo; &ldquo;Was&rdquo;
-        needs to connect back to &ldquo;controller&rdquo; as the subject of its
-        clause. One set of W<sub>Q</sub>, W<sub>K</sub>, W<sub>V</sub> can only
-        learn one type of pattern.
+        But notice what we never asked. We compared{' '}
+        <strong className="text-[var(--color-text)]">&ldquo;faulty&rdquo;</strong>{' '}
+        against every other Key in the sentence and blended Values by similarity.
+        At no point did the math care <em>where</em> &ldquo;faulty&rdquo; sits in
+        the sequence. Shuffle the words and the same Q&middot;K dot products come
+        back &mdash; the model cannot distinguish &ldquo;the controller crashed
+        last week&rdquo; from &ldquo;week crashed last the controller.&rdquo;
+        Attention as built so far is{' '}
+        <strong className="text-[var(--color-text)]">position-blind</strong>.
       </p>
       <p>
-        What if we ran{' '}
+        That gap has to be filled before we go further. Modern decoder-only models
+        (Llama, GPT, Qwen, DeepSeek) fix it with{' '}
         <strong className="text-[var(--color-text)]">
-          multiple attention computations in parallel
-        </strong>
-        , each with its own weight matrices, each free to specialize? One head
-        could track grammatical agreement. Another could follow coreference chains.
-        A third could attend to positional patterns. Each head would produce its
-        own K and V vectors &mdash; which means each head needs its own entries in
-        the KV cache.
+          Rotary Position Embeddings (RoPE)
+        </strong>{' '}
+        &mdash; a clever trick that <em>rotates</em> Q and K at every layer so the
+        dot product depends only on the <em>relative</em> distance between two
+        tokens, not their absolute positions. RoPE is also what shapes the K
+        vectors that get stored in the KV cache, so it is an Act 1 topic with
+        direct Act 2 consequences.
       </p>
       <p>
-        That&rsquo;s{' '}
-        <strong className="text-[var(--color-text)]">multi-head attention</strong>
-        {' '}&mdash; and it&rsquo;s the subject of Stop 9.
+        That is{' '}
+        <strong className="text-[var(--color-text)]">Stop 8: Where in the
+        Sequence? &mdash; Position and RoPE</strong>. Once position is in place,
+        Stop 9 picks up the other obvious question we have been dodging: why do
+        we only run <em>one</em> attention head when the sentence has so many
+        different relationships to track?
       </p>
     </div>
   );

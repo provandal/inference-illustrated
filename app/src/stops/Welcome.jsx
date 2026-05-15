@@ -183,13 +183,13 @@ export default function Welcome() {
   let narration = '';
   if (page.id === 'welcome') {
     narration =
-      'Welcome to <strong>Inference Illustrated</strong> \u2014 an interactive journey through the architecture and infrastructure of large language models.';
+      'Welcome to <strong>Inference Illustrated</strong> — an interactive journey through the architecture and infrastructure of large language models.';
   } else if (page.id === 'what-youll-build') {
     narration =
-      'Over 17 stops, you\u2019ll build a complete mental model of LLM inference \u2014 from the transformer mechanism to a production GPU cluster.';
+      'Over 17 stops, you’ll build a complete mental model of LLM inference — from the transformer mechanism to a production GPU cluster.';
   } else if (page.id === 'how-it-works') {
     narration =
-      'Each stop has multiple pages. Some pages are text. Some are interactive \u2014 with animations, calculators, and explorable diagrams.';
+      'Each stop has multiple pages. Some pages are text. Some are interactive — with animations, calculators, and explorable diagrams.';
   }
 
   // Page navigation

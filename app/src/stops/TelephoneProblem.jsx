@@ -164,7 +164,7 @@ function AttentionView({ isDark }) {
     <div>
       <Callout
         type="good"
-        message={'<strong>With attention, "faulty" doesn\u2019t rely on the chain.</strong> It scores every word directly. No decay.'}
+        message={'<strong>With attention, "faulty" doesn’t rely on the chain.</strong> It scores every word directly. No decay.'}
       />
       <Panel className="my-4">
         <PanelHeader>Attention from "faulty" — direct lookup</PanelHeader>
@@ -410,18 +410,18 @@ export default function TelephoneProblem() {
       '<strong>Stop 1: The Telephone Problem.</strong> Modern large language models — GPT, Claude, Llama — are built on an architecture called the <strong>transformer</strong>. To understand why transformers were a breakthrough, we need to see what came before them and why it broke down.';
   } else if (page.id === 'mech1') {
     narration =
-      'Before transformers, the dominant architecture was the <strong>RNN</strong> — a model that reads one word at a time. Let\u2019s see how it works, and where it breaks down.';
+      'Before transformers, the dominant architecture was the <strong>RNN</strong> — a model that reads one word at a time. Let’s see how it works, and where it breaks down.';
   } else if (page.id === 'mech2') {
     narration =
-      'Now that we know the RNN carries a single hidden state vector, let\u2019s see <strong>how it updates</strong> at each word — and why that fixed size becomes a problem.';
+      'Now that we know the RNN carries a single hidden state vector, let’s see <strong>how it updates</strong> at each word — and why that fixed size becomes a problem.';
   } else if (page.id === 'animation') {
     narration = `<strong>"${WORDS[animStep]}"</strong> — ${WORD_NARRATIONS[animStep]}`;
   } else if (page.id === 'done') {
     narration =
-      'The RNN processed all 15 words, rewriting its hidden state at every step. <strong>"storage controller"</strong> entered at 100% strength — but by the time <strong>"faulty"</strong> needed it, only <strong>6%</strong> remained. If the model had to answer "faulty <em>what</em>?" right now, the strongest candidate in the hidden state is "the technician" at 15% — not "storage controller." The chain of compressions didn\u2019t just weaken the right answer; it made the wrong answer more likely.';
+      'The RNN processed all 15 words, rewriting its hidden state at every step. <strong>"storage controller"</strong> entered at 100% strength — but by the time <strong>"faulty"</strong> needed it, only <strong>6%</strong> remained. If the model had to answer "faulty <em>what</em>?" right now, the strongest candidate in the hidden state is "the technician" at 15% — not "storage controller." The chain of compressions didn’t just weaken the right answer; it made the wrong answer more likely.';
   } else if (page.id === 'attention') {
     narration =
-      'The RNN\u2019s problem is structural: information must flow through every intermediate step, decaying at each one. What if there were a different approach — one where "faulty" could skip the chain entirely and check every word in the sentence directly? Instead of relying on whatever survived the hidden state, each word could ask: "which other words in this sentence are most relevant to me?" and retrieve their information at full strength. This is the core idea behind <strong>attention</strong>, and it\u2019s the reason transformers replaced RNNs.';
+      'The RNN’s problem is structural: information must flow through every intermediate step, decaying at each one. What if there were a different approach — one where "faulty" could skip the chain entirely and check every word in the sentence directly? Instead of relying on whatever survived the hidden state, each word could ask: "which other words in this sentence are most relevant to me?" and retrieve their information at full strength. This is the core idea behind <strong>attention</strong>, and it’s the reason transformers replaced RNNs.';
   }
 
   // Page navigation

@@ -17,7 +17,7 @@ const NARRATIONS = {
     '<strong>Stop 9: Why Multiple Heads?</strong> In Stop 7, the complete attention pipeline processed "faulty" through one set of W<sub>Q</sub>, W<sub>K</sub>, W<sub>V</sub> &mdash; one attention "head." That head connected "faulty" to "storage controller," discovering a coreference pattern. But our sentence has many simultaneous relationships that one head cannot capture all at once.',
 
   'heads-divide':
-    'Each head doesn\u2019t get a <strong>copy</strong> of the full embedding &mdash; it gets a <strong>slice</strong>. The model\u2019s embedding dimension d<sub>model</sub> is divided evenly among all heads, keeping total computation roughly constant while forcing each head to specialize on its portion.',
+    'Each head doesn’t get a <strong>copy</strong> of the full embedding &mdash; it gets a <strong>slice</strong>. The model’s embedding dimension d<sub>model</sub> is divided evenly among all heads, keeping total computation roughly constant while forcing each head to specialize on its portion.',
 
   specializations:
     'Different heads learn to track different linguistic relationships. No engineer assigns roles &mdash; specialization <strong>emerges from training</strong> because each head starts with different random weights and follows different gradient paths.',
@@ -26,13 +26,13 @@ const NARRATIONS = {
     'After each head independently computes its attention output, the results must merge back into a single vector the rest of the model can use. This takes two operations: <strong>concatenation</strong> and a learned <strong>output projection W<sub>O</sub></strong>.',
 
   'cache-cost':
-    'Multiple heads mean multiple Key and Value vectors per token &mdash; and every one must be cached, in <strong>every layer</strong>. This is the pivotal moment where multi-head attention\u2019s power becomes infrastructure\u2019s burden. Let\u2019s calculate the real cost.',
+    'Multiple heads mean multiple Key and Value vectors per token &mdash; and every one must be cached, in <strong>every layer</strong>. This is the pivotal moment where multi-head attention’s power becomes infrastructure’s burden. Let’s calculate the real cost.',
 
   gqa:
-    'If every Q head stored its own K and V, the cache would be unmanageable. The industry\u2019s answer: let groups of Q heads <strong>share</strong> K/V vectors. Three approaches have emerged, each trading expressiveness for memory.',
+    'If every Q head stored its own K and V, the cache would be unmanageable. The industry’s answer: let groups of Q heads <strong>share</strong> K/V vectors. Three approaches have emerged, each trading expressiveness for memory.',
 
   bridge:
-    '<strong>Looking ahead.</strong> Everything we\u2019ve seen so far &mdash; embedding, Q/K/V projections, dot-product scoring, softmax, value blending, multi-head parallelism, concatenation, output projection &mdash; happens in a <strong>single layer</strong>. Stop 10 shows what happens when you stack 80 of them.',
+    '<strong>Looking ahead.</strong> Everything we’ve seen so far &mdash; embedding, Q/K/V projections, dot-product scoring, softmax, value blending, multi-head parallelism, concatenation, output projection &mdash; happens in a <strong>single layer</strong>. Stop 10 shows what happens when you stack 80 of them.',
 };
 
 // --- Page Content Components ---

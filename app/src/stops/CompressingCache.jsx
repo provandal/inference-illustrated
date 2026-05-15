@@ -99,7 +99,7 @@ function CascadingPage() {
                     className="text-[18px] font-bold flex-shrink-0 mt-0.5"
                     style={{ color: dim.color }}
                   >
-                    {dim.axis === 'horizontal' ? '\u2194' : dim.axis === 'vertical' ? '\u2195' : '\u25FC'}
+                    {dim.axis === 'horizontal' ? '↔' : dim.axis === 'vertical' ? '\u2195' : '\u25FC'}
                   </div>
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1 flex-wrap">
@@ -1006,7 +1006,7 @@ function CombinedCalculatorPage() {
                   transition: 'width 300ms ease',
                 }}
               >
-                {spectrumPct > 22 ? `${compressionRatio.toFixed(1)}\u00d7 smaller` : ''}
+                {spectrumPct > 22 ? `${compressionRatio.toFixed(1)}× smaller` : ''}
               </div>
             </div>
             <div className="flex justify-between text-[9px] text-[var(--color-text-muted)] mt-1 font-mono">

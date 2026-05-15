@@ -262,7 +262,7 @@ function SinusoidalPage() {
 
       <Callout
         type="info"
-        message="<strong>Why this is a clever choice.</strong> Adjacent positions produce very similar vectors (high cosine similarity), and distant positions produce very different ones. The sinusoidal structure is also <em>shift-friendly</em>: the relationship between any two positions depends only on their difference, not their absolute values \u2014 in theory. The next page shows why &lsquo;in theory&rsquo; falls apart."
+        message="<strong>Why this is a clever choice.</strong> Adjacent positions produce very similar vectors (high cosine similarity), and distant positions produce very different ones. The sinusoidal structure is also <em>shift-friendly</em>: the relationship between any two positions depends only on their difference, not their absolute values — in theory. The next page shows why &lsquo;in theory&rsquo; falls apart."
       />
     </div>
   );
@@ -303,7 +303,7 @@ function PEHeatmapCard({ label, vec, highlight }) {
   );
 }
 
-// Map a PE component in [-1, 1] to a diverging colormap (red \u2194 white \u2194 teal).
+// Map a PE component in [-1, 1] to a diverging colormap (red ↔ white ↔ teal).
 function peCellColor(v) {
   const x = Math.max(-1, Math.min(1, v));
   if (x >= 0) {
@@ -317,7 +317,7 @@ function peCellColor(v) {
    Two parts:
    (a) signal-decay slider showing how much of the original PE survives
        after L layers of residual writes,
-   (b) extrapolation table: model trained to 4K, tested at 8K/32K \u2192 broken.
+   (b) extrapolation table: model trained to 4K, tested at 8K/32K → broken.
    ================================================================ */
 function AddAtInputFailsPage() {
   const [layer, setLayer] = useState(SIGNAL_DECAY_DEMO.defaultLayer);
@@ -326,13 +326,13 @@ function AddAtInputFailsPage() {
   return (
     <div>
       <Panel>
-        <PanelHeader>Problem 1 \u2014 the residual stream attenuates the position signal</PanelHeader>
+        <PanelHeader>Problem 1 — the residual stream attenuates the position signal</PanelHeader>
         <InfoBox>
           The position vector is added <em>once</em>, at the input. From there
-          it lives in the residual stream alongside content. Every layer\u2019s
+          it lives in the residual stream alongside content. Every layer’s
           attention and FFN write their own signal into the residual stream,
           and the position fingerprint gets relatively quieter at each step.
-          By layer 80 it\u2019s mostly buried.
+          By layer 80 it’s mostly buried.
         </InfoBox>
 
         <div className="px-4 pb-4">
@@ -385,9 +385,9 @@ function AddAtInputFailsPage() {
       </Panel>
 
       <Panel className="mt-4">
-        <PanelHeader>Problem 2 \u2014 sinusoidal PE doesn\u2019t extrapolate</PanelHeader>
+        <PanelHeader>Problem 2 — sinusoidal PE doesn’t extrapolate</PanelHeader>
         <InfoBox>
-          If a model only saw positions 0\u2013{EXTRAPOLATION_FAILURE.trainedMax} during
+          If a model only saw positions 0–{EXTRAPOLATION_FAILURE.trainedMax} during
           training, the sinusoids at any larger position fall in regions the
           model never learned to interpret. Output quality collapses well
           before any &ldquo;hard&rdquo; limit.
@@ -420,7 +420,7 @@ function AddAtInputFailsPage() {
 
       <Callout
         type="warning"
-        message="<strong>Bottom line.</strong> Adding a position vector at the input is a workable hack but doesn\u2019t scale: position info erodes through depth, and the model can\u2019t safely run beyond the context lengths it saw in training. RoPE fixes both by changing where and how position is applied."
+        message="<strong>Bottom line.</strong> Adding a position vector at the input is a workable hack but doesn’t scale: position info erodes through depth, and the model can’t safely run beyond the context lengths it saw in training. RoPE fixes both by changing where and how position is applied."
       />
     </div>
   );
@@ -448,8 +448,8 @@ function QualityBadge({ quality }) {
    PAGE 4 — RoPE: Rotate, Don't Add
    Single 2D dimension-pair. Sliders for position m (Q) and n (K).
    Show pre-rotation arrows (dim) and post-rotation arrows (bright).
-   Display dot products: Q\u00b7K (pre) vs Q\u2032\u00b7K\u2032 (post). The post-rotation
-   dot depends on (n\u2212m) only \u2014 the next page proves this algebraically.
+   Display dot products: Q·K (pre) vs Q′·K′ (post). The post-rotation
+   dot depends on (n−m) only — the next page proves this algebraically.
    ================================================================ */
 function RotateIdeaPage() {
   const [m, setM] = useState(ROTATE_DEMO.defaultPosM);
@@ -468,8 +468,8 @@ function RotateIdeaPage() {
         <PanelHeader>One dimension-pair, two rotating arrows</PanelHeader>
         <InfoBox>
           RoPE treats each Q and K vector as d/2 pairs of dimensions. Below is
-          one such pair, drawn in 2D. Move the sliders to rotate Q (by m\u03b8) and
-          K (by n\u03b8). The dim gray arrows are the originals; the bright ones
+          one such pair, drawn in 2D. Move the sliders to rotate Q (by mθ) and
+          K (by nθ). The dim gray arrows are the originals; the bright ones
           are after rotation.
         </InfoBox>
 
@@ -489,7 +489,7 @@ function RotateIdeaPage() {
                 />
                 <div className="text-[12px] text-[var(--color-text-secondary)] mt-1">
                   m = <span className="font-bold text-[var(--color-red-text)]">{m}</span>,
-                  &nbsp;rotation = m\u00d7\u03b8 = {(m * theta).toFixed(2)} rad
+                  &nbsp;rotation = m×θ = {(m * theta).toFixed(2)} rad
                 </div>
               </div>
               <div>
@@ -503,7 +503,7 @@ function RotateIdeaPage() {
                 />
                 <div className="text-[12px] text-[var(--color-text-secondary)] mt-1">
                   n = <span className="font-bold text-[var(--color-teal-text)]">{n}</span>,
-                  &nbsp;rotation = n\u00d7\u03b8 = {(n * theta).toFixed(2)} rad
+                  &nbsp;rotation = n×θ = {(n * theta).toFixed(2)} rad
                 </div>
               </div>
 
@@ -515,12 +515,12 @@ function RotateIdeaPage() {
                   Q&middot;K (pre-rotation): <span className="font-bold">{preDot.toFixed(3)}</span>
                 </div>
                 <div className="text-[12px] mt-1">
-                  Q\u2032&middot;K\u2032 (post-rotation): <span className="font-bold text-[var(--color-primary-text)]">{postDot.toFixed(3)}</span>
+                  Q′&middot;K′ (post-rotation): <span className="font-bold text-[var(--color-primary-text)]">{postDot.toFixed(3)}</span>
                 </div>
                 <div className="text-[11px] text-[var(--color-text-secondary)] mt-2 italic leading-relaxed">
                   Move both sliders by the same amount and watch the
                   post-rotation dot product stay constant. Move only one and
-                  watch it change. The post-dot depends only on (n \u2212 m).
+                  watch it change. The post-dot depends only on (n − m).
                 </div>
               </div>
             </div>
@@ -530,7 +530,7 @@ function RotateIdeaPage() {
 
       <Callout
         type="good"
-        message="<strong>Two wins fall out of this design.</strong> (1) Rotation happens at every attention layer, so position never gets buried in the residual stream. (2) Absolute positions cancel inside the dot product, so only relative position matters \u2014 which makes long-context generalisation work."
+        message="<strong>Two wins fall out of this design.</strong> (1) Rotation happens at every attention layer, so position never gets buried in the residual stream. (2) Absolute positions cancel inside the dot product, so only relative position matters — which makes long-context generalisation work."
       />
     </div>
   );
@@ -569,11 +569,11 @@ function RotationCanvas({ q, k, qRot, kRot, m, n, theta }) {
       {/* Post-rotation Q' and K' (bright) */}
       <line x1={CX} y1={CY} x2={qrx} y2={qry} stroke="var(--color-red)"  strokeWidth={2.2} markerEnd="url(#arrow-red)" />
       <line x1={CX} y1={CY} x2={krx} y2={kry} stroke="var(--color-teal)" strokeWidth={2.2} markerEnd="url(#arrow-teal)" />
-      <text x={qrx + 8} y={qry - 4} fontSize={12} fontWeight={700} fill="var(--color-red-text)"  fontFamily="monospace">Q\u2032 (pos {m})</text>
-      <text x={krx + 8} y={kry - 4} fontSize={12} fontWeight={700} fill="var(--color-teal-text)" fontFamily="monospace">K\u2032 (pos {n})</text>
+      <text x={qrx + 8} y={qry - 4} fontSize={12} fontWeight={700} fill="var(--color-red-text)"  fontFamily="monospace">Q′ (pos {m})</text>
+      <text x={krx + 8} y={kry - 4} fontSize={12} fontWeight={700} fill="var(--color-teal-text)" fontFamily="monospace">K′ (pos {n})</text>
       {/* Relative-rotation arc, very small */}
       <text x={W - 8} y={H - 10} fontSize={9} textAnchor="end" fill="var(--color-text-muted)" fontFamily="monospace">
-        (n\u2212m)\u03b8 = {((n - m) * theta).toFixed(2)} rad
+        (n−m)θ = {((n - m) * theta).toFixed(2)} rad
       </text>
     </svg>
   );
@@ -582,13 +582,13 @@ function RotationCanvas({ q, k, qRot, kRot, m, n, theta }) {
 /* ================================================================
    PAGE 5 — The Math (Just Enough)
    Five-step algebraic derivation that absolute positions cancel.
-   Plus a plot of the dot product Q\u00b7R((n\u2212m)\u03b8)K as a function of (n\u2212m).
+   Plus a plot of the dot product Q·R((n−m)θ)K as a function of (n−m).
    ================================================================ */
 function RopeMathPage() {
   const q = ROTATE_DEMO.qVector;
   const k = ROTATE_DEMO.kVector;
   const theta = ROTATE_DEMO.defaultTheta;
-  // Compute Q\u00b7R(d\u00b7\u03b8)K for d in -20..+20
+  // Compute Q·R(d·θ)K for d in -20..+20
   const points = useMemo(() => {
     const out = [];
     for (let d = -20; d <= 20; d++) {
@@ -605,7 +605,7 @@ function RopeMathPage() {
         <InfoBox>
           We can prove the &ldquo;only relative position matters&rdquo; claim
           directly. The key facts: (a) rotations are orthogonal matrices, so
-          R<sup>T</sup>(\u03c6) = R(\u2212\u03c6); and (b) successive 2D
+          R<sup>T</sup>(φ) = R(−φ); and (b) successive 2D
           rotations <em>add</em> their angles, so R(a)R(b) = R(a+b).
         </InfoBox>
 
@@ -633,11 +633,11 @@ function RopeMathPage() {
       <Panel className="mt-4">
         <PanelHeader>The dot product as a function of relative position</PanelHeader>
         <InfoBox>
-          Below: the post-rotation dot product Q&middot;R((n\u2212m)\u03b8)K plotted
-          against the relative offset (n\u2212m). The wave is what RoPE buys you.
+          Below: the post-rotation dot product Q&middot;R((n−m)θ)K plotted
+          against the relative offset (n−m). The wave is what RoPE buys you.
           Nearby tokens produce one consistent score; tokens far apart produce
-          another. Critically, the curve depends only on the offset \u2014 you
-          could shift both positions by +1000 and the picture wouldn\u2019t move.
+          another. Critically, the curve depends only on the offset — you
+          could shift both positions by +1000 and the picture wouldn’t move.
         </InfoBox>
         <div className="px-4 pb-4">
           <RelativeDotPlot points={points} theta={theta} />
@@ -646,7 +646,7 @@ function RopeMathPage() {
 
       <Callout
         type="good"
-        message="<strong>Why this matters for long context.</strong> If the score depends only on (n\u2212m), then a model trained to recognise relative offsets of \u00b1100 will keep working when you slide the whole window to absolute positions 50,000\u201350,200 \u2014 the offsets are still in range. That property is precisely what makes RoPE extrapolate well."
+        message="<strong>Why this matters for long context.</strong> If the score depends only on (n−m), then a model trained to recognise relative offsets of ±100 will keep working when you slide the whole window to absolute positions 50,000–50,200 — the offsets are still in range. That property is precisely what makes RoPE extrapolate well."
       />
     </div>
   );
@@ -682,15 +682,15 @@ function RelativeDotPlot({ points, theta }) {
         </g>
       ))}
       {/* Axis labels */}
-      <text x={(M.l + W - M.r) / 2} y={H - 4} fontSize={10} textAnchor="middle" fill="var(--color-text-muted)" fontFamily="monospace">(n \u2212 m)</text>
-      <text x={4} y={M.t + 4} fontSize={10} fill="var(--color-text-muted)" fontFamily="monospace">Q\u00b7K\u2032</text>
+      <text x={(M.l + W - M.r) / 2} y={H - 4} fontSize={10} textAnchor="middle" fill="var(--color-text-muted)" fontFamily="monospace">(n − m)</text>
+      <text x={4} y={M.t + 4} fontSize={10} fill="var(--color-text-muted)" fontFamily="monospace">Q·K′</text>
       {/* The plot */}
       <path d={path} fill="none" stroke="var(--color-primary)" strokeWidth={2} />
       {/* Markers at offsets that look interesting */}
       {points.filter(p => p.d % 5 === 0).map((p) => (
         <circle key={p.d} cx={xScale(p.d)} cy={yScale(p.v)} r={2.5} fill="var(--color-primary)" />
       ))}
-      <text x={W - M.r - 4} y={M.t + 10} fontSize={9} textAnchor="end" fill="var(--color-text-muted)" fontFamily="monospace">\u03b8 = {theta} rad/pos</text>
+      <text x={W - M.r - 4} y={M.t + 10} fontSize={9} textAnchor="end" fill="var(--color-text-muted)" fontFamily="monospace">θ = {theta} rad/pos</text>
     </svg>
   );
 }
@@ -722,10 +722,10 @@ function FrequenciesPage() {
         <PanelHeader>One rotation rate per dimension-pair</PanelHeader>
         <InfoBox>
           For dimension-pair <em>i</em> out of d/2, RoPE uses frequency
-          <span className="font-mono mx-1">\u03b8<sub>i</sub> = base<sup>\u22122i/d</sup></span>
+          <span className="font-mono mx-1">θ<sub>i</sub> = base<sup>−2i/d</sup></span>
           (with base typically 10,000). Pair 0 rotates the fastest and encodes
           <em> local </em>position. The last pair rotates the slowest and
-          encodes <em>long-range</em> position. Move the slider \u2014 watch the
+          encodes <em>long-range</em> position. Move the slider — watch the
           fast bands sweep many revolutions while the slow bands have barely
           twitched.
         </InfoBox>
@@ -756,7 +756,7 @@ function FrequenciesPage() {
 
       <Callout
         type="info"
-        message="<strong>Why a single dot product captures both close and far relationships.</strong> When you compute Q\u00b7K, the contribution from each dimension-pair has its own offset-dependent wave (Page 5). Fast bands give sharp local signal, slow bands give smooth long-range signal. Attention heads then learn to weight whichever bands match the relationship that head specialises in (Stop 9)."
+        message="<strong>Why a single dot product captures both close and far relationships.</strong> When you compute Q·K, the contribution from each dimension-pair has its own offset-dependent wave (Page 5). Fast bands give sharp local signal, slow bands give smooth long-range signal. Attention heads then learn to weight whichever bands match the relationship that head specialises in (Stop 9)."
       />
     </div>
   );
@@ -793,7 +793,7 @@ function BandArrow({ band, numBands }) {
    PAGE 7 — RoPE Meets the KV Cache
    Demonstrate that naive cache reuse at a different position is wrong.
    Toggle: "naive reuse" vs "position-rewrite". The naive case computes
-   Q\u00b7K_cached with K_cached still rotated to the OLD position; the
+   Q·K_cached with K_cached still rotated to the OLD position; the
    rewrite case un-rotates and re-rotates K to the new position before
    the dot product.
    ================================================================ */
@@ -808,8 +808,8 @@ function RopeAndCachePage() {
   const kCached = useMemo(() => rotate2D(kVectorPreRotation, cachedAtPos * theta), [kVectorPreRotation, cachedAtPos, theta]);
 
   // Naive reuse: just use kCached as-is at the new position.
-  // The correct relative offset SHOULD be (reuseAtPos - reuseAtPos) = 0 (they\u2019re at the same effective position),
-  // but the dot product Q'\u00b7kCached behaves as if K were at position cachedAtPos.
+  // The correct relative offset SHOULD be (reuseAtPos - reuseAtPos) = 0 (they’re at the same effective position),
+  // but the dot product Q'·kCached behaves as if K were at position cachedAtPos.
   const naiveDot = useMemo(() => dot2D(qPrime, kCached), [qPrime, kCached]);
 
   // Rewrite: un-rotate by cachedAtPos, re-rotate by reuseAtPos.
@@ -831,9 +831,9 @@ function RopeAndCachePage() {
       <Panel>
         <PanelHeader>The cost no one talks about: prefix-cache reuse</PanelHeader>
         <InfoBox>
-          A KV cache stores the <strong>post-rotation</strong> K vector \u2014 the
+          A KV cache stores the <strong>post-rotation</strong> K vector — the
           rotation is baked in at the position the token was originally seen.
-          That\u2019s fine for normal reads. It becomes a problem when you try to
+          That’s fine for normal reads. It becomes a problem when you try to
           reuse a cached K at a <em>different</em> position (prompt-prefix
           caching, document caching, cross-session reuse).
         </InfoBox>
@@ -880,7 +880,7 @@ function RopeAndCachePage() {
           <div className="rounded-lg border border-[var(--color-border-light)] bg-[var(--color-surface-muted)] p-3">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-[12px] font-mono">
               <div>
-                <div className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] font-medium">Computed Q\u00b7K</div>
+                <div className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] font-medium">Computed Q·K</div>
                 <div className="text-[18px] font-bold mt-1" style={{ color: mode === 'naive' ? 'var(--color-red-text)' : 'var(--color-teal-text)' }}>
                   {currentDot.toFixed(3)}
                 </div>
@@ -897,7 +897,7 @@ function RopeAndCachePage() {
                   className="text-[18px] font-bold mt-1"
                   style={{ color: Math.abs(errorVsRef) < 1e-4 ? 'var(--color-teal-text)' : 'var(--color-red-text)' }}
                 >
-                  {Math.abs(errorVsRef) < 1e-4 ? '\u2248 0' : errorVsRef.toFixed(3)}
+                  {Math.abs(errorVsRef) < 1e-4 ? '≈ 0' : errorVsRef.toFixed(3)}
                 </div>
               </div>
             </div>
@@ -906,7 +906,7 @@ function RopeAndCachePage() {
                 <>
                   <strong>Naive reuse silently scores the wrong relative offset.</strong> The cached K
                   carries a rotation matched to its <em>original</em> position. When you compare it
-                  against a Q that\u2019s rotated for a new position, the dot product behaves as if K were
+                  against a Q that’s rotated for a new position, the dot product behaves as if K were
                   back at pos {cachedAtPos}, not at pos {reuseAtPos}. Quality drops without obvious
                   error signals.
                 </>
@@ -915,7 +915,7 @@ function RopeAndCachePage() {
                   <strong>Position-rewrite recovers the right score.</strong> Un-rotate K by the old
                   position, re-rotate by the new one. Same value as if K had been freshly computed
                   there. The extra rotations are cheap (a few multiplies per pair), but the bookkeeping
-                  \u2014 knowing each cache entry\u2019s original position \u2014 is what makes prefix-cache
+                  — knowing each cache entry’s original position — is what makes prefix-cache
                   systems harder than they look.
                 </>
               )}
@@ -946,7 +946,7 @@ function LongContextPage() {
       <Panel>
         <PanelHeader>Four ways to push RoPE beyond its trained context length</PanelHeader>
         <InfoBox>
-          A model trained on positions 0\u20134095 doesn\u2019t generalise to 128K
+          A model trained on positions 0–4095 doesn’t generalise to 128K
           out of the box. The high-frequency RoPE pairs make full revolutions
           on never-seen offsets, and quality crashes. The fix is to <em>scale
           the frequencies</em> so the wavelengths the model trained on still
@@ -974,7 +974,7 @@ function LongContextPage() {
           <div className="rounded-lg border border-[var(--color-border-light)] bg-[var(--color-surface-muted)] p-3">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
               <Metric label="Target context" value={tech.targetContext} />
-              <Metric label="Effective base scale" value={`${tech.effectiveBaseFactor.toFixed(2)}\u00d7`} />
+              <Metric label="Effective base scale" value={`${tech.effectiveBaseFactor.toFixed(2)}×`} />
               <Metric label="Quality" value={tech.quality} highlight />
             </div>
 
@@ -1020,7 +1020,7 @@ function LongContextPage() {
 
       <Callout
         type="good"
-        message="<strong>What we ship in 2026.</strong> Production models picked YaRN-style per-band scaling combined with a higher RoPE base (Llama-3.1 uses base=500,000 instead of 10,000). Together those two changes \u2014 a higher base plus smart per-band scaling \u2014 are what makes 128K-context inference feasible. Every other piece of the long-context story (cache compression, attention sinks, sliding windows) layers on top of RoPE."
+        message="<strong>What we ship in 2026.</strong> Production models picked YaRN-style per-band scaling combined with a higher RoPE base (Llama-3.1 uses base=500,000 instead of 10,000). Together those two changes — a higher base plus smart per-band scaling — are what makes 128K-context inference feasible. Every other piece of the long-context story (cache compression, attention sinks, sliding windows) layers on top of RoPE."
       />
     </div>
   );
@@ -1051,7 +1051,7 @@ function Metric({ label, value, highlight }) {
 /* ================================================================
    PAGE 9 — Stop 8 at a Glance (Summary)
    Side-by-side comparison of old (sinusoidal) vs new (RoPE).
-   Forward links to Stops 12, 15, and 17 \u2014 where this comes back.
+   Forward links to Stops 12, 15, and 17 — where this comes back.
    ================================================================ */
 function SummaryPage() {
   // Pivot the flat STOP_SUMMARY into rows where col -> value.
@@ -1068,7 +1068,7 @@ function SummaryPage() {
   return (
     <div>
       <Panel>
-        <PanelHeader>Old (sinusoidal) vs RoPE \u2014 the side-by-side</PanelHeader>
+        <PanelHeader>Old (sinusoidal) vs RoPE — the side-by-side</PanelHeader>
         <div className="px-4 pb-4 overflow-x-auto">
           <table className="w-full border-collapse text-[12px]">
             <thead>

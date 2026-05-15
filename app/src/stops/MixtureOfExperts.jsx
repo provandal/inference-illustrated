@@ -30,11 +30,11 @@ function WeightsLivePage() {
   return (
     <div>
       <Panel>
-        <PanelHeader>FFN dominates parameter count \u2014 and dominates more as models scale</PanelHeader>
+        <PanelHeader>FFN dominates parameter count — and dominates more as models scale</PanelHeader>
         <InfoBox>
           A standard transformer layer has two big blocks: <strong>attention</strong>
           {' '}and <strong>feed-forward network (FFN)</strong>. Of the two, FFN
-          carries far more weights \u2014 and the imbalance grows with model size.
+          carries far more weights — and the imbalance grows with model size.
           By Llama-3 70B, four out of every five parameters live in FFN. The
           bar chart below is the architectural fact that motivates everything
           we cover in this stop.
@@ -58,8 +58,8 @@ function WeightsLivePage() {
         <InfoBox>
           For every token in a dense transformer, the model reads the
           <em> entire FFN block of every layer</em> from HBM and runs the math
-          against it. With FFN at 80% of weights, that\u2019s 80% of the read
-          traffic per token \u2014 even though the token may only need a small
+          against it. With FFN at 80% of weights, that’s 80% of the read
+          traffic per token — even though the token may only need a small
           subset of what those parameters can express. <strong>The MoE bet:
           most of that compute is wasted on most tokens.</strong> If we can
           predict which slice of FFN matters for each token, we can skip the
@@ -85,7 +85,7 @@ function WeightsLivePage() {
                     <td className="px-3 py-2 border-b border-[var(--color-border-light)] font-mono text-right">{m.layers}</td>
                     <td className="px-3 py-2 border-b border-[var(--color-border-light)] font-mono text-right">{m.dModel.toLocaleString()}</td>
                     <td className="px-3 py-2 border-b border-[var(--color-border-light)] font-mono text-right">{m.dFfn.toLocaleString()}</td>
-                    <td className="px-3 py-2 border-b border-[var(--color-border-light)] font-mono text-right">{(m.dFfn / m.dModel).toFixed(1)}\u00d7</td>
+                    <td className="px-3 py-2 border-b border-[var(--color-border-light)] font-mono text-right">{(m.dFfn / m.dModel).toFixed(1)}×</td>
                     <td className="px-3 py-2 border-b border-[var(--color-border-light)] font-mono text-right font-bold text-[var(--color-primary-text)]">
                       {((m.ffnB / m.totalB) * 100).toFixed(0)}%
                     </td>
@@ -95,8 +95,8 @@ function WeightsLivePage() {
             </table>
           </div>
           <div className="text-[11px] text-[var(--color-text-secondary)] italic leading-relaxed mt-3">
-            d_ffn (the FFN\u2019s hidden width) grows faster than d_model as models
-            scale. By 405B, the FFN is 3.25\u00d7 wider than d_model, so its
+            d_ffn (the FFN’s hidden width) grows faster than d_model as models
+            scale. By 405B, the FFN is 3.25× wider than d_model, so its
             parameter footprint grows quadratically with the model. MoE is
             the architectural response.
           </div>
@@ -105,7 +105,7 @@ function WeightsLivePage() {
 
       <Callout
         type="info"
-        message="<strong>The Act 3 question.</strong> Acts 1\u20132 took the dense transformer as a given and asked how to serve it. Act 3 asks what happens when we change the architecture itself. Each stop after this one swaps out a different piece \u2014 the FFN, the attention pattern, the softmax, the entire sequence model \u2014 and each swap reshapes the cache memory model differently."
+        message="<strong>The Act 3 question.</strong> Acts 1–2 took the dense transformer as a given and asked how to serve it. Act 3 asks what happens when we change the architecture itself. Each stop after this one swaps out a different piece — the FFN, the attention pattern, the softmax, the entire sequence model — and each swap reshapes the cache memory model differently."
       />
     </div>
   );
@@ -152,7 +152,7 @@ function ModelWeightBar({ model, maxTotal }) {
           {embFrac > 0.08 ? `${(embFrac * 100).toFixed(0)}%` : ''}
         </div>
       </div>
-      {/* Legend (only render once \u2014 above bar of largest model) */}
+      {/* Legend (only render once — above bar of largest model) */}
       {model.totalB === maxTotal && (
         <div className="flex gap-3 mt-1 text-[10px] text-[var(--color-text-muted)] font-mono">
           <span className="flex items-center gap-1"><span className="w-2 h-2 rounded" style={{ background: 'var(--color-red)' }} /> attention</span>
@@ -189,7 +189,7 @@ function MoeIdeaPage() {
         <InfoBox>
           Click any token to see which 2 experts it routes to. Notice that
           even within the same sequence, different tokens get different
-          experts \u2014 routing is per-token, not per-sequence. The 8 experts
+          experts — routing is per-token, not per-sequence. The 8 experts
           here are given illustrative names; in a real model their
           specialisations emerge from training and are mostly uninterpretable.
         </InfoBox>
@@ -209,7 +209,7 @@ function MoeIdeaPage() {
             Each token activates k=2 of N=8 experts, so it touches 25% of the
             FFN parameters in this layer. Averaged over a full batch, the
             other 75% mostly sit idle on any given token, but they are still
-            resident in HBM \u2014 we will return to this on Page 5.
+            resident in HBM — we will return to this on Page 5.
           </div>
         </div>
       </Panel>
@@ -321,7 +321,7 @@ function MoeRoutingDiagram({ tokens, numExperts, topK, expertLabels, utilisation
         Experts (top, with usage count)
       </text>
       <text x={10} y={H - 6} fontSize={10} fill="var(--color-text-muted)" fontFamily="monospace">
-        Tokens (bottom \u2014 click to highlight routing)
+        Tokens (bottom — click to highlight routing)
       </text>
     </svg>
   );
@@ -362,7 +362,7 @@ function RouterPage() {
       <Panel>
         <PanelHeader>Router math, with concrete numbers</PanelHeader>
         <InfoBox>
-          For each token, the router runs a single matmul (d_model \u00d7 N),
+          For each token, the router runs a single matmul (d_model × N),
           picks the top-k logits, and softmax-normalises the selected scores.
           Below: one token with d_model=8, N=6 experts, k=2. Real models
           use d_model 4096+ and N=8 to 256, but the algebra is identical.
@@ -375,10 +375,10 @@ function RouterPage() {
           </RouterStep>
 
           {/* Step 2 — router matrix */}
-          <RouterStep number={2} title={`Router matrix W_r (N \u00d7 d_model) = (${numExperts} \u00d7 ${dModel})`}>
+          <RouterStep number={2} title={`Router matrix W_r (N × d_model) = (${numExperts} × ${dModel})`}>
             <RouterMatrix matrix={routerWeights} expertLabels={expertLabels} />
             <div className="text-[11px] text-[var(--color-text-secondary)] italic mt-2">
-              Each row is one expert\u2019s &ldquo;preferences&rdquo; over the d_model
+              Each row is one expert’s &ldquo;preferences&rdquo; over the d_model
               dimensions. Trained jointly with the rest of the model.
             </div>
           </RouterStep>
@@ -387,7 +387,7 @@ function RouterPage() {
           <RouterStep number={3} title="Logits: each expert's score for this token">
             <ExpertLogitsBar logits={logits} topKIndices={topKIndices} expertLabels={expertLabels} />
             <div className="text-[11px] text-[var(--color-text-secondary)] italic mt-2 font-mono">
-              logits[e] = W_r[e] \u00b7 x
+              logits[e] = W_r[e] · x
             </div>
           </RouterStep>
 
@@ -416,13 +416,13 @@ function RouterPage() {
                     {(weights[rank] * 100).toFixed(1)}%
                   </div>
                   <div className="text-[10px] font-mono text-[var(--color-text-muted)] mt-1">
-                    exp({logits[i].toFixed(3)} \u2212 max) / sum
+                    exp({logits[i].toFixed(3)} − max) / sum
                   </div>
                 </div>
               ))}
             </div>
             <div className="text-[11px] text-[var(--color-text-secondary)] italic mt-2 font-mono">
-              output = w\u2080 \u00b7 Expert\u2080(x) + w\u2081 \u00b7 Expert\u2081(x)
+              output = w\u2080 · Expert\u2080(x) + w\u2081 · Expert\u2081(x)
             </div>
           </RouterStep>
         </div>
@@ -433,7 +433,7 @@ function RouterPage() {
         <InfoBox>
           The router is the most fragile part of an MoE model. Without
           intervention, the router collapses to using one expert all the time
-          \u2014 because that expert gets all the gradient and gets better, while
+          — because that expert gets all the gradient and gets better, while
           the others starve. To prevent this, training adds an <strong>
           auxiliary load-balancing loss</strong> that encourages even token
           distribution across experts.
@@ -442,7 +442,7 @@ function RouterPage() {
           The classic formulation (Shazeer et al., 2017): for each expert,
           compute the fraction of tokens routed to it (<em>f<sub>i</sub></em>)
           and the fraction of router probability mass it received
-          (<em>P<sub>i</sub></em>); add <em>N \u00b7 \u03a3 f<sub>i</sub> P<sub>i</sub></em>
+          (<em>P<sub>i</sub></em>); add <em>N · Σ f<sub>i</sub> P<sub>i</sub></em>
           to the training loss. When perfectly balanced (each <em>f<sub>i</sub></em> = 1/N,
           each <em>P<sub>i</sub></em> = 1/N), this term equals 1. Worse balance pushes it higher.
         </InfoBox>
@@ -459,7 +459,7 @@ function RouterPage() {
 
       <Callout
         type="warning"
-        message="<strong>Why we cover this depth.</strong> An infra engineer doesn\u2019t need to write training code, but should know that an MoE deployment\u2019s inference-time stability depends entirely on how well the router was trained. If the load balancing was poor, some experts will be hot and others cold, which destroys all-to-all efficiency on Page 6."
+        message="<strong>Why we cover this depth.</strong> An infra engineer doesn’t need to write training code, but should know that an MoE deployment’s inference-time stability depends entirely on how well the router was trained. If the load balancing was poor, some experts will be hot and others cold, which destroys all-to-all efficiency on Page 6."
       />
     </div>
   );
@@ -560,7 +560,7 @@ function ExpertLogitsBar({ logits, topKIndices, expertLabels }) {
               <div className="absolute top-0 bottom-0 left-1/2 w-px bg-[var(--color-border)]" />
             </div>
             <div className="min-w-[60px] text-right" style={{ color, fontWeight: isTopK ? 700 : 400 }}>
-              {l.toFixed(3)} {isTopK && '\u2605'}
+              {l.toFixed(3)} {isTopK && '★'}
             </div>
           </div>
         );
@@ -583,7 +583,7 @@ function SparseActivationPage() {
   // Presets for quick comparison
   const presets = [
     { name: 'Llama-3 8B (dense)',    N: 1,   k: 1, layers: 32,  dModel: 4096,  dFfn: 14336, dHead: 128, nKvHeads: 8, vocab: 128256 },
-    { name: 'Mixtral 8\u00d77B',       N: 8,   k: 2, layers: 32,  dModel: 4096,  dFfn: 14336, dHead: 128, nKvHeads: 8, vocab: 32000  },
+    { name: 'Mixtral 8×7B',       N: 8,   k: 2, layers: 32,  dModel: 4096,  dFfn: 14336, dHead: 128, nKvHeads: 8, vocab: 32000  },
     { name: 'DeepSeek-V3 (sketch)',  N: 256, k: 8, layers: 61,  dModel: 7168,  dFfn: 2048,  dHead: 128, nKvHeads: 8, vocab: 128256 },
     { name: 'Llama-3 70B (dense)',   N: 1,   k: 1, layers: 80,  dModel: 8192,  dFfn: 28672, dHead: 128, nKvHeads: 8, vocab: 128256 },
   ];
@@ -591,7 +591,7 @@ function SparseActivationPage() {
   return (
     <div>
       <Panel>
-        <PanelHeader>Total vs active parameters \u2014 live calculator</PanelHeader>
+        <PanelHeader>Total vs active parameters — live calculator</PanelHeader>
         <InfoBox>
           Set N (experts), k (top-k), and the standard transformer dimensions.
           The calculator computes <strong>total parameters</strong> (what loads
@@ -634,9 +634,9 @@ function SparseActivationPage() {
             </div>
             <SparsityBars total={counts.totalB} active={counts.activeB} dense={counts.denseB} />
             <div className="text-[11px] text-[var(--color-text-secondary)] italic mt-3 leading-relaxed">
-              The bar in the middle is the &ldquo;dense baseline&rdquo; \u2014 a
+              The bar in the middle is the &ldquo;dense baseline&rdquo; — a
               non-MoE model with the same FFN width per layer. Notice that
-              MoE\u2019s <em>active</em> compute is much less than dense, but
+              MoE’s <em>active</em> compute is much less than dense, but
               its <em>total</em> memory is much more. This is the central
               trade we unpack on Page 5.
             </div>
@@ -646,7 +646,7 @@ function SparseActivationPage() {
 
       <Callout
         type="good"
-        message="<strong>Sanity check.</strong> Try preset \u201cMixtral 8\u00d77B\u201d: the calculator should show ~47B total and ~13B active. Try \u201cDeepSeek-V3\u201d: ~670B total and ~37B active. (The DeepSeek calculation is approximate \u2014 their shared-expert + fine-grained design isn\u2019t captured exactly by N/k alone.)"
+        message="<strong>Sanity check.</strong> Try preset “Mixtral 8×7B”: the calculator should show ~47B total and ~13B active. Try “DeepSeek-V3”: ~670B total and ~37B active. (The DeepSeek calculation is approximate — their shared-expert + fine-grained design isn’t captured exactly by N/k alone.)"
       />
     </div>
   );
@@ -724,10 +724,10 @@ function InferenceCostPage() {
       <Panel>
         <PanelHeader>What MoE actually buys you</PanelHeader>
         <InfoBox>
-          Reading the calculator on the previous page, it\u2019s tempting to
+          Reading the calculator on the previous page, it’s tempting to
           conclude &ldquo;MoE means smaller models in HBM.&rdquo; <strong>It
           does not.</strong> All N experts must be resident, because you
-          don\u2019t know in advance which one the next token will request. The
+          don’t know in advance which one the next token will request. The
           compute story is different from the memory story. Below: a walk
           through {c.model} on a single H100, line by line.
         </InfoBox>
@@ -736,7 +736,7 @@ function InferenceCostPage() {
           <CostRow
             label="Total parameters"
             value={`${c.totalParams_B} B`}
-            sub={`${c.N} experts \u00d7 ~5.9 B per expert + attention/embeddings`}
+            sub={`${c.N} experts × ~5.9 B per expert + attention/embeddings`}
             tone="neutral"
           />
           <CostRow
@@ -748,25 +748,25 @@ function InferenceCostPage() {
           <CostRow
             label="HBM occupied (FP4)"
             value={`${c.totalMemoryFP4_GB} GB`}
-            sub={`Determined by TOTAL params \u2014 every expert is resident`}
+            sub={`Determined by TOTAL params — every expert is resident`}
             tone="negative"
           />
           <CostRow
             label="HBM occupied (FP16)"
             value={`${c.totalMemoryFP16_GB} GB`}
-            sub={`Cannot fit on a single H100 (80 GB) at FP16 \u2014 forces TP=2`}
+            sub={`Cannot fit on a single H100 (80 GB) at FP16 — forces TP=2`}
             tone="negative"
           />
           <CostRow
             label="Compute per token"
             value={`~${c.compute_TFLOPs_perToken} TFLOPs`}
-            sub={`Governed by ACTIVE params: ~2 \u00d7 active = ~26 TFLOPs/token`}
+            sub={`Governed by ACTIVE params: ~2 × active = ~26 TFLOPs/token`}
             tone="positive"
           />
           <CostRow
             label="HBM bandwidth read (single-token)"
             value={`~${c.bandwidth_GB_perStep_naive} GB / layer-step`}
-            sub={`If you literally read only the active experts\u2019 weights`}
+            sub={`If you literally read only the active experts’ weights`}
             tone="positive"
           />
           <CostRow
@@ -856,7 +856,7 @@ function ExpertParallelPage() {
           experts. When the router sends a token to an expert, the token has
           to travel to wherever that expert lives. With <em>every token</em>
           choosing 2 experts independently, the result is a dense crossing of
-          token traffic between all GPUs \u2014 a textbook NCCL <strong>all-to-all
+          token traffic between all GPUs — a textbook NCCL <strong>all-to-all
           collective</strong>.
         </InfoBox>
 
@@ -871,8 +871,8 @@ function ExpertParallelPage() {
           <div className="mt-3 text-[11px] text-[var(--color-text-secondary)] leading-relaxed italic">
             Click a token in the bottom row to highlight its 2 routing
             destinations. The crossing pattern across all 16 tokens is what
-            NCCL\u2019s <code>all-to-all</code> primitive moves at every MoE
-            layer. There\u2019s no shortcut: the source-GPU and target-GPU
+            NCCL’s <code>all-to-all</code> primitive moves at every MoE
+            layer. There’s no shortcut: the source-GPU and target-GPU
             permutation differs every layer, so a single optimised collective
             handles the whole thing in one shot.
           </div>
@@ -900,7 +900,7 @@ function ExpertParallelPage() {
               {COLLECTIVE_COMPARISON.map((c) => (
                 <tr key={c.type} className={c.new ? 'bg-[var(--color-amber-bg)]' : ''}>
                   <td className="px-3 py-2 border-b border-[var(--color-border-light)] font-mono font-medium text-[var(--color-text)]">
-                    {c.type} {c.new && <span className="text-[var(--color-amber-text)] font-bold">\u2605 new</span>}
+                    {c.type} {c.new && <span className="text-[var(--color-amber-text)] font-bold">★ new</span>}
                   </td>
                   <td className="px-3 py-2 border-b border-[var(--color-border-light)] text-[var(--color-text-secondary)]">{c.participants}</td>
                   <td className="px-3 py-2 border-b border-[var(--color-border-light)] font-mono text-[var(--color-text-secondary)]">{c.perStep}</td>
@@ -915,7 +915,7 @@ function ExpertParallelPage() {
 
       <Callout
         type="warning"
-        message="<strong>Why all-to-all is the most demanding.</strong> All-reduce can use ring or tree algorithms that move data in bounded hops. Point-to-point sends only need one link. All-to-all has every rank talking to every other rank in the same step \u2014 the bisection bandwidth of the fabric becomes the bottleneck. For large EP groups on NVLink this is fine; once you cross node boundaries onto InfiniBand, the all-to-all cost is what limits MoE scaling more than anything else."
+        message="<strong>Why all-to-all is the most demanding.</strong> All-reduce can use ring or tree algorithms that move data in bounded hops. Point-to-point sends only need one link. All-to-all has every rank talking to every other rank in the same step — the bisection bandwidth of the fabric becomes the bottleneck. For large EP groups on NVLink this is fine; once you cross node boundaries onto InfiniBand, the all-to-all cost is what limits MoE scaling more than anything else."
       />
     </div>
   );
@@ -935,7 +935,7 @@ function EpDiagram({ numGpus, tokenBatch, highlightedToken, onHighlight }) {
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full rounded border border-[var(--color-border-light)] bg-[var(--color-surface-muted)]">
       {/* GPU labels along top */}
       <text x={10} y={18} fontSize={10} fill="var(--color-text-muted)" fontFamily="monospace">
-        GPUs / Experts (top \u2014 each GPU holds one expert)
+        GPUs / Experts (top — each GPU holds one expert)
       </text>
 
       {/* GPU boxes (top row) */}
@@ -976,7 +976,7 @@ function EpDiagram({ numGpus, tokenBatch, highlightedToken, onHighlight }) {
 
       {/* Token labels along bottom */}
       <text x={10} y={H - 8} fontSize={10} fill="var(--color-text-muted)" fontFamily="monospace">
-        Tokens (bottom \u2014 grouped by source GPU, click to highlight destinations)
+        Tokens (bottom — grouped by source GPU, click to highlight destinations)
       </text>
 
       {/* Token boxes */}
@@ -1040,8 +1040,8 @@ function KvCacheImpactPage() {
       <Panel>
         <PanelHeader>The cache itself is untouched. Everything around it shifts.</PanelHeader>
         <InfoBox>
-          The KV cache stores K and V vectors that come from attention\u2019s
-          Q/K/V projections \u2014 a part of the model that <em>doesn\u2019t change</em>
+          The KV cache stores K and V vectors that come from attention’s
+          Q/K/V projections — a part of the model that <em>doesn’t change</em>
           between dense and MoE. So cache memory, layout, and bandwidth
           numbers are identical to a dense model with the same d_model,
           n_layers, and head configuration.
@@ -1102,10 +1102,10 @@ function KvCacheImpactPage() {
               <strong>Same formula as dense.</strong>
             </div>
             <div className="text-[11px] italic text-[var(--color-text-secondary)] font-mono">
-              size = layers \u00d7 n_kv_heads \u00d7 d_head \u00d7 2 (K and V) \u00d7 2 bytes (FP16) \u00d7 tokens
+              size = layers × n_kv_heads × d_head × 2 (K and V) × 2 bytes (FP16) × tokens
             </div>
             <div className="text-[11px] italic text-[var(--color-text-secondary)] mt-1">
-              Use the model\u2019s configured attention dimensions; the MoE FFN is irrelevant.
+              Use the model’s configured attention dimensions; the MoE FFN is irrelevant.
             </div>
           </div>
           <div className="rounded-lg border border-[var(--color-red)] bg-[var(--color-red-bg)] p-3">
@@ -1116,7 +1116,7 @@ function KvCacheImpactPage() {
               <strong>Different from dense.</strong>
             </div>
             <div className="text-[11px] italic text-[var(--color-text-secondary)]">
-              Plan for <strong>two extra all-to-all collectives per MoE layer</strong> on top of TP\u2019s
+              Plan for <strong>two extra all-to-all collectives per MoE layer</strong> on top of TP’s
               all-reduces. The collectives compete for NVLink and (worse) InfiniBand bandwidth.
               In practice you keep EP groups inside a single NVLink domain whenever you can.
             </div>
@@ -1126,7 +1126,7 @@ function KvCacheImpactPage() {
 
       <Callout
         type="info"
-        message="<strong>Forward pointer.</strong> The other Act 3 architectures take much bigger swings at the cache. Sliding-window attention (Stop 20) bounds it. Linear attention (Stop 21) reformulates the math. State space models (Stop 22) remove it entirely. Hybrid models (Stop 23) mix and match these to get the best of every world. By comparison, MoE\u2019s lack of cache impact is the friendliest case."
+        message="<strong>Forward pointer.</strong> The other Act 3 architectures take much bigger swings at the cache. Sliding-window attention (Stop 20) bounds it. Linear attention (Stop 21) reformulates the math. State space models (Stop 22) remove it entirely. Hybrid models (Stop 23) mix and match these to get the best of every world. By comparison, MoE’s lack of cache impact is the friendliest case."
       />
     </div>
   );
@@ -1142,7 +1142,7 @@ function ProductionPage() {
   return (
     <div>
       <Panel>
-        <PanelHeader>The MoE configurations shipping in 2024\u20132025</PanelHeader>
+        <PanelHeader>The MoE configurations shipping in 2024–2025</PanelHeader>
         <InfoBox>
           Production MoE varies in three big knobs: <strong>N</strong> (how
           many experts), <strong>k</strong> (how many per token), and whether
@@ -1173,7 +1173,7 @@ function ProductionPage() {
                   >
                     <div>
                       <div className="font-medium text-[var(--color-text)]">{m.name}</div>
-                      <div className="text-[10px] text-[var(--color-text-muted)] font-mono">{m.org} \u00b7 {m.released}</div>
+                      <div className="text-[10px] text-[var(--color-text-muted)] font-mono">{m.org} · {m.released}</div>
                     </div>
                     <div className="text-right font-mono text-[var(--color-text-secondary)]">{m.numExperts}{m.sharedExperts ? `+${m.sharedExperts}*` : ''}</div>
                     <div className="text-right font-mono text-[var(--color-text-secondary)]">{m.topK}</div>
@@ -1185,7 +1185,7 @@ function ProductionPage() {
                     <div className="px-3 py-3 bg-[var(--color-surface)] border-t border-[var(--color-border-light)]">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-2">
                         <KvSimple label="MoE layers" value={m.moeLayers} />
-                        <KvSimple label="Shared experts" value={m.sharedExperts > 0 ? `${m.sharedExperts} \u2014 every token also uses these` : 'none'} />
+                        <KvSimple label="Shared experts" value={m.sharedExperts > 0 ? `${m.sharedExperts} — every token also uses these` : 'none'} />
                       </div>
                       <div className="text-[12px] text-[var(--color-text-secondary)] italic leading-relaxed">
                         {m.notes}
@@ -1221,7 +1221,7 @@ function ProductionPage() {
           <TrendCard
             title="Shared experts"
             from="0 (Mixtral)"
-            to="1\u20134 (DeepSeek, Qwen2)"
+            to="1–4 (DeepSeek, Qwen2)"
             note="Shared experts capture common knowledge every token needs, freeing the routed experts to specialise harder. Now the standard recipe."
           />
         </div>
@@ -1250,7 +1250,7 @@ function TrendCard({ title, from, to, note }) {
       <div className="text-[11px] uppercase tracking-wider text-[var(--color-primary-text)] font-medium mb-2">{title}</div>
       <div className="flex items-center gap-2 mb-2 text-[11px] font-mono">
         <span className="text-[var(--color-text-secondary)]">{from}</span>
-        <span className="text-[var(--color-text-muted)]">\u2192</span>
+        <span className="text-[var(--color-text-muted)]">→</span>
         <span className="text-[var(--color-text)] font-bold">{to}</span>
       </div>
       <div className="text-[11px] text-[var(--color-text-secondary)] italic leading-relaxed">{note}</div>
@@ -1264,9 +1264,9 @@ function TrendCard({ title, from, to, note }) {
    ================================================================ */
 function SummaryPage() {
   const arrow = (d) => {
-    if (d === 'up') return { sym: '\u2191', color: 'var(--color-red-text)',  bg: 'var(--color-red-bg)',  border: 'var(--color-red)' };
-    if (d === 'down') return { sym: '\u2193', color: 'var(--color-teal-text)', bg: 'var(--color-teal-bg)', border: 'var(--color-teal)' };
-    return { sym: '\u2192', color: 'var(--color-text-muted)', bg: 'var(--color-surface-muted)', border: 'var(--color-border)' };
+    if (d === 'up') return { sym: '↑', color: 'var(--color-red-text)',  bg: 'var(--color-red-bg)',  border: 'var(--color-red)' };
+    if (d === 'down') return { sym: '↓', color: 'var(--color-teal-text)', bg: 'var(--color-teal-bg)', border: 'var(--color-teal)' };
+    return { sym: '→', color: 'var(--color-text-muted)', bg: 'var(--color-surface-muted)', border: 'var(--color-border)' };
   };
 
   return (
@@ -1274,7 +1274,7 @@ function SummaryPage() {
       <Panel>
         <PanelHeader>MoE: what shifts, what stays</PanelHeader>
         <InfoBox>
-          Every Act 3 architecture trades one resource for another. MoE\u2019s
+          Every Act 3 architecture trades one resource for another. MoE’s
           trade: compute goes down, weight memory goes up, KV cache stays
           the same, and you pick up a new inter-GPU communication pattern.
           The table below is the one-page summary of this stop.
@@ -1336,7 +1336,7 @@ function SummaryPage() {
 
       <Callout
         type="good"
-        message="<strong>End of Stop 19.</strong> MoE is the smallest swap Act 3 will introduce \u2014 keep the transformer shape, replace the FFN block. The next four stops change bigger pieces: <strong>Stop 20</strong> changes the attention pattern (sliding window), <strong>Stop 21</strong> changes the attention math (linear/kernel), <strong>Stop 22</strong> drops attention altogether (state space models), and <strong>Stop 23</strong> mixes everything together (hybrid models). The lens stays the same: how does each architectural choice reshape the cache memory model?"
+        message="<strong>End of Stop 19.</strong> MoE is the smallest swap Act 3 will introduce — keep the transformer shape, replace the FFN block. The next four stops change bigger pieces: <strong>Stop 20</strong> changes the attention pattern (sliding window), <strong>Stop 21</strong> changes the attention math (linear/kernel), <strong>Stop 22</strong> drops attention altogether (state space models), and <strong>Stop 23</strong> mixes everything together (hybrid models). The lens stays the same: how does each architectural choice reshape the cache memory model?"
       />
     </div>
   );

@@ -438,16 +438,16 @@ function BridgePage() {
 
 const NARRATIONS = {
   intro:
-    '<strong>Stop 3: One Identity Isn\u2019t Enough.</strong> In Stop 2, we saw that attention lets every word check every other word directly. But we left a question unanswered: how does the model actually decide which words are relevant? The answer requires giving each word not one representation, but three.',
+    '<strong>Stop 3: One Identity Isn’t Enough.</strong> In Stop 2, we saw that attention lets every word check every other word directly. But we left a question unanswered: how does the model actually decide which words are relevant? The answer requires giving each word not one representation, but three.',
 
   'three-roles':
-    'Every word in the sentence gets <strong>three separate vectors</strong> \u2014 Query, Key, and Value \u2014 each created by a different weight matrix. These three roles are the mechanism that makes attention work. Let\u2019s see what each one does.',
+    'Every word in the sentence gets <strong>three separate vectors</strong> — Query, Key, and Value — each created by a different weight matrix. These three roles are the mechanism that makes attention work. Let’s see what each one does.',
 
   query:
-    'The <strong>Query</strong> vector encodes what a word is looking for. When "faulty" needs to figure out <em>what</em> is faulty, its Query captures that search intent \u2014 and it will be compared against every other word\u2019s Key to find the answer.',
+    'The <strong>Query</strong> vector encodes what a word is looking for. When "faulty" needs to figure out <em>what</em> is faulty, its Query captures that search intent — and it will be compared against every other word’s Key to find the answer.',
 
   key:
-    'The <strong>Key</strong> vector encodes what a word advertises to other words. "controller" needs a Key that says "I\u2019m a component that could have properties" \u2014 so that when "faulty"\u2019s Query comes looking, it gets a strong match.',
+    'The <strong>Key</strong> vector encodes what a word advertises to other words. "controller" needs a Key that says "I’m a component that could have properties" — so that when "faulty"’s Query comes looking, it gets a strong match.',
 
   value:
     'The <strong>Value</strong> vector carries the actual information payload. Once a Query matches a Key, the corresponding Value is what gets delivered. The Key gets you found; the Value is what you deliver.',
@@ -456,10 +456,10 @@ const NARRATIONS = {
     'Why three vectors instead of one? Because searching, being found, and delivering information are three fundamentally different jobs. A single vector trying to do all three would be a compromise at each. <strong>Three is the minimum for clean separation of concerns.</strong>',
 
   'cache-reveal':
-    'Here is the insight that drives the rest of this course. Query vectors are used once and discarded. But <strong>Key and Value vectors must persist</strong> \u2014 every future word needs them. That persistent storage is the <strong>KV cache</strong>, and it\u2019s why this course exists.',
+    'Here is the insight that drives the rest of this course. Query vectors are used once and discarded. But <strong>Key and Value vectors must persist</strong> — every future word needs them. That persistent storage is the <strong>KV cache</strong>, and it’s why this course exists.',
 
   bridge:
-    'Q, K, and V come from learned weight matrices. But how did those matrices learn to produce the right vectors? How did W<sub>Q</sub> learn to ask good questions and W<sub>K</sub> learn to give good answers? That\u2019s the story of <strong>training</strong> \u2014 our next stop.',
+    'Q, K, and V come from learned weight matrices. But how did those matrices learn to produce the right vectors? How did W<sub>Q</sub> learn to ask good questions and W<sub>K</sub> learn to give good answers? That’s the story of <strong>training</strong> — our next stop.',
 };
 
 // --- Main Component ---

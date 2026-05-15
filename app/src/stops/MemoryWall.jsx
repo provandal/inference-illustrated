@@ -76,7 +76,7 @@ function Act2IntroPage() {
               {[
                 ['11 (this stop)', 'Users + GPU memory management + batching'],
                 ['12', 'Split into prefill + decode pools + network pipe'],
-                ['13', 'KV cache tier column (HBM \u2192 DRAM \u2192 SSD \u2192 network storage)'],
+                ['13', 'KV cache tier column (HBM → DRAM → SSD → network storage)'],
                 ['14', 'Compression controls (GQA/MLA toggle, quantization slider)'],
                 ['15', 'Network pipe labeled with protocols (RDMA, CXL, NVMe-oF)'],
                 ['16', 'Routing and scheduling layer'],
@@ -122,10 +122,10 @@ function MathWorksPage() {
     { label: 'KV cache per token', value: `${SCENARIO_DEFAULTS.kvPerToken_KB} KB`, source: 'Stop 9/9' },
     { label: 'Users',              value: String(users),                    source: 'Scenario', isInput: true },
     { label: 'Context per user',   value: `${contextK}K tokens`,           source: 'Scenario', isInput: true },
-    { label: 'Cache per user',     value: `${cachePerUser.toFixed(1)} GB`, source: `${SCENARIO_DEFAULTS.kvPerToken_KB} KB \u00d7 ${contextK}K` },
-    { label: 'Total cache',        value: `${totalCache.toFixed(1)} GB`,   source: `${cachePerUser.toFixed(1)} GB \u00d7 ${users}` },
+    { label: 'Cache per user',     value: `${cachePerUser.toFixed(1)} GB`, source: `${SCENARIO_DEFAULTS.kvPerToken_KB} KB × ${contextK}K` },
+    { label: 'Total cache',        value: `${totalCache.toFixed(1)} GB`,   source: `${cachePerUser.toFixed(1)} GB × ${users}` },
     { label: 'Total memory',       value: `${totalMemory.toFixed(1)} GB`,  source: `${SCENARIO_DEFAULTS.weightsFP4_GB} + ${totalCache.toFixed(1)}` },
-    { label: `Available (${SCENARIO_DEFAULTS.gpuCount}\u00d7 H100)`, value: `${available} GB`, source: `${SCENARIO_DEFAULTS.gpuCount} \u00d7 ${SCENARIO_DEFAULTS.gpuMemory_GB}` },
+    { label: `Available (${SCENARIO_DEFAULTS.gpuCount}× H100)`, value: `${available} GB`, source: `${SCENARIO_DEFAULTS.gpuCount} × ${SCENARIO_DEFAULTS.gpuMemory_GB}` },
     { label: 'Utilization',        value: `${utilization}%`,               source: `${totalMemory.toFixed(0)} / ${available}`, highlight: true },
   ];
 
