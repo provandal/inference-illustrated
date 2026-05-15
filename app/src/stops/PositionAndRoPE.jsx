@@ -465,12 +465,39 @@ function RotateIdeaPage() {
   return (
     <div>
       <Panel>
+        <PanelHeader>Where RoPE plugs into the attention block</PanelHeader>
+        <InfoBox>
+          Before we draw rotating arrows, the most useful thing to see is{' '}
+          <em>where in the attention block</em> the rotation actually happens.
+          The diagram below shows one attention layer. Without RoPE, Q and K
+          go straight from projection into the dot product. With RoPE, two
+          rotation boxes get inserted between projection and dot product. V
+          bypasses both rotation boxes — only Q and K are touched.
+        </InfoBox>
+
+        <div className="px-4 pb-4">
+          <AttentionBlockFlow theta={theta} m={m} />
+
+          <div className="mt-3 text-[11px] text-[var(--color-text-secondary)] leading-relaxed italic">
+            <strong>This whole block repeats at every layer.</strong> Layer 1
+            has its own W<sub>Q</sub>, W<sub>K</sub>, W<sub>V</sub>; so does
+            layer 2, and 3, and 80. Each layer produces a fresh Q and K from
+            its own residual-stream input — and RoPE re-rotates that layer&rsquo;s
+            Q and K by the <em>same</em> position value (the token&rsquo;s
+            absolute position in the sequence) using the <em>same</em>{' '}
+            rotation function. What differs across layers is the Q and K
+            being rotated; the rotation recipe is identical.
+          </div>
+        </div>
+      </Panel>
+
+      <Panel className="mt-4">
         <PanelHeader>One dimension-pair, two rotating arrows</PanelHeader>
         <InfoBox>
-          RoPE treats each Q and K vector as d/2 pairs of dimensions. Below is
-          one such pair, drawn in 2D. Move the sliders to rotate Q (by mθ) and
-          K (by nθ). The dim gray arrows are the originals; the bright ones
-          are after rotation.
+          Now we zoom in on the rotation itself. RoPE treats each Q and K
+          vector as d/2 pairs of dimensions. Below is one such pair, drawn in
+          2D. Move the sliders to rotate Q (by mθ) and K (by nθ). The dim
+          gray arrows are the originals; the bright ones are after rotation.
         </InfoBox>
 
         <div className="px-4 pb-4">
@@ -576,6 +603,112 @@ function RotationCanvas({ q, k, qRot, kRot, m, n, theta }) {
         (n−m)θ = {((n - m) * theta).toFixed(2)} rad
       </text>
     </svg>
+  );
+}
+
+/* ----------------------------------------------------------------
+   Attention-block flow diagram for Page 4.
+   Shows: residual input → projection (W_Q, W_K, W_V) → RoPE rotates
+   Q and K only → attention dot product → softmax · V → residual out.
+   The whole block has a "× N layers" badge to drive home that RoPE
+   re-applies at every attention layer.
+   ---------------------------------------------------------------- */
+function AttentionBlockFlow({ theta, m }) {
+  const W = 720, H = 360;
+  // Layout columns
+  const colCenter = W / 2;
+  const colLeft = colCenter - 180;
+  const colRight = colCenter + 180;
+
+  // Y positions for vertical flow
+  const yInput = 30;
+  const yProj  = 100;
+  const yRope  = 175;
+  const yDot   = 250;
+  const yOut   = 320;
+
+  const box = (x, y, w, h, fill, stroke, label, sub) => (
+    <g>
+      <rect x={x - w / 2} y={y - h / 2} width={w} height={h} rx={6} fill={fill} stroke={stroke} strokeWidth={1.5} />
+      <text x={x} y={y - 2} fontSize={11} fontWeight={700} textAnchor="middle" fontFamily="monospace" fill={stroke}>
+        {label}
+      </text>
+      {sub && (
+        <text x={x} y={y + 12} fontSize={9} textAnchor="middle" fontFamily="monospace" fill="var(--color-text-muted)">
+          {sub}
+        </text>
+      )}
+    </g>
+  );
+
+  const arrow = (x1, y1, x2, y2, label) => (
+    <g>
+      <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="var(--color-text-muted)" strokeWidth={1.5} markerEnd="url(#flow-arrow)" />
+      {label && (
+        <text x={(x1 + x2) / 2 + 6} y={(y1 + y2) / 2 + 3} fontSize={9} fontFamily="monospace" fill="var(--color-text-muted)">
+          {label}
+        </text>
+      )}
+    </g>
+  );
+
+  return (
+    <div className="rounded-lg border border-[var(--color-border-light)] bg-[var(--color-surface-muted)] p-2 relative">
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
+        <defs>
+          <marker id="flow-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--color-text-muted)" />
+          </marker>
+        </defs>
+
+        {/* Layer-N badge (top-right) */}
+        <rect x={W - 180} y={6} width={172} height={26} rx={4} fill="var(--color-amber-bg)" stroke="var(--color-amber)" strokeWidth={1} />
+        <text x={W - 94} y={24} fontSize={11} fontWeight={700} textAnchor="middle" fontFamily="monospace" fill="var(--color-amber-text)">
+          ↻ this whole block × 80 layers
+        </text>
+
+        {/* Input from residual stream */}
+        {box(colCenter, yInput, 240, 30, 'var(--color-surface)', 'var(--color-text-muted)', 'x (residual stream input)', 'd_model = 8192')}
+
+        {/* Down arrow to projections */}
+        {arrow(colCenter, yInput + 16, colCenter, yProj - 16, null)}
+        {/* Three projection boxes */}
+        {box(colLeft,   yProj, 130, 30, 'var(--color-red-bg)',  'var(--color-red)',  'W_Q · x  →  Q', 'per-layer weights')}
+        {box(colCenter, yProj, 130, 30, 'var(--color-teal-bg)', 'var(--color-teal)', 'W_K · x  →  K', 'per-layer weights')}
+        {box(colRight,  yProj, 130, 30, 'var(--color-blue-bg)', 'var(--color-blue)', 'W_V · x  →  V', 'per-layer weights')}
+
+        {/* Splits from input */}
+        <line x1={colCenter} y1={yInput + 16} x2={colLeft}   y2={yProj - 16} stroke="var(--color-text-muted)" strokeWidth={1.2} markerEnd="url(#flow-arrow)" />
+        <line x1={colCenter} y1={yInput + 16} x2={colRight}  y2={yProj - 16} stroke="var(--color-text-muted)" strokeWidth={1.2} markerEnd="url(#flow-arrow)" />
+
+        {/* RoPE rotation boxes — only on Q and K */}
+        {arrow(colLeft,   yProj + 16, colLeft,   yRope - 16, null)}
+        {arrow(colCenter, yProj + 16, colCenter, yRope - 16, null)}
+        {box(colLeft,   yRope, 150, 36, 'var(--color-primary-bg)', 'var(--color-primary)', 'RoPE(Q, pos m)', `rotate by m·θ`)}
+        {box(colCenter, yRope, 150, 36, 'var(--color-primary-bg)', 'var(--color-primary)', 'RoPE(K, pos n)', `rotate by n·θ`)}
+
+        {/* V bypass — straight line down with "bypass" label */}
+        <line x1={colRight} y1={yProj + 16} x2={colRight} y2={yDot - 18} stroke="var(--color-blue)" strokeWidth={1.5} strokeDasharray="5 3" markerEnd="url(#flow-arrow)" />
+        <text x={colRight + 8} y={(yProj + yDot) / 2 + 4} fontSize={9} fontFamily="monospace" fill="var(--color-blue-text)">
+          V bypasses RoPE
+        </text>
+
+        {/* Q' and K' merge into dot product */}
+        {arrow(colLeft,   yRope + 18, colCenter - 60, yDot - 18, null)}
+        {arrow(colCenter, yRope + 18, colCenter,      yDot - 18, null)}
+        {box(colCenter, yDot, 280, 36, 'var(--color-surface)', 'var(--color-text)', "Q′ · K′ᵀ / √d  →  softmax  →  attention scores", 'absolute positions cancel; only (n−m) survives')}
+
+        {/* Attention scores × V → output */}
+        <line x1={colRight}  y1={yDot - 18} x2={colCenter + 70} y2={yDot - 6} stroke="var(--color-text-muted)" strokeWidth={1.2} markerEnd="url(#flow-arrow)" />
+        {arrow(colCenter, yDot + 18, colCenter, yOut - 16, 'scores · V')}
+        {box(colCenter, yOut, 240, 30, 'var(--color-teal-bg)', 'var(--color-teal)', 'attention output', 'back into residual stream')}
+
+        {/* Layer label */}
+        <text x={20} y={H - 12} fontSize={10} fontFamily="monospace" fill="var(--color-text-muted)">
+          One attention layer. The next layer\u2019s W<tspan baselineShift="sub" fontSize="8">Q</tspan>/W<tspan baselineShift="sub" fontSize="8">K</tspan>/W<tspan baselineShift="sub" fontSize="8">V</tspan> are different; the RoPE recipe is identical.
+        </text>
+      </svg>
+    </div>
   );
 }
 
