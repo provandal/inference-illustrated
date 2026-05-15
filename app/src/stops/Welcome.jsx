@@ -158,7 +158,7 @@ function HowItWorksPage() {
           Throughout this course, we use simplified examples and interpretive
           approximations. When we do, we tell you. The decay pattern in Stop 1
           is real; the hidden state labels are our interpretation. The head
-          specializations in Stop 9 are illustrative; real heads are messier. We
+          specializations in Stop 8 are illustrative; real heads are messier. We
           believe in teaching with honest simplifications rather than false
           precision.
         </InfoBox>

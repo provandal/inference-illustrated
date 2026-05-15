@@ -118,8 +118,8 @@ function MathWorksPage() {
 
   const rows = [
     { label: 'Model',              value: SCENARIO_DEFAULTS.model,          source: 'Scenario' },
-    { label: 'Weights (FP4)',      value: `${SCENARIO_DEFAULTS.weightsFP4_GB} GB`, source: 'Stop 9' },
-    { label: 'KV cache per token', value: `${SCENARIO_DEFAULTS.kvPerToken_KB} KB`, source: 'Stop 9/9' },
+    { label: 'Weights (FP4)',      value: `${SCENARIO_DEFAULTS.weightsFP4_GB} GB`, source: 'Stop 8' },
+    { label: 'KV cache per token', value: `${SCENARIO_DEFAULTS.kvPerToken_KB} KB`, source: 'Stop 8/9' },
     { label: 'Users',              value: String(users),                    source: 'Scenario', isInput: true },
     { label: 'Context per user',   value: `${contextK}K tokens`,           source: 'Scenario', isInput: true },
     { label: 'Cache per user',     value: `${cachePerUser.toFixed(1)} GB`, source: `${SCENARIO_DEFAULTS.kvPerToken_KB} KB × ${contextK}K` },

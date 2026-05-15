@@ -56,8 +56,8 @@ export const SCENARIO_DEFAULTS = {
 
 export const SCENARIO_CALCULATOR = [
   { label: 'Model',                value: 'Llama-3 70B',  source: 'Scenario',      isInput: false },
-  { label: 'Weights (FP4)',        value: '35 GB',        source: 'Stop 9',        isInput: false },
-  { label: 'KV cache per token',   value: '320 KB',       source: 'Stop 9/9',      isInput: false },
+  { label: 'Weights (FP4)',        value: '35 GB',        source: 'Stop 8',        isInput: false },
+  { label: 'KV cache per token',   value: '320 KB',       source: 'Stop 8/9',      isInput: false },
   { label: 'Users',                value: '32',           source: 'Scenario',      isInput: true, key: 'users' },
   { label: 'Context per user',     value: '8K tokens',    source: 'Scenario',      isInput: true, key: 'context' },
   { label: 'Cache per user',       value: '2.5 GB',       source: '320 KB \u00d7 8K',    isInput: false, computed: true },

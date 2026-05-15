@@ -1,96 +1,62 @@
-// Stop 9: Why Multiple Heads?
+// Stop 9: The Stack — Layers on Layers
 
 export const PAGES = [
-  { id: 'intro',            label: 'Introduction',             type: 'static' },
-  { id: 'heads-divide',     label: 'How Heads Divide Work',    type: 'static' },
-  { id: 'specializations',  label: 'What Heads Learn',         type: 'static' },
-  { id: 'reassembly',       label: 'Putting It Back Together', type: 'static' },
-  { id: 'cache-cost',       label: 'The Cache Cost',           type: 'static' },
-  { id: 'gqa',              label: 'Sharing K and V',          type: 'static' },
-  { id: 'bridge',           label: 'Bridge',                   type: 'static' },
+  { id: 'intro',         label: 'Introduction',          type: 'static' },
+  { id: 'layer-anatomy', label: 'Inside Each Layer',     type: 'static' },
+  { id: 'evolution',     label: 'Watching a Token Evolve', type: 'static' },
+  { id: 'ffn',           label: 'The FFN',               type: 'static' },
+  { id: 'full-stack',    label: 'The Full Stack',        type: 'static' },
+  { id: 'architecture',  label: 'Complete Architecture', type: 'static' },
+  { id: 'bridge',        label: 'Bridge',                type: 'static' },
 ];
 
-export const MODEL_DIMENSIONS = [
-  { model: 'Llama-3 8B',   d_model: 4096,  qHeads: 32,  kvGroups: 8, d_head: 128, layers: 32 },
-  { model: 'Llama-3 70B',  d_model: 8192,  qHeads: 64,  kvGroups: 8, d_head: 128, layers: 80 },
-  { model: 'Llama-3 405B', d_model: 16384, qHeads: 128, kvGroups: 8, d_head: 128, layers: 126 },
+export const LAYER_COUNTS = [
+  { model: 'Llama-3 8B',   layers: 32 },
+  { model: 'Llama-3 70B',  layers: 80 },
+  { model: 'Llama-3 405B', layers: 126 },
 ];
 
-// Sentence: "The server crashed last week because a faulty storage controller was replaced by a technician"
-// Each head focuses on a different linguistic relationship.
-
-export const HEAD_SPECIALIZATIONS = [
+export const FAULTY_EVOLUTION = [
   {
-    name: 'Syntax head',
-    description: 'Tracks grammatical subject-verb and object relationships.',
-    patterns: [
-      { from: 'crashed', to: 'server', weight: 0.61 },
-      { from: 'replaced', to: 'technician', weight: 0.54 },
-    ],
+    layer: 1,
+    title: 'Basic syntax and local connections',
+    summary: '"faulty" is recognized as an adjective meaning defective or broken. Attention connects it weakly to nearby words — "was" (the linking verb immediately before) and "week" (positionally close). The model knows the word\'s basic grammatical role but has no understanding of what it describes.',
+    attention: '"was" (linking verb), nearby words',
+    ffn: 'Classifies as adjective, activates basic "defective" semantics',
   },
   {
-    name: 'Coreference head',
-    description: 'Links adjectives and modifiers to the nouns they describe.',
-    patterns: [
-      { from: 'faulty', to: 'storage controller', weight: 0.42 },
-    ],
+    layer: 2,
+    title: 'Coreference begins',
+    summary: '"faulty" begins to connect to "controller." The coreference head (from Stop 8) recognizes that "faulty" is a predicate adjective that needs a subject — and "controller" is the most recent noun that fits. Meanwhile, "controller" already carries traces of "storage" from its own layer-1 attention. So "faulty" starts to absorb not just "controller" but the compound concept "storage controller."',
+    attention: '"controller" (coreference), "storage" (through controller)',
+    ffn: 'Strengthens the "describing a hardware component" pattern',
   },
   {
-    name: 'Positional head',
-    description: 'Attends strongly to immediately neighboring tokens.',
-    patterns: [
-      { from: 'each word', to: 'immediate neighbors', weight: null },
-    ],
+    layer: 3,
+    title: 'Causal chain forms',
+    summary: 'The causal structure clicks into place. "faulty" now connects through the chain: "faulty" → "controller" → "crashed" → "server." The model understands that a faulty storage controller caused a server crash. This required multiple hops — "faulty" didn\'t attend directly to "crashed" in layer 1, but by layer 3 the information has propagated through intermediate tokens.',
+    attention: '"crashed" (through enriched "controller"), "server" (indirect)',
+    ffn: 'Integrates cause-and-effect pattern: defective component → system failure',
   },
   {
-    name: 'Semantic head',
-    description: 'Clusters words with related meaning regardless of position.',
-    patterns: [
-      { from: 'server', to: 'storage', weight: 0.35 },
-      { from: 'server', to: 'controller', weight: 0.30 },
-      { from: 'storage', to: 'controller', weight: 0.38 },
-    ],
-  },
-];
-
-export const CACHE_SCALING = [
-  { context: '1K',   llama8b: '128 MB',  llama70b: '320 MB' },
-  { context: '8K',   llama8b: '1.0 GB',  llama70b: '2.5 GB' },
-  { context: '32K',  llama8b: '4.0 GB',  llama70b: '10.0 GB' },
-  { context: '128K', llama8b: '16.0 GB', llama70b: '40.0 GB' },
-];
-
-export const GQA_COMPARISON = [
-  {
-    method: 'MHA',
-    fullName: 'Multi-Head Attention',
-    kvHeads: 'Same as Q heads',
-    cacheSize: '1x (baseline)',
-    quality: 'Best',
-    notes: 'Original transformer design. Every Q head has its own K and V.',
+    layer: 4,
+    title: 'Temporal context integrates',
+    summary: '"faulty" now incorporates the temporal clause: the technician replaced this component last week, and it is still faulty. This suggests either the replacement failed or the problem is recurring. The "last week" information reached "faulty" through the relative clause "that the technician replaced last week" — a long-range dependency that required several layers of progressive enrichment.',
+    attention: '"replaced," "last," "week" (through relative clause chain)',
+    ffn: 'Combines temporal context with failure pattern: recent maintenance didn\'t fix it',
   },
   {
-    method: 'GQA',
-    fullName: 'Grouped-Query Attention',
-    kvHeads: 'Groups of Q heads share K/V',
-    cacheSize: '1/4x \u2013 1/8x',
-    quality: 'Near-MHA',
-    notes: 'Used by Llama-3, Gemma, Mistral. Best balance of quality and efficiency.',
+    layer: 5,
+    title: 'Inferential reasoning emerges',
+    summary: 'The representation now supports inference. A component was replaced last week but is still faulty — this suggests a recurring problem, an incomplete repair, or a misdiagnosis. The model hasn\'t been told this explicitly; the inference emerges from patterns learned during pre-training across millions of similar maintenance-failure narratives.',
+    attention: 'Refines connections established in earlier layers',
+    ffn: 'Activates patterns from training data: "replaced but still broken" → recurring issue',
   },
   {
-    method: 'MQA',
-    fullName: 'Multi-Query Attention',
-    kvHeads: '1 (all Q heads share)',
-    cacheSize: '1/Nx (minimal)',
-    quality: 'Lower',
-    notes: 'Extreme sharing. Used by PaLM, Falcon. Fastest inference but some quality loss.',
-  },
-  {
-    method: 'MLA',
-    fullName: 'Multi-head Latent Attention',
-    kvHeads: 'Compressed latent',
-    cacheSize: '~1/8x \u2013 1/16x',
-    quality: 'Near-MHA',
-    notes: 'Used by DeepSeek-V2/V3. Compresses KV into a low-rank latent instead of sharing heads.',
+    layer: 6,
+    title: 'Full contextual integration',
+    summary: '"faulty" now carries the integrated understanding of the entire sentence: it describes a storage controller, that controller caused a server crash, a technician replaced it last week, and it remains defective — suggesting an unresolved hardware problem. This representation is rich enough for the model to answer questions, generate continuations, or make predictions about what comes next.',
+    attention: 'Final refinement of all connections',
+    ffn: 'Produces representation sufficient for downstream tasks',
   },
 ];

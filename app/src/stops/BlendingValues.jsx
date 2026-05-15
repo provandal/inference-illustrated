@@ -453,35 +453,41 @@ function BridgePage() {
         they form one complete attention computation.
       </p>
       <p>
-        But notice what we never asked. We compared{' '}
+        Two threads are loose, and we want to address them in the right order.
+      </p>
+      <p>
+        First, notice what the math <em>never</em> asked. We compared{' '}
         <strong className="text-[var(--color-text)]">&ldquo;faulty&rdquo;</strong>{' '}
-        against every other Key in the sentence and blended Values by similarity.
-        At no point did the math care <em>where</em> &ldquo;faulty&rdquo; sits in
-        the sequence. Shuffle the words and the same Q&middot;K dot products come
+        against every other Key and blended Values by similarity. At no point
+        did the math care <em>where</em> &ldquo;faulty&rdquo; sits in the
+        sequence. Shuffle the words and the same Q&middot;K dot products come
         back &mdash; the model cannot distinguish &ldquo;the controller crashed
         last week&rdquo; from &ldquo;week crashed last the controller.&rdquo;
         Attention as built so far is{' '}
         <strong className="text-[var(--color-text)]">position-blind</strong>.
+        That gap is real, and we will close it &mdash; but the answer is
+        easiest to see once we have more machinery in view.
       </p>
       <p>
-        That gap has to be filled before we go further. Modern decoder-only models
-        (Llama, GPT, Qwen, DeepSeek) fix it with{' '}
-        <strong className="text-[var(--color-text)]">
-          Rotary Position Embeddings (RoPE)
-        </strong>{' '}
-        &mdash; a clever trick that <em>rotates</em> Q and K at every layer so the
-        dot product depends only on the <em>relative</em> distance between two
-        tokens, not their absolute positions. RoPE is also what shapes the K
-        vectors that get stored in the KV cache, so it is an Act 1 topic with
-        direct Act 2 consequences.
+        Second, the single head we just walked through learned <em>one</em>{' '}
+        pattern. &ldquo;Crashed&rdquo; needs to find its subject. &ldquo;Last&rdquo;
+        needs to modify &ldquo;week.&rdquo; One set of W<sub>Q</sub>, W<sub>K</sub>,
+        W<sub>V</sub> can only learn one type of relationship. What if we ran
+        many in parallel?
       </p>
       <p>
         That is{' '}
-        <strong className="text-[var(--color-text)]">Stop 8: Where in the
-        Sequence? &mdash; Position and RoPE</strong>. Once position is in place,
-        Stop 9 picks up the other obvious question we have been dodging: why do
-        we only run <em>one</em> attention head when the sentence has so many
-        different relationships to track?
+        <strong className="text-[var(--color-text)]">Stop 8: Why Multiple Heads?</strong>
+        {' '}&mdash; the immediate next step. After that,{' '}
+        <strong className="text-[var(--color-text)]">Stop 9</strong>{' '}
+        stacks layers (with the residual stream that carries signal through 80
+        of them), and then in{' '}
+        <strong className="text-[var(--color-text)]">Stop 10</strong>{' '}
+        we come back to the position problem and close it with{' '}
+        <strong className="text-[var(--color-text)]">Rotary Position Embeddings
+        (RoPE)</strong>. The reason we save RoPE for last in this run: it has
+        direct consequences for the KV cache, which is what Stop 11 introduces
+        to close Act 1.
       </p>
     </div>
   );

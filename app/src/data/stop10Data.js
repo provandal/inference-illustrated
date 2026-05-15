@@ -1,62 +1,274 @@
-// Stop 10: The Stack — Layers on Layers
+// Stop 10: Where in the Sequence? — Position and RoPE
+//
+// Slotted between Layers on Layers (Stop 9) and The Bridge / KV cache (Stop 11)
+// so the reader has multi-head attention, the residual stream, layer stacking,
+// and the prefill/decode loop already in view by the time we explain RoPE.
+//
+// Goal: deep treatment of positional encoding with a focus on RoPE (Rotary
+// Position Embeddings), the technique used by Llama, GPT, Qwen, DeepSeek, and
+// most modern decoder-only models. The K vectors RoPE produces are exactly
+// what the KV cache (Stop 11) is about to start storing.
 
 export const PAGES = [
-  { id: 'intro',         label: 'Introduction',          type: 'static' },
-  { id: 'layer-anatomy', label: 'Inside Each Layer',     type: 'static' },
-  { id: 'evolution',     label: 'Watching a Token Evolve', type: 'static' },
-  { id: 'ffn',           label: 'The FFN',               type: 'static' },
-  { id: 'full-stack',    label: 'The Full Stack',        type: 'static' },
-  { id: 'architecture',  label: 'Complete Architecture', type: 'static' },
-  { id: 'bridge',        label: 'Bridge',                type: 'static' },
+  { id: 'position-blind',   label: 'The Position-Blind Problem',   type: 'static'   },
+  { id: 'sinusoidal',       label: 'First Try \u2014 Add a Position', type: 'static' },
+  { id: 'add-at-input',     label: 'Why Add-at-Input Fails',        type: 'static'  },
+  { id: 'rotate-idea',      label: 'RoPE \u2014 Rotate, Don\u2019t Add', type: 'static' },
+  { id: 'rope-math',        label: 'The Math (Just Enough)',        type: 'static'  },
+  { id: 'frequencies',      label: 'Many Frequencies, Many Roles',  type: 'static'  },
+  { id: 'rope-and-cache',   label: 'RoPE Meets the KV Cache',       type: 'static'  },
+  { id: 'long-context',     label: 'Stretching the Window',         type: 'static'  },
+  { id: 'summary',          label: 'Stop 10 at a Glance',            type: 'static'  },
 ];
 
-export const LAYER_COUNTS = [
-  { model: 'Llama-3 8B',   layers: 32 },
-  { model: 'Llama-3 70B',  layers: 80 },
-  { model: 'Llama-3 405B', layers: 126 },
+export const NARRATIONS = {
+  'position-blind':
+    '<p><strong>Stop 10: Where in the Sequence?</strong> Across Stops 1\u20137 we built attention end-to-end \u2014 Query, Key, Value, dot product, softmax, blending. But we left a gaping hole. As built so far, attention is <em>permutation-invariant</em>: shuffle the input words and you get the same attention pattern.</p>' +
+    '<p style="margin-top:0.5em">That means the model literally cannot tell <em>"dog bit man"</em> from <em>"man bit dog"</em>. Identical words, identical Q/K/V vectors, identical attention scores. Position is invisible.</p>' +
+    '<p style="margin-top:0.5em">Fixing this is the missing piece. Modern models use <strong>RoPE \u2014 Rotary Position Embeddings</strong>, and the way it works has direct consequences for the KV cache (Stop 12), long-context support (Stop 15), and cache reuse (Stop 17). This stop is where positional encoding gets the full treatment.</p>',
+
+  'sinusoidal':
+    '<p>The 2017 \u201cAttention Is All You Need\u201d paper proposed a simple fix: <strong>add a position vector to each token\u2019s embedding</strong> before the first layer. The position vector is built from sines and cosines at different frequencies, giving every position a unique fingerprint.</p>' +
+    '<p style="margin-top:0.5em">Different dimensions of the position vector rotate at different rates. The low-index dimensions oscillate slowly \u2014 they encode coarse position. The high-index dimensions oscillate quickly \u2014 they encode fine position. The combination is a unique vector per position, with a useful structure: positions that are close together produce similar vectors.</p>',
+
+  'add-at-input':
+    '<p>Adding a position vector at the input has two problems. First, the position signal lives in the <strong>residual stream</strong> and gets attenuated as 80 layers of attention and FFN write their own content into the same activation. By the final layer, the original position fingerprint is buried.</p>' +
+    '<p style="margin-top:0.5em">Second, sinusoidal positions don\u2019t <strong>extrapolate</strong>. If the model only saw positions 0\u20134095 during training, the sinusoids at position 8000 fall in a never-seen region of the embedding space, and quality collapses. This is why early Transformer models had hard context limits.</p>',
+
+  'rotate-idea':
+    '<p>RoPE replaces the additive trick with a multiplicative one. Sinusoidal added a position vector to the embedding <em>once</em>, at the input. RoPE never touches the input embedding at all. Instead, <strong>inside every attention layer, after the model has projected the residual-stream input into Q and K, RoPE rotates those Q and K vectors by an angle proportional to the token\u2019s position</strong>. Then the rotated Q and K feed into the dot product as normal. V is left alone.</p>' +
+    '<p style="margin-top:0.5em">Two things to lock in. <strong>The rotation is per-layer.</strong> Each layer has its own W_Q and W_K weights, so each layer produces a different Q and K \u2014 and RoPE re-rotates each layer\u2019s Q and K freshly. The <em>rotation function</em> is the same at every layer (same frequencies, same formula); what differs is which Q and K are being rotated. <strong>And the position never lives in the residual stream</strong> \u2014 so it can\u2019t be drowned out by residual writes the way sinusoidal can.</p>' +
+    '<p style="margin-top:0.5em">The second consequence is the headline one. When you compute the dot product Q&middot;K of two rotated vectors, the absolute positions <strong>cancel out</strong> \u2014 only the <em>relative</em> position (m \u2212 n) matters. That cancellation is what makes long-context generalization work, and we prove it line by line on the next page.</p>',
+
+  'rope-math':
+    '<p>Here is the math, kept tight. RoPE treats the d-dimensional vector as d/2 <strong>pairs</strong> of dimensions. Each pair is rotated as a 2D vector by an angle that depends on position and on which pair it is.</p>' +
+    '<p style="margin-top:0.5em">For a single pair, Q at position <em>m</em> becomes R(m\u03b8)&middot;Q, and K at position <em>n</em> becomes R(n\u03b8)&middot;K, where R(\u03c6) is the 2&times;2 rotation matrix and \u03b8 is that pair\u2019s frequency. The magic is in the dot product: (R(m\u03b8)Q) \u00b7 (R(n\u03b8)K) = Q \u00b7 R((n\u2212m)\u03b8) K. The absolute positions <em>m</em> and <em>n</em> have collapsed into a single (n\u2212m)\u03b8 rotation. The dot product depends only on the relative offset.</p>',
+
+  'frequencies':
+    '<p>RoPE doesn\u2019t use one rotation rate. It uses d/2 of them, geometrically spaced. Pair 0 rotates fastest \u2014 it encodes <em>local</em> position (adjacent tokens). The last pair rotates so slowly that one full rotation takes thousands of tokens \u2014 it encodes <em>long-range</em> position.</p>' +
+    '<p style="margin-top:0.5em">This frequency spread is why a single dot product can carry information about both adjacent words and far-apart words at the same time. Each attention head can specialize: some heads end up paying attention to high-frequency (nearby) signals, others to low-frequency (distant) signals.</p>',
+
+  'rope-and-cache':
+    '<p>Here is where RoPE meets infrastructure \u2014 and it is exactly the territory Stop 11 (the next stop, "The Bridge") is about to map out. When the model caches K vectors, what gets stored is the <strong>post-rotation</strong> K. The rotation has already been applied at the token\u2019s absolute position.</p>' +
+    '<p style="margin-top:0.5em">For ordinary reads, this is free \u2014 the K vectors are correct as-is. But the moment you try to <em>reuse</em> a cache at a different position (prompt prefix caching, document caching, cross-session reuse), the cached K vectors are wrong for the new position. You have to un-rotate by the old position and re-rotate at the new one. This is the cost no one talks about until they try to ship prefix caching at production scale.</p>',
+
+  'long-context':
+    '<p>RoPE was the unlock for 100K+ context models. The trick: if you train on positions 0\u20134095 but run at 128K, the high-frequency RoPE pairs make many full revolutions on never-seen positions \u2014 quality crashes. So you <em>scale</em> the frequencies.</p>' +
+    '<p style="margin-top:0.5em">Four techniques worth knowing: <strong>position interpolation</strong> (linearly squeeze positions back into trained range), <strong>NTK-aware scaling</strong> (adjust frequencies non-uniformly so fine-grained detail is preserved), <strong>YaRN</strong> (per-band scaling plus an attention-temperature term), and what Llama-3.1 actually shipped. Each pushes context further; each costs a little quality.</p>',
+
+  summary:
+    '<p>RoPE solved the position problem with a multiplicative rotation that survives the residual stream, encodes relative position naturally, and stretches gracefully to long context. We carry this forward: the KV cache stores rotated K vectors, and any cache-reuse mechanic has to account for that.</p>',
+};
+
+// ================================================================
+// PAGE 1 — The Position-Blind Problem
+// Sentence shuffler showing attention is permutation-invariant.
+// Pre-computed attention matrix using fixed Q/K vectors per word.
+// ================================================================
+export const POSITION_BLIND_WORDS = [
+  { id: 'dog', label: 'dog', color: 'var(--color-red)'     },
+  { id: 'bit', label: 'bit', color: 'var(--color-blue)'    },
+  { id: 'man', label: 'man', color: 'var(--color-teal)'    },
 ];
 
-export const FAULTY_EVOLUTION = [
+// The orderings we let users flip between.
+export const POSITION_BLIND_ORDERINGS = [
+  { id: 'subject-verb-object',  label: '"dog bit man"',  order: ['dog', 'bit', 'man'], note: 'Subject-verb-object: dog is the biter, man is the victim.' },
+  { id: 'object-verb-subject',  label: '"man bit dog"',  order: ['man', 'bit', 'dog'], note: 'Opposite meaning: man is the biter, dog is the victim. A reader instantly understands this is different. The model does not.' },
+  { id: 'verb-first',           label: '"bit dog man"',  order: ['bit', 'dog', 'man'], note: 'Grammatical nonsense. But the attention scores are still identical \u2014 same words, same vectors.' },
+];
+
+// Attention matrix is computed once from word-level Q/K vectors.
+// attentionScores[queryWord][keyWord] is the softmax-normalised weight from query to key.
+// These numbers are illustrative, not from a real model.
+export const POSITION_BLIND_ATTENTION = {
+  dog: { dog: 0.21, bit: 0.55, man: 0.24 },  // dog mostly attends to its verb
+  bit: { dog: 0.41, bit: 0.10, man: 0.49 },  // bit attends to its arguments
+  man: { dog: 0.18, bit: 0.50, man: 0.32 },  // man attends to its verb
+};
+
+// ================================================================
+// PAGE 2 — Sinusoidal Positional Encoding
+// Compute and display the 2017-style position vector.
+// ================================================================
+// Standard sinusoidal PE: PE(pos, 2i) = sin(pos / 10000^(2i/d))
+//                         PE(pos, 2i+1) = cos(pos / 10000^(2i/d))
+export function sinusoidalPE(pos, dim) {
+  const out = new Array(dim);
+  for (let i = 0; i < dim / 2; i++) {
+    const freq = 1 / Math.pow(10000, (2 * i) / dim);
+    out[2 * i]     = Math.sin(pos * freq);
+    out[2 * i + 1] = Math.cos(pos * freq);
+  }
+  return out;
+}
+
+export const SINUSOIDAL_DEMO = {
+  defaultPos: 7,
+  dim: 64,         // d=64 keeps the heatmap legible
+  maxPos: 127,
+};
+
+// ================================================================
+// PAGE 3 — Why Add-at-Input Fails
+// Toy model of signal decay through layers, and a sketch of
+// what happens when the model is asked about positions it never saw.
+// ================================================================
+// Layer-by-layer "residual mix" — how much of the original PE remains
+// after L layers, assuming each layer adds noise of amplitude `noisePerLayer`.
+export function residualPESurvival(layer, noisePerLayer = 0.04) {
+  // Heuristic: PE amplitude after L layers ~= 1 / sqrt(1 + L * noisePerLayer^2 * scale)
+  const scale = 30;
+  return 1 / Math.sqrt(1 + layer * noisePerLayer * noisePerLayer * scale);
+}
+
+export const SIGNAL_DECAY_DEMO = {
+  totalLayers: 80,
+  defaultLayer: 1,
+};
+
+export const EXTRAPOLATION_FAILURE = {
+  trainedMax: 4096,
+  examples: [
+    { pos: 1024,  status: 'in-distribution',  quality: 'perfect',  note: 'Inside training range.' },
+    { pos: 4000,  status: 'in-distribution',  quality: 'good',     note: 'Near training boundary.' },
+    { pos: 8000,  status: 'extrapolating',    quality: 'degraded', note: 'Never seen in training. Sinusoids combine in unfamiliar ways.' },
+    { pos: 32000, status: 'extrapolating',    quality: 'broken',   note: 'Model output collapses.' },
+  ],
+};
+
+// ================================================================
+// PAGE 4 — Rotate, Don't Add
+// Single dimension-pair shown as a 2D vector that can be rotated.
+// ================================================================
+export const ROTATE_DEMO = {
+  defaultPosM: 2,
+  defaultPosN: 7,
+  defaultTheta: 0.45,   // radians per position unit (for visual clarity)
+  qVector: [1.0, 0.0],  // pre-rotation Q in this pair
+  kVector: [0.7, 0.6],  // pre-rotation K in this pair
+};
+
+// ================================================================
+// PAGE 5 — The Math
+// Dot product as a function of relative position.
+// ================================================================
+export function rotate2D([x, y], angle) {
+  const c = Math.cos(angle);
+  const s = Math.sin(angle);
+  return [c * x - s * y, s * x + c * y];
+}
+
+export function dot2D([a, b], [c, d]) { return a * c + b * d; }
+
+export const ROPE_MATH_STEPS = [
+  { id: 1, lhs: '(R(m\u03b8) Q) \u00b7 (R(n\u03b8) K)',                         note: 'Start: Q rotated at position m, K rotated at position n.' },
+  { id: 2, lhs: '= Q\u1d40 R(m\u03b8)\u1d40 R(n\u03b8) K',                       note: 'Expand the dot product in matrix form.' },
+  { id: 3, lhs: '= Q\u1d40 R(\u2212m\u03b8) R(n\u03b8) K',                       note: 'R is orthogonal, so its transpose is its inverse \u2014 the same as rotating backward.' },
+  { id: 4, lhs: '= Q\u1d40 R((n \u2212 m)\u03b8) K',                            note: 'Combine the two rotations. Successive 2D rotations add their angles.' },
+  { id: 5, lhs: '= Q \u00b7 R((n \u2212 m)\u03b8) K',                            note: 'Re-write back as a dot product. Absolute positions m and n have vanished. Only the relative offset (n \u2212 m) survives.' },
+];
+
+// ================================================================
+// PAGE 6 — Many Frequencies
+// d/2 frequency bands, geometrically spaced.
+// ================================================================
+// RoPE\u2019s base is typically 10000 (same as sinusoidal). For each pair i in 0..d/2-1:
+//   theta_i = base^(\u22122i/d)
+export function ropeBandTheta(i, d, base = 10000) {
+  return Math.pow(base, -(2 * i) / d);
+}
+
+export const FREQUENCY_DEMO = {
+  d: 16,        // 8 pairs total \u2014 visualise all 8
+  base: 10000,
+  defaultPos: 0,
+  maxPos: 128,
+};
+
+// ================================================================
+// PAGE 7 — RoPE Meets the KV Cache
+// Demonstrate that naive cache reuse at a different position is wrong.
+// ================================================================
+export const CACHE_REUSE_DEMO = {
+  cachedAtPos: 5,
+  reuseAtPos:  120,
+  qVector: [0.9, 0.2],
+  kVectorPreRotation: [0.7, 0.5],
+  theta: 0.18,
+};
+
+// ================================================================
+// PAGE 8 — Long-Context Extension
+// Comparator of four techniques.
+// ================================================================
+export const LONG_CONTEXT_TECHNIQUES = [
   {
-    layer: 1,
-    title: 'Basic syntax and local connections',
-    summary: '"faulty" is recognized as an adjective meaning defective or broken. Attention connects it weakly to nearby words — "was" (the linking verb immediately before) and "week" (positionally close). The model knows the word\'s basic grammatical role but has no understanding of what it describes.',
-    attention: '"was" (linking verb), nearby words',
-    ffn: 'Classifies as adjective, activates basic "defective" semantics',
+    id: 'none',
+    name: 'No scaling',
+    targetContext: '4K (trained)',
+    effectiveBaseFactor: 1.0,
+    quality: 'Reference',
+    note: 'What you get with raw RoPE at the trained context length.',
+    formula: '\u03b8_i\u2032 = \u03b8_i',
   },
   {
-    layer: 2,
-    title: 'Coreference begins',
-    summary: '"faulty" begins to connect to "controller." The coreference head (from Stop 9) recognizes that "faulty" is a predicate adjective that needs a subject — and "controller" is the most recent noun that fits. Meanwhile, "controller" already carries traces of "storage" from its own layer-1 attention. So "faulty" starts to absorb not just "controller" but the compound concept "storage controller."',
-    attention: '"controller" (coreference), "storage" (through controller)',
-    ffn: 'Strengthens the "describing a hardware component" pattern',
+    id: 'pi',
+    name: 'Position interpolation (PI)',
+    targetContext: '8K\u201316K',
+    effectiveBaseFactor: 1.5,
+    quality: 'Good',
+    note: 'Linearly compress positions back into trained range. Same RoPE, smaller effective \u03b8.',
+    formula: '\u03b8_i\u2032 = \u03b8_i / s,   where s = target / trained',
   },
   {
-    layer: 3,
-    title: 'Causal chain forms',
-    summary: 'The causal structure clicks into place. "faulty" now connects through the chain: "faulty" → "controller" → "crashed" → "server." The model understands that a faulty storage controller caused a server crash. This required multiple hops — "faulty" didn\'t attend directly to "crashed" in layer 1, but by layer 3 the information has propagated through intermediate tokens.',
-    attention: '"crashed" (through enriched "controller"), "server" (indirect)',
-    ffn: 'Integrates cause-and-effect pattern: defective component → system failure',
+    id: 'ntk',
+    name: 'NTK-aware scaling',
+    targetContext: '16K\u201332K',
+    effectiveBaseFactor: 2.0,
+    quality: 'Better',
+    note: 'Adjust the base (not each \u03b8) so high-frequency pairs see almost no change while low-frequency pairs are interpolated more aggressively.',
+    formula: 'base\u2032 = base \u00b7 s^(d/(d\u22122))',
   },
   {
-    layer: 4,
-    title: 'Temporal context integrates',
-    summary: '"faulty" now incorporates the temporal clause: the technician replaced this component last week, and it is still faulty. This suggests either the replacement failed or the problem is recurring. The "last week" information reached "faulty" through the relative clause "that the technician replaced last week" — a long-range dependency that required several layers of progressive enrichment.',
-    attention: '"replaced," "last," "week" (through relative clause chain)',
-    ffn: 'Combines temporal context with failure pattern: recent maintenance didn\'t fix it',
+    id: 'yarn',
+    name: 'YaRN',
+    targetContext: '32K\u2013128K',
+    effectiveBaseFactor: 3.2,
+    quality: 'Best on benchmark suites',
+    note: 'Per-frequency-band attenuation: bands within trained wavelength left alone, bands outside fully interpolated, bands near the boundary smoothly mixed. Adds an attention-temperature term to keep softmax sharpness consistent.',
+    formula: '\u03b8_i\u2032 = (1\u2212\u03b1_i) \u00b7 \u03b8_i + \u03b1_i \u00b7 \u03b8_i/s,  plus temperature \u03c4',
   },
   {
-    layer: 5,
-    title: 'Inferential reasoning emerges',
-    summary: 'The representation now supports inference. A component was replaced last week but is still faulty — this suggests a recurring problem, an incomplete repair, or a misdiagnosis. The model hasn\'t been told this explicitly; the inference emerges from patterns learned during pre-training across millions of similar maintenance-failure narratives.',
-    attention: 'Refines connections established in earlier layers',
-    ffn: 'Activates patterns from training data: "replaced but still broken" → recurring issue',
+    id: 'llama31',
+    name: 'Llama-3.1 (production)',
+    targetContext: '128K',
+    effectiveBaseFactor: 3.0,
+    quality: 'Production',
+    note: 'A YaRN-style approach with a high RoPE base (500000) and per-band scaling. The combination of higher base and frequency-aware scaling lets Llama-3.1 hold 128K tokens in a single context window.',
+    formula: 'base = 500000;   \u03b8_i\u2032 from per-band schedule',
   },
-  {
-    layer: 6,
-    title: 'Full contextual integration',
-    summary: '"faulty" now carries the integrated understanding of the entire sentence: it describes a storage controller, that controller caused a server crash, a technician replaced it last week, and it remains defective — suggesting an unresolved hardware problem. This representation is rich enough for the model to answer questions, generate continuations, or make predictions about what comes next.',
-    attention: 'Final refinement of all connections',
-    ffn: 'Produces representation sufficient for downstream tasks',
-  },
+];
+
+// ================================================================
+// PAGE 9 — Summary
+// ================================================================
+export const STOP_SUMMARY = [
+  { col: 'Old (sinusoidal)',   row: 'Where applied',     value: 'Once, at the input embedding'                  },
+  { col: 'Old (sinusoidal)',   row: 'How',               value: 'Added to the input vector'                     },
+  { col: 'Old (sinusoidal)',   row: 'Position kind',     value: 'Absolute'                                      },
+  { col: 'Old (sinusoidal)',   row: 'Survives layers?',  value: 'Decays through residual stream'                },
+  { col: 'Old (sinusoidal)',   row: 'Extrapolates?',     value: 'Poorly \u2014 fails beyond trained range'      },
+  { col: 'RoPE',               row: 'Where applied',     value: 'Every attention layer, on Q and K'             },
+  { col: 'RoPE',               row: 'How',               value: 'Rotates Q and K in d/2 dimension-pairs'        },
+  { col: 'RoPE',               row: 'Position kind',     value: 'Relative (dot product depends on m \u2212 n)'  },
+  { col: 'RoPE',               row: 'Survives layers?',  value: 'Re-applied at every layer \u2014 no decay'     },
+  { col: 'RoPE',               row: 'Extrapolates?',     value: 'With scaling (PI / NTK / YaRN) \u2014 to 128K+' },
+];
+
+export const FORWARD_LINKS = [
+  { stop: 11, label: 'The Bridge \u2014 KV cache intro', why: 'Immediately next. Formal introduction to the KV cache. The K vectors it stores are exactly the post-rotation K we just built here.' },
+  { stop: 12, label: 'KV cache memory',     why: 'How much cache fits per GPU, and what shapes it. The RoPE rotation does not change cache size, but it does shape the bandwidth pattern.' },
+  { stop: 15, label: 'Cache compression',    why: 'Quantising K means quantising a rotated vector \u2014 some methods exploit the rotation structure.' },
+  { stop: 17, label: 'Cache-aware routing',  why: 'Prefix-cache reuse across requests requires re-rotating K vectors to the new absolute position.' },
 ];

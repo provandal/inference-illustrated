@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import { PAGES, LAYER_COUNTS, FAULTY_EVOLUTION } from '../data/stop10Data';
+import { PAGES, LAYER_COUNTS, FAULTY_EVOLUTION } from '../data/stop9Data';
 import { Panel, PanelHeader, InfoBox, Callout } from '../components/ui';
 import PageNav from '../components/PageNav';
 import { useStore } from '../store';
@@ -8,7 +8,7 @@ import { useStore } from '../store';
 
 const NARRATIONS = {
   intro:
-    '<strong>Stop 10: The Stack &mdash; Layers on Layers.</strong> In Stop 9, we saw multi-head attention: many parallel perspectives combining into a rich representation. But every head in that single layer worked from the original embeddings. Real language understanding &mdash; integrating coreference, causality, and temporal reasoning &mdash; requires building meaning progressively across many layers.',
+    '<strong>Stop 9: The Stack &mdash; Layers on Layers.</strong> In Stop 8, we saw multi-head attention: many parallel perspectives combining into a rich representation. But every head in that single layer worked from the original embeddings. Real language understanding &mdash; integrating coreference, causality, and temporal reasoning &mdash; requires building meaning progressively across many layers.',
 
   'layer-anatomy':
     'Each transformer layer contains exactly two components, always in the same order. Together they form the repeating unit that stacks to create the full model. Below is the anatomy of a single layer, with every arrow annotated.',
@@ -26,7 +26,7 @@ const NARRATIONS = {
     'The complete transformer architecture from raw text to predicted token, and the two phases of inference that have very different computational profiles.',
 
   bridge:
-    'The KV cache makes inference possible. But the structure that makes inference fast is also the structure that makes inference expensive at scale. Stop 11 puts the full cost picture together.',
+    'We now have the complete transformer architecture in view: multi-head attention, FFN, residual stream, 80 stacked layers. Two threads were left dangling earlier in Act 1 \u2014 we close them in the next two stops. Stop 10 fixes position-blindness with RoPE; Stop 11 brings the KV cache to the front and starts asking what it costs to serve at scale.',
 };
 
 // --- Page Content Components ---
@@ -604,20 +604,20 @@ function FullStackPage() {
           This is how each layer specializes: early layers develop matrices tuned
           for surface patterns, deep layers develop matrices tuned for abstract
           reasoning. The specialization isn&rsquo;t programmed &mdash; it emerges
-          during training, just like head specialization in Stop 9.
+          during training, just like head specialization in Stop 8.
         </InfoBox>
       </Panel>
 
       <Panel className="mt-4">
         <PanelHeader>Where the 320 KB comes from</PanelHeader>
         <InfoBox>
-          In Stop 9, we calculated the KV cache for one layer of Llama-3 70B
+          In Stop 8, we calculated the KV cache for one layer of Llama-3 70B
           with GQA: 8 KV groups &times; 128 d_head &times; 2 (K + V) &times; 2
           bytes = 4,096 bytes &asymp; <strong>4 KB per layer</strong>.
         </InfoBox>
         <InfoBox>
           Across 80 layers: 4 KB &times; 80 = <strong>320 KB per token</strong>.
-          This matches the number from Stop 9&rsquo;s table &mdash; now you can
+          This matches the number from Stop 8&rsquo;s table &mdash; now you can
           see exactly where it comes from. For a 4,000-token context,
           that&rsquo;s already <strong>1.2 GB</strong> of cache memory &mdash;
           just for one request.
@@ -644,7 +644,7 @@ function FullStackPage() {
               Heads / KV groups
             </span>
             <span className="text-[12px] text-[var(--color-text-secondary)]">
-              Set by the architecture. Reduced by GQA (Stop 9) &mdash; Llama-3
+              Set by the architecture. Reduced by GQA (Stop 8) &mdash; Llama-3
               uses 8 KV groups instead of 64 independent K, V per head.
             </span>
           </div>
@@ -847,7 +847,7 @@ function BridgePage() {
           <strong> Embeddings</strong> turn tokens into vectors (Stops 1, 3).{' '}
           <strong>Q, K, V</strong> enable matching and information retrieval
           (Stops 3, 5, 6, 7). <strong>Multi-head attention</strong> provides
-          parallel perspectives (Stop 9). <strong>FFN</strong> adds non-linear
+          parallel perspectives (Stop 8). <strong>FFN</strong> adds non-linear
           processing and factual knowledge (this stop).{' '}
           <strong>Layers</strong> stack for progressive refinement (this stop).{' '}
           <strong>Residual connections</strong> preserve information across depth
@@ -857,8 +857,8 @@ function BridgePage() {
           Throughout this journey, one structure has been growing quietly in the
           background: the <strong>KV cache</strong>. It was introduced in
           Stop 3 as a way to avoid recomputing K and V. It expanded in Stop 5
-          with the dot-product mechanism. It multiplied in Stop 9 across
-          heads and KV groups. And here in Stop 10, it multiplied again across
+          with the dot-product mechanism. It multiplied in Stop 8 across
+          heads and KV groups. And here in Stop 9, it multiplied again across
           80 layers. Every layer, every head group, every token adds to it.
           We&rsquo;ve calculated its size piece by piece. Now it&rsquo;s time to
           put it all together and see the full picture.
@@ -867,31 +867,38 @@ function BridgePage() {
 
       <div className="text-sm text-[var(--color-text-secondary)] leading-relaxed space-y-3">
         <p>
-          The KV cache makes inference possible &mdash; without it, the model
-          would recompute all K and V vectors for every previous token at every
-          generation step. That&rsquo;s quadratic recomputation eliminated by
-          linear storage.
+          We now have the full transformer architecture in view: multi-head
+          attention, FFN, residual stream, 80 stacked layers, two phases of
+          inference (prefill and decode). The KV cache has been growing
+          quietly underneath us this whole time.
         </p>
         <p>
-          But the cache that makes inference{' '}
-          <strong className="text-[var(--color-text)]">fast</strong> is also the
-          structure that makes inference{' '}
-          <strong className="text-[var(--color-text)]">expensive at scale</strong>.
-          Every token, every layer, every head group &mdash; the memory adds up.
-          Serving thousands of concurrent users means managing gigabytes of cache
-          per request, multiplied across the batch.
+          But we deferred one piece. Way back at the end of Stop 7, we noticed
+          that attention as built so far is{' '}
+          <strong className="text-[var(--color-text)]">position-blind</strong>{' '}
+          &mdash; shuffle the input words and the math gives the same answer.
+          We put that aside on purpose, because the fix lives inside every
+          attention layer of the stack we just built, and it shapes the K
+          vectors that the cache stores. Now we have the context to do it
+          right.
         </p>
         <p>
-          We&rsquo;ve just seen that inference has two phases &mdash; prefill and
-          decode &mdash; with different computational profiles.{' '}
-          <strong className="text-[var(--color-text)]">Stop 11</strong> asks the
-          questions that bridge Act 1 to Act 2: How expensive? What are the two
-          phases of inference, and why do some systems separate them onto
-          different hardware? What happens when the cache outgrows the
-          GPU&rsquo;s memory?
+          <strong className="text-[var(--color-text)]">Stop 10: Where in the
+          Sequence? &mdash; Position and RoPE</strong> closes the
+          position-blindness gap with Rotary Position Embeddings, the technique
+          used by Llama, GPT, Qwen, DeepSeek, and most modern decoder-only
+          models. It also has direct consequences for what the K vectors in
+          the cache look like, which is exactly the topic of the stop after it.
+        </p>
+        <p>
+          Then <strong className="text-[var(--color-text)]">Stop 11: And Now,
+          The Cache &mdash; The Bridge</strong> formally introduces the KV
+          cache, sums up its cost, and asks the questions that take us into
+          Act 2: how expensive is this at production scale, and what do we do
+          about it?
         </p>
         <p className="text-[var(--color-text)] font-medium pt-1">
-          That&rsquo;s the story of the KV cache &mdash; and the beginning of Act 2.
+          Position next, then the cache &mdash; and Act 1 ends.
         </p>
       </div>
     </div>

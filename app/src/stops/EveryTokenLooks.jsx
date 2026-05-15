@@ -244,7 +244,7 @@ function SelfAttentionPage() {
           models that means <strong>RoPE (Rotary Position Embeddings)</strong>.
           The way RoPE works has direct consequences for the KV cache (it shapes
           what K vectors look like in memory), for long-context support, and
-          for cache reuse. We give it the full treatment in <strong>Stop 8</strong>{' '}
+          for cache reuse. We give it the full treatment in <strong>Stop 10</strong>{' '}
           &mdash; the math, the rotation visual, the cache implications, and
           how 128K-context models stretch RoPE to extreme positions.
         </InfoBox>

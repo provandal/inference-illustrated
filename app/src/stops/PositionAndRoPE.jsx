@@ -20,7 +20,7 @@ import {
   LONG_CONTEXT_TECHNIQUES,
   STOP_SUMMARY,
   FORWARD_LINKS,
-} from '../data/stop8Data';
+} from '../data/stop10Data';
 import { Panel, PanelHeader, InfoBox, Callout } from '../components/ui';
 import PageNav from '../components/PageNav';
 
@@ -889,7 +889,7 @@ function FrequenciesPage() {
 
       <Callout
         type="info"
-        message="<strong>Why a single dot product captures both close and far relationships.</strong> When you compute Q·K, the contribution from each dimension-pair has its own offset-dependent wave (Page 5). Fast bands give sharp local signal, slow bands give smooth long-range signal. Attention heads then learn to weight whichever bands match the relationship that head specialises in (Stop 9)."
+        message="<strong>Why a single dot product captures both close and far relationships.</strong> When you compute Q·K, the contribution from each dimension-pair has its own offset-dependent wave (Page 5). Fast bands give sharp local signal, slow bands give smooth long-range signal. Attention heads then learn to weight whichever bands match the relationship that head specialises in (Stop 8)."
       />
     </div>
   );
@@ -1182,7 +1182,7 @@ function Metric({ label, value, highlight }) {
 }
 
 /* ================================================================
-   PAGE 9 — Stop 8 at a Glance (Summary)
+   PAGE 9 — Stop 10 at a Glance (Summary)
    Side-by-side comparison of old (sinusoidal) vs new (RoPE).
    Forward links to Stops 12, 15, and 17 — where this comes back.
    ================================================================ */
@@ -1251,7 +1251,7 @@ function SummaryPage() {
 
       <Callout
         type="good"
-        message="<strong>End of Stop 8.</strong> The attention machinery is now complete: Q, K, V (Stop 3), dot product (Stop 5), softmax (Stop 6), value blending (Stop 7), and position via RoPE (this stop). Stop 9 layers on multi-head attention; Stop 10 stacks layers; Stop 11 names the KV cache. After that, we cross into Act 2 and start asking what it costs to actually serve this at scale."
+        message="<strong>End of Stop 10.</strong> The attention machinery is now complete: Q, K, V (Stop 3), dot product (Stop 5), softmax (Stop 6), value blending (Stop 7), and position via RoPE (this stop). Stop 8 layers on multi-head attention; Stop 9 stacks layers; Stop 11 names the KV cache. After that, we cross into Act 2 and start asking what it costs to actually serve this at scale."
       />
     </div>
   );
@@ -1274,7 +1274,7 @@ function PlaceholderPage({ title }) {
 }
 
 /* ================================================================
-   Main Stop 8 component
+   Main Stop 10 component
    ================================================================ */
 export default function PositionAndRoPE() {
   const [pageIndex, setPageIndex] = useState(0);

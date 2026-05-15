@@ -80,32 +80,32 @@ export const tourSteps = [
     stopNumber: 7,
   },
   {
-    id: 'position-and-rope',
-    shortTitle: 'Position & RoPE',
-    title: 'Stop 8: Where in the Sequence? \u2014 Position and RoPE',
-    narration:
-      'Attention as built so far is blind to word order \u2014 the model can\u2019t tell "dog bit man" from "man bit dog." This stop is how that gets fixed, with Rotary Position Embeddings (RoPE), the technique used by Llama and most modern decoder-only models.',
-    component: 'PositionAndRoPE',
-    act: 1,
-    stopNumber: 8,
-  },
-  {
     id: 'multiple-heads',
     shortTitle: 'Multiple Heads',
-    title: 'Stop 9: Why Multiple Heads?',
+    title: 'Stop 8: Why Multiple Heads?',
     narration:
       'One attention head learns one pattern. Language has many simultaneous relationships \u2014 so we run many heads in parallel.',
     component: 'MultipleHeads',
     act: 1,
-    stopNumber: 9,
+    stopNumber: 8,
   },
   {
     id: 'layers-on-layers',
     shortTitle: 'Layers on Layers',
-    title: 'Stop 10: The Stack \u2014 Layers on Layers',
+    title: 'Stop 9: The Stack \u2014 Layers on Layers',
     narration:
       'Each layer refines the representation further. 80 layers deep, with the KV cache growing at every one.',
     component: 'LayersOnLayers',
+    act: 1,
+    stopNumber: 9,
+  },
+  {
+    id: 'position-and-rope',
+    shortTitle: 'Position & RoPE',
+    title: 'Stop 10: Where in the Sequence? \u2014 Position and RoPE',
+    narration:
+      'Attention as built so far is blind to word order \u2014 the model can\u2019t tell "dog bit man" from "man bit dog." This stop is how that gets fixed, with Rotary Position Embeddings (RoPE), the technique used by Llama and most modern decoder-only models.',
+    component: 'PositionAndRoPE',
     act: 1,
     stopNumber: 10,
   },
